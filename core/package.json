@@ -1,0 +1,16 @@
+{
+  "name": "telyincore-web",
+  "version": "0.1.0",
+  "private": true,
+  "license": "LicenseRef-TelyinCore-NonCommercial-1.0",
+  "type": "module",
+  "description": "那一页（聊天 ＋ 顶栏那条计数 ＋ 引擎那一栏）的源与构建 —— 见 src/web/README.md",
+  "scripts": {
+    "build:web": "node scripts/build-web.mjs"
+  },
+  "devDependencies": {
+    "@tailwindcss/cli": "^4.3.3",
+    "esbuild": "^0.28.2",
+    "tailwindcss": "^4.3.3"
+  }
+}

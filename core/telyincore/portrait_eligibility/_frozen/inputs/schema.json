@@ -1,0 +1,25 @@
+{
+  "type": "function",
+  "function": {
+    "name": "profile_add",
+    "description": "只拟定稳定画像事实提案，不执行任何写入。",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "who": {
+          "type": "string",
+          "enum": []
+        },
+        "text": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "who",
+        "text"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

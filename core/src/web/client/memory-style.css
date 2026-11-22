@@ -1,0 +1,329 @@
+/* Memory overview: restrained empty states, readable notes, theme-aware surfaces. */
+@layer components {
+  .memory-studio {
+    container-type: inline-size;
+    overflow-x: hidden;
+  }
+
+  .memory-studio > * { flex-shrink: 0; }
+
+  :is(.memory-studio .memory-head, .page-qq-settings .core-page-head) {
+    padding-bottom: 20px;
+    border-bottom: 1px solid var(--color-line);
+  }
+
+  :is(.memory-studio .memory-head, .page-qq-settings .core-page-head) > .plugins-title {
+    margin: 3px 0 14px;
+    font-size: 19px;
+    font-weight: 600;
+    letter-spacing: .02em;
+  }
+
+  :is(.memory-studio .memory-head, .page-qq-settings .core-page-head) > .plugins-note:empty { display: none; }
+
+  .memory-studio .memory-star {
+    padding: 0 0 20px;
+    margin-top: 20px;
+  }
+
+  .memory-studio .memory-star .lbl {
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: 0;
+  }
+
+  .memory-studio .memory-star .lbl::before { content: none; }
+
+  .memory-studio .memory-star .say {
+    max-width: 100%;
+    font-size: 20px;
+    font-weight: 500;
+    line-height: 1.7;
+    color: var(--color-ink);
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
+    margin: 16px 20px 0;
+  }
+
+  .memory-studio .memory-star .say.void {
+    font-size: 16px;
+    color: var(--color-dim);
+  }
+
+  .memory-studio .memory-star .by {
+    margin: 8px 20px 0;
+    color: var(--color-faint);
+    font-size: 12px;
+    line-height: 1.7;
+  }
+
+  .memory-studio .memory-figs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px 0;
+    margin: 0;
+  }
+
+  .memory-studio .memory-fig,
+  .memory-studio .memory-fig:first-child {
+    display: flex;
+    flex: 0 1 auto;
+    flex-direction: row;
+    align-items: baseline;
+    gap: 8px;
+    padding: 0 22px;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    min-width: 0;
+  }
+
+  .memory-studio .memory-fig .n {
+    font-size: 18px;
+    line-height: 1.15;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .memory-studio .memory-fig .n em { font-size: 12px; }
+  .memory-studio .memory-fig .k { margin: 0; color: var(--color-dim); }
+  .memory-studio .memory-fig:first-child { padding-left: 0; }
+  .memory-studio .memory-fig + .memory-fig { border-left: 1px solid var(--color-line); }
+
+  .memory-studio .memory-sec {
+    margin-block: 28px 12px;
+    color: var(--color-dim);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: .06em;
+  }
+
+  .memory-studio .memory-documents { margin-top: 20px; }
+  .memory-studio .memory-list { border: 0; border-radius: 0; margin: 0; }
+
+  .memory-studio .memory-list li:first-child { border-top: 0; }
+  .memory-studio .memory-list li:last-child { border-bottom: 0; }
+
+  .memory-studio .memory-line {
+    grid-template-columns: 90px minmax(0, 1fr) auto;
+    gap: 12px 18px;
+    padding: 16px 22px;
+    align-items: center;
+    font-size: 13px;
+    line-height: 1.7;
+  }
+
+  .memory-studio .memory-line .v { overflow-wrap: anywhere; }
+
+  .memory-studio .memory-line .do {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    font-size: 11px;
+    white-space: normal;
+  }
+
+  .memory-studio .memory-line .op {
+    cursor: pointer;
+    color: var(--color-mint-text);
+    font: inherit;
+    padding: 3px 5px;
+    border: 0;
+    border-radius: var(--radius-chip);
+    background: transparent;
+    white-space: nowrap;
+    transition: background .15s ease;
+  }
+
+  .memory-studio .memory-line .op:hover { background: var(--color-mint-wash); }
+
+  .memory-studio .memory-pull {
+    gap: 28px 34px;
+    margin-top: 0;
+    align-items: start;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .memory-studio .memory-pull .item {
+    min-width: 0;
+    padding: 2px 0 2px 16px;
+    border: 0;
+    border-left: 2px solid var(--color-mint);
+    border-radius: 0;
+    background: transparent;
+    overflow-wrap: anywhere;
+  }
+
+  .memory-studio .memory-pull .item.is-empty,
+  .memory-studio .memory-pull .item.quiet { border-left-color: var(--color-line); }
+
+  .memory-studio .memory-pull h3 {
+    display: flex;
+    align-items: center;
+    margin: 0 0 8px;
+    font-size: 13px;
+    font-weight: 600;
+  }
+
+  .memory-studio .memory-pull p {
+    font-size: 13px;
+    line-height: 1.85;
+    white-space: pre-wrap;
+  }
+
+  .memory-studio .memory-pull .is-empty p,
+  .memory-studio .memory-pull .quiet p { color: var(--color-faint); }
+
+  .memory-studio .memory-pull .memory-entry + .memory-entry {
+    border-top: 1px solid var(--color-line);
+    padding-top: 12px;
+    margin-top: 12px;
+  }
+
+  .memory-studio .memory-pull .when + .memory-entry {
+    border-top: 1px solid var(--color-line);
+    padding-top: 12px;
+    margin-top: 12px;
+  }
+
+  .memory-studio .memory-pull .when {
+    font-size: 11px;
+    line-height: 1.7;
+    overflow-wrap: anywhere;
+  }
+
+  .memory-studio .memory-people { margin-top: 28px; }
+
+  .memory-studio .memory-people-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+  }
+
+  .memory-studio .memory-people-head h2 {
+    margin: 0;
+    color: var(--color-dim);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: .06em;
+  }
+
+  .memory-studio .memory-people-more {
+    flex-shrink: 0;
+    padding: 6px 10px;
+    border: 1px solid var(--color-line);
+    border-radius: var(--radius-chip);
+    background: var(--color-white);
+    color: var(--color-mint-text);
+    font-size: 12px;
+    text-decoration: none;
+    transition: background .15s ease, border-color .15s ease;
+  }
+
+  .memory-studio .memory-people-more:hover {
+    background: var(--color-mint-wash);
+    border-color: var(--color-mint);
+  }
+
+  .memory-studio .memory-people-grid {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(130px, 1fr));
+    gap: 12px;
+    margin: 12px 0 0;
+    padding: 0 0 6px;
+    list-style: none;
+    overflow-x: auto;
+  }
+
+  .memory-studio .memory-person {
+    min-width: 0;
+    padding: 16px 14px;
+    border: 1px solid var(--color-line);
+    border-radius: var(--radius-card);
+    background: var(--color-white);
+  }
+
+  .memory-studio .memory-person-name {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--color-ink);
+  }
+
+  .memory-studio .memory-person-standing {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    overflow: hidden;
+    margin: 8px 0 12px;
+    min-height: 3.4em;
+    color: var(--color-dim);
+    font-size: 12px;
+    line-height: 1.7;
+    overflow-wrap: anywhere;
+  }
+
+  .memory-studio .memory-person-meta {
+    display: block;
+    color: var(--color-faint);
+    font-size: 11px;
+    line-height: 1.7;
+    overflow-wrap: anywhere;
+  }
+
+  .memory-studio .memory-person-blocked {
+    display: block;
+    margin-top: 6px;
+    color: var(--color-soft-red);
+    font-size: 11px;
+  }
+
+  .memory-studio .op:focus-visible,
+  .memory-studio .memory-people-more:focus-visible {
+    outline: 2px solid var(--color-mint);
+    outline-offset: 3px;
+  }
+
+  @container (max-width: 680px) {
+    .memory-studio .memory-pull { grid-template-columns: minmax(0, 1fr); }
+    .memory-studio .memory-line { grid-template-columns: 80px minmax(0, 1fr); }
+    .memory-studio .memory-line .do { grid-column: 2; justify-content: flex-start; }
+    .memory-studio .memory-line .do:empty { display: none; }
+  }
+
+  @container (max-width: 420px) {
+    .memory-studio .memory-fig,
+    .memory-studio .memory-fig:first-child { padding: 0 10px; }
+    .memory-studio .memory-fig:first-child { padding-left: 0; }
+    .memory-studio .memory-fig .n { font-size: 16px; }
+    .memory-studio .memory-fig .k { font-size: 11px; }
+    .memory-studio .memory-star .say,
+    .memory-studio .memory-star .by { margin-inline: 16px; }
+    .memory-studio .memory-line { padding: 14px 18px; gap: 8px; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .memory-studio .op,
+    .memory-studio .memory-people-more { transition: none; }
+  }
+}
+
+
+/* 2026-10-18 批④：**做法那几行**用的布局 —— 别套 `.memory-line` 那三列
+   （90px 名字列会把 "[sk-0001] 标题 ｜ 版本 ｜ 状态" 压成 108px 宽的窄条）。
+   ⚠️ 只加这一条：别的页 ／ 别的行**一个字不动**。 */
+.memory-studio .memory-skill-line {
+  display: block;
+  width: 100%;
+  padding: 10px 0;
+  font-size: 13px;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+  border-bottom: 1px solid var(--color-line);
+}

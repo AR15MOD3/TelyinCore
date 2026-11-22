@@ -1,0 +1,13 @@
+
+.voice-corpus { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--color-line); }
+.voice-corpus > summary { cursor: pointer; font-weight: 600; padding: 4px 0; }
+.voice-corpus > label { display: flex; gap: 8px; align-items: center; margin: 12px 0; }
+.voice-corpus-toolbar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center;
+  margin: 10px 0; }
+.voice-corpus-list { display: grid; gap: 12px; max-height: 640px; overflow: auto; }
+.voice-corpus-item { border: 1px solid var(--color-line); border-radius: var(--radius-row);
+  padding: 12px; min-width: 0; }
+.voice-corpus-item > p { white-space: pre-wrap; overflow-wrap: anywhere; margin: 0 0 6px; }
+.voice-corpus-item > small { opacity: .65; }
+.voice-corpus-item > audio { display: block; width: 100%; margin-top: 10px; }
+.voice-corpus-item > audio[hidden] { display: none; }

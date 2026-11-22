@@ -1,0 +1,21 @@
+原文归档离线验证工具（不自动迁移）
+
+python -B tools/history_archive.py build --source <封存原文件> --output <不存在的目标> --namespace <Bot逻辑身份> --logical-path <原逻辑相对路径>
+默认 sqlite 容器、gzip 压缩、256KiB 块。参数 --kind seekable --codec zstd 为可选对照，要求运行环境提供 compression.zstd 或 zstandard；不会自动安装依赖。
+命令返回完整 Generation（namespace/logical_path/sha256/size）。这些值须保留为可信外部定位信息；不能仅凭陌生归档自己的声明授权读取。
+
+python -B tools/history_archive.py export --archive <归档> --output <不存在的导出文件> --namespace <原命名空间> --logical-path <原逻辑路径> --sha256 <原始字节哈希> --size <原始字节数> [--kind sqlite|seekable]
+逐块验证并导出完整原字节；目标已存在拒绝覆盖。普通桌面编辑器仍编辑原文件，不直接修改封存包。
+
+原文件始终保留，不移动、不删除、不改写。没有自动归档任务，不改变Bot启停或模型配置。
+这是管理端离线工具，不是新增模型工具；命令行调用者具有本机文件权限。模型/网页接口将来接入时，必须提供当前调用上下文的实时授权回调，不得把本地管理端回调直接用于模型权限。
+普通读取与归档读取共享有限代际、字节窗口、精确哈希和变化拒绝约定。现有历史索引/会话归档的plain读取已接入共同身份检查，其他工具现有来源/权限规则保持。
+
+压缩归档首次打开必须完整流式校验原代际，热读只解压所需块；任何可观察文件身份变化须重新打开/校验。首次校验不是常数时间。
+每包一个原始代际，最多65536块；每块4KiB..1MiB。超预算时明确拒绝，保留plain原文；本工具不自动拆分大代际或猜测封存边界。批量/跨包代际迁移不在此离线版启用范围。
+内容顺序、换行、BOM、JSON序列化原字节均保留；不把相似事实合并。
+SQLite包内清单与原文块是权威内容，不属于可清除缓存。数据库关闭后发布；无活动WAL。
+Seekable格式按公开格式写独立zstd帧与跳转表，旁边的.json清单含原始逻辑身份和块哈希；包先发布、清单最后提交。清单缺失必须报错，崩溃遗留包不自动删除。
+遇到失败，原文保留；未知孤儿包保留供人工恢复。正式历史迁移、事件迟到增量和删除未压缩副本仍需单独迁移方案与验收。
+
+Use build --only-if-smaller to compare the verified archive (including its seek table manifest) with the original logical byte count. A non-saving build returns published=false and removes its temporary files. A published build still retains the original.

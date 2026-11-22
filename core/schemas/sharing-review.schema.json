@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Per-Bot independent sharing review (operator managed)",
+  "description": "Stored only at the explicit Bot runtime root/sharing-review.json. No credentials. This file documents the strict Python parser; it does not register a UI or migrate configuration.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "version": {"type": "integer", "const": 1, "default": 1},
+    "mode": {"type": "string", "enum": ["follow", "profile"], "default": "follow"},
+    "profile": {"type": "string", "maxLength": 160, "default": ""},
+    "allow_external": {"type": "boolean", "default": false},
+    "max_tokens": {"type": "integer", "minimum": 128, "maximum": 1024, "default": 1024},
+    "timeout_seconds": {"type": "integer", "minimum": 1, "maximum": 12, "default": 12}
+  },
+  "allOf": [
+    {"if": {"properties": {"mode": {"const": "profile"}}, "required": ["mode"]},
+     "then": {"required": ["profile"], "properties": {"profile": {"minLength": 1}}},
+     "else": {"properties": {"profile": {"const": ""}}}}
+  ]
+}

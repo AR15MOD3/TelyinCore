@@ -1,0 +1,24 @@
+# ★★ `pnpm-workspace.yaml` —— 它今天**只是那份设置文件**（这个仓不是 workspace）。
+#
+# ⚠️⚠️ **为什么这个文件必须存在**（本波实测，别删）：
+#     pnpm **11 起把依赖的构建设置从 `package.json` 搬到了这里**
+#     （`onlyBuiltDependencies` 被 `allowBuilds` 取代 —— 见 https://pnpm.io/settings/build）。
+#     ★ 少了它，`pnpm install` 在 pnpm 12 上**交回非零**：`ERR_PNPM_IGNORED_BUILDS`
+#     （"esbuild 的构建脚本没人审过"）—— 而本机 pnpm 是 12.3.4 ⇒ 那条"怎么重建那一页"
+#     的答案（**两条命令 ＋ 本文件**：`pnpm install` ／ `pnpm run build:web`，再加这里的
+#     `allowBuilds`）当场变成一句会失败的话 ✗
+#     （实测：第一次 `pnpm install` 就是 `exit=1`，而**它把这个文件自己写了出来**，
+#      值是一个占位符 `set this to true or false`）。
+#
+# ⇒ 下面这两行就是那份"审过"（**本刀从一行变两行**：Task 2 把 Tailwind 那两个依赖加了进来）：
+#   · `esbuild: true` —— 它的构建脚本要落那份按系统架构的二进制（少了它，那条构建的第一步
+#     起不来）；
+#   · `'@parcel/watcher': false` —— ★ **审过，答案是"不让它跑"**：它是 Tailwind CLI 的
+#     传递依赖，只为 `--watch` 那一档存在（我们那条构建是一次性的，不用 `--watch`），
+#     而它那份按平台的包（`@parcel+watcher-win32-x64`）是**可选依赖** —— 随 install 就落好了。
+#     ★ 实测：写成 `false` 之后，那条构建照旧跑得通（本刀真的建过产物，见 T2 的报告）。
+#   ★ 不用 `dangerouslyAllowAllBuilds`（那会把将来任何一个传递依赖的 install 脚本一起放行
+#     —— 这个仓只有三个 devDep，没有理由开那个口子）。
+allowBuilds:
+  '@parcel/watcher': false
+  esbuild: true

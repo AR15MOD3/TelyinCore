@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "routes": {
+    "console": {
+      "provider": "host",
+      "files": [
+        "控制台.md"
+      ]
+    },
+    "qq": {
+      "provider": "core-infinity-qq",
+      "files": [
+        "QQ.md"
+      ]
+    },
+    "internal": {
+      "provider": "host",
+      "files": [
+        "独处.md"
+      ]
+    },
+    "mixed": {
+      "provider": "host",
+      "files": [
+        "混合.md"
+      ]
+    },
+    "unknown": {
+      "provider": "host",
+      "files": [
+        "未知来源.md"
+      ]
+    }
+  }
+}

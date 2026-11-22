@@ -1,0 +1,148 @@
+/* A readable configuration workspace, with room for every input. */
+@layer components {
+  .page-engine.page-engine {
+    container-type: inline-size;
+    grid-template-columns: minmax(170px, 200px) minmax(0, 900px);
+    column-gap: 20px;
+    row-gap: 24px;
+  }
+
+  .page-engine.page-engine > .page-title {
+    font-size: 20px;
+    letter-spacing: .02em;
+    padding-bottom: 20px;
+    border-bottom: 1px solid var(--color-line);
+  }
+
+  .page-engine .engine-left { min-width: 0; gap: 14px; }
+  .page-engine .engine-right {
+    min-width: 0;
+    gap: 16px;
+    container-type: inline-size;
+    grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr);
+    align-items: stretch;
+  }
+
+  .page-engine .engine-col { min-width: 0; gap: 16px; }
+  .page-engine .engine-cards { gap: 10px; }
+  .page-engine .engine-card {
+    padding: 16px;
+    gap: 10px;
+    border-radius: var(--radius-card);
+    transition: border-color .15s ease, background .15s ease;
+  }
+
+  .page-engine .engine-card:hover { border-color: var(--color-mint-select); }
+  .page-engine .engine-card.picked {
+    border-color: var(--color-mint);
+    background: var(--color-mint-wash);
+    box-shadow: none;
+  }
+
+  .page-engine .engine-card-name { font-size: 14px; overflow-wrap: anywhere; }
+  .page-engine .engine-pills { gap: 5px; }
+  .page-engine .engine-pills .pill { max-width: 100%; overflow-wrap: anywhere; }
+  .page-engine .engine-card-marks { gap: 12px; }
+
+  .page-engine .engine-section {
+    padding: 20px;
+    gap: 16px;
+    box-shadow: 0 3px 12px var(--color-wash);
+  }
+
+  .page-engine .engine-sub {
+    margin: 0 0 2px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--color-line);
+    font-size: 14px;
+    font-weight: 650;
+  }
+
+  .engine-chatgpt-slot[hidden], .engine-chatgpt [hidden], .page-engine .engine-row[hidden] {
+    display: none !important;
+  }
+  .engine-chatgpt {
+    display: grid;
+    gap: 12px;
+    padding: 16px;
+    border: 1px solid var(--color-mint-select);
+    border-radius: var(--radius-card);
+    background: var(--color-mint-wash);
+    min-width: 0;
+  }
+  .engine-chatgpt-heading { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .engine-chatgpt-status { margin: 0; font-size: 13px; line-height: 1.6; overflow-wrap: anywhere; }
+  .engine-chatgpt-note {
+    margin: 0; font-size: 12px; line-height: 1.6; opacity: .72; overflow-wrap: anywhere;
+  }
+  .engine-chatgpt-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+  .engine-chatgpt-actions .btn { max-width: 100%; white-space: normal; }
+  .engine-chatgpt .pill[data-state="ok"] { color: var(--color-mint); }
+  .page-engine .engine-input[readonly] { opacity: .7; }
+
+  .page-engine .engine-row {
+    min-width: 0;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 7px;
+  }
+
+  .page-engine .engine-label { font-size: 12px; color: var(--color-dim); }
+  .page-engine .engine-input {
+    width: 100%;
+    min-height: 38px;
+    padding: 8px 10px;
+    border-radius: var(--radius-row);
+    font-size: 13px;
+    background: var(--color-focus);
+  }
+
+  .page-engine .engine-row > .engine-hint:empty { display: none; }
+  .page-engine .engine-row > .btn { justify-self: start; }
+  .page-engine .engine-row:has(.engine-switch) {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+  }
+
+  .page-engine .engine-actions {
+    padding: 14px 0 0;
+    gap: 8px;
+    border: 0;
+    border-top: 1px solid var(--color-line);
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+    flex: none;
+  }
+
+  .page-engine .engine-connection > .engine-api { flex: 1; }
+  .page-engine .engine-connection > .engine-actions { flex: none; }
+
+  .page-engine .engine-foot { gap: 8px; }
+  .page-engine .engine-foot > .btn:last-child { margin-left: auto; }
+  .page-engine .engine-notice { min-width: 0; }
+  .page-engine .engine-actions .engine-notice:empty { display: none; }
+  .page-engine .engine-input:focus-visible,
+  .page-engine .engine-card:focus-visible {
+    outline: 2px solid var(--color-mint);
+    outline-offset: 2px;
+  }
+
+  @container (max-width: 620px) {
+    .page-engine .engine-right > .engine-col { grid-column: 1 / -1; }
+  }
+
+  @container console (max-width: 760px) {
+    .page-engine.page-engine { grid-template-columns: minmax(0, 1fr); }
+    .page-engine.page-engine > .page-title { white-space: normal; }
+    .page-engine .engine-cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr));
+      align-items: stretch;
+    }
+  }
+
+  @container (max-width: 440px) {
+    .page-engine .engine-section:not(.engine-actions) { padding: 16px; }
+    .page-engine .engine-foot > .btn:last-child { margin-left: 0; }
+  }
+}

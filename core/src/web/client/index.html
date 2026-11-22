@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>telyincore 控制台</title>
+<meta name="theme-color" content="#f3f5f8">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<!-- ★★ 壳那四块的**落点**：左栏 ／ 顶栏 ／ 正文那一列 ／ 底部那一行。
+     ⚠️ 这里**一个页标都没有**（只有落点）：页表是唯一登记处（见 `pages.ts` 抬头）——
+        加一页 = 一个文件 ＋ `pages.ts` 里一行，而这份壳**不必动**。
+     ⚠️ 真填进去的东西由 `shell.ts` 建（`document.createElement` ＋ `textContent`）。 -->
+<div id="rail"></div>
+<main id="content"></main>
+<header id="topbar"></header>
+<footer id="bottom"></footer>
+<noscript>这是那一页 —— 而它要 JavaScript 才转得起来。</noscript>
+<script type="module" src="/app.js"></script>
+</body>
+</html>

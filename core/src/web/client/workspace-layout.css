@@ -1,0 +1,121 @@
+/* Layout shared by the Core shell and its first-party pages. All surfaces
+   and typefaces inherit the active appearance preset. */
+:root {
+  --workspace-gutter: clamp(16px, 2.4vw, 42px);
+  --workspace-line: color-mix(in srgb, var(--color-line) 78%, var(--color-white));
+  --workspace-nav: color-mix(in srgb, var(--color-console) 93%, var(--color-rail));
+  --workspace-nav-text: var(--color-console-ink);
+  --workspace-nav-rule: color-mix(in srgb, var(--workspace-nav-text) 24%, transparent);
+}
+
+#rail {
+  background: var(--workspace-nav);
+  border-inline-end-color: var(--workspace-nav);
+}
+#rail .rail-brand,
+#rail .rail-name,
+#rail .rail-action,
+#rail .rail-item,
+.rail-label-ghost { color: var(--workspace-nav-text); }
+#rail .rail-brand .rail-mark { color: color-mix(in srgb, var(--color-mint) 45%, var(--workspace-nav-text)); }
+#rail .rail-grouplabel {
+  color: color-mix(in srgb, var(--workspace-nav-text) 77%, var(--workspace-nav));
+  letter-spacing: .09em;
+}
+#rail .rail-sublist { border-color: var(--workspace-nav-rule); }
+#rail .rail-child::before { background-color: var(--workspace-nav-rule); }
+#rail .rail-foot { border-top: 1px solid var(--workspace-nav-rule); }
+#rail :is(.rail-item, .rail-action):hover {
+  background: color-mix(in srgb, var(--workspace-nav-text) 10%, transparent);
+}
+#rail .rail-item.active {
+  color: var(--workspace-nav-text);
+  background: color-mix(in srgb, var(--color-mint) 32%, var(--workspace-nav));
+  box-shadow: inset 3px 0 color-mix(in srgb, var(--color-mint) 45%, var(--workspace-nav-text));
+  font-weight: 650;
+}
+#rail .rail-item.active > .icon { color: inherit; }
+#rail :is(button, a):focus-visible { outline-color: var(--workspace-nav-text); outline-offset: -2px; }
+
+#topbar {
+  background: var(--color-white);
+  border-bottom-color: var(--workspace-line);
+}
+#topbar .chip { font-variant-numeric: tabular-nums; }
+#topbar .chip + .chip {
+  padding-inline-start: 9px;
+  border-inline-start: 1px solid var(--workspace-line);
+}
+@media (min-width: 761px) {
+  #topbar, #content { padding-inline: var(--workspace-gutter); }
+}
+#content :is(.plugins-title, .page-title, .persona-title, .head > h1, .set-head > h2) {
+  color: var(--color-ink);
+  font-size: clamp(21px, 1.7vw, 27px);
+  line-height: 1.32;
+  font-weight: 650;
+  letter-spacing: -.018em;
+  overflow-wrap: anywhere;
+}
+#content :is(.plugins-title-row, .world-studio > .head, .persona-head, .set-head) {
+  border-bottom: 1px solid var(--workspace-line);
+  padding-bottom: 15px;
+}
+
+/* Indexes and editors have different reading widths. Retain their own scroll
+   containers, including the independently scrolling terminal and its composer. */
+#content .world-studio .prose { max-inline-size: 72ch; line-height: 1.85; }
+#content .world-studio :is(.page-body, .beat),
+#content .persona-studio .persona-segment,
+#content .memory-studio :is(.memory-star, .memory-documents) {
+  border-color: var(--workspace-line);
+  background-color: var(--color-white);
+  box-shadow: none;
+}
+#content .persona-studio .persona-name,
+#content .memory-studio :is(.memory-document-title, .memory-star .lbl) {
+  background: color-mix(in srgb, var(--color-white) 84%, var(--color-mint-wash));
+  border-bottom-color: var(--workspace-line);
+}
+#content .world-studio .page-body { padding: clamp(16px, 2vw, 28px); }
+#content .page-experience .beat { padding-block: 10px; }
+#content .live .msg-text { line-height: 1.75; }
+#bottom .composer {
+  border-color: var(--color-line);
+  box-shadow: 0 2px 8px var(--color-wash);
+}
+#bottom .composer:focus-within { border-color: var(--color-mint); }
+
+#content :is(.engine-section, .settings-card, .infinity-card, .infinity-voice-card),
+#content .plugins-card { border-color: var(--workspace-line); box-shadow: none; }
+#content :is(.engine-section, .settings-card, .infinity-voice-card) {
+  padding: clamp(15px, 1.6vw, 24px);
+  background-color: var(--color-white);
+}
+#content .engine-sub { border-bottom-color: var(--workspace-line); }
+#content .infinity-summary { gap: 0; border: 1px solid var(--workspace-line); border-radius: var(--radius-row); }
+#content .infinity-metric {
+  background: var(--color-white);
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  padding: clamp(12px, 1.3vw, 20px);
+  font-variant-numeric: tabular-nums;
+}
+#content .infinity-metric:first-child { border-radius: var(--radius-row) 0 0 var(--radius-row); }
+#content .infinity-metric:last-child { border-radius: 0 var(--radius-row) var(--radius-row) 0; }
+#content .infinity-metric + .infinity-metric { border-inline-start: 1px solid var(--workspace-line); }
+#content .plugins-toolbar { margin-block-start: 16px; }
+#content .market-categories { border-color: var(--workspace-line); background: var(--color-white); }
+#content .plugins-chip { font-size: 12px; }
+#content .page-settings .set-body { gap: 16px; }
+#content .page-plugin .plugins-said { line-height: 1.65; }
+
+@media (max-width: 600px) {
+  #topbar .chip + .chip { padding-inline-start: 5px; }
+  #content :is(.plugins-title-row, .world-studio > .head, .persona-head, .set-head) { padding-bottom: 10px; }
+  #content .infinity-metric { padding: 10px 8px; }
+}
+@media (forced-colors: active) {
+  #rail .rail-item.active { outline: 2px solid Highlight; outline-offset: -2px; }
+}

@@ -1,0 +1,303 @@
+/* Keep conversation readable and tools quieter; preserve the compact composer controls. */
+@layer components {
+  .live.live { padding-bottom: 24px; }
+  .live.live > .page-title {
+    flex-shrink: 0;
+    font-size: 20px;
+    letter-spacing: .02em;
+    padding-bottom: 20px;
+    border-bottom: 1px solid var(--color-line);
+  }
+
+  .live .live-stream {
+    flex: 1 0 auto;
+    gap: 20px;
+    padding: 24px 0 10px;
+  }
+
+  .live .live-stream > * { flex-shrink: 0; }
+  :is(.live, .set-spec-demo) .msg { grid-template-columns: var(--avatar-msg) minmax(0, 1fr); gap: 12px; }
+  :is(.live, .set-spec-demo) .msg-body { min-width: 0; }
+  :is(.live, .set-spec-demo) .msg-head { gap: 8px; }
+  :is(.live, .set-spec-demo) .msg-text {
+    width: fit-content;
+    max-width: min(100%, 760px);
+    margin-top: 6px;
+    padding: 10px 16px;
+    border: 1px solid var(--color-line);
+    background: var(--color-white);
+    font-size: 14px;
+    line-height: 1.85;
+    overflow-wrap: anywhere;
+  }
+
+  :is(.live, .set-spec-demo) .msg.mine { grid-template-columns: minmax(0, 1fr); }
+  :is(.live, .set-spec-demo) .msg.mine .msg-body { max-width: 85%; }
+  :is(.live, .set-spec-demo) .msg.mine .msg-text {
+    margin-left: auto;
+    background: var(--color-mint-wash);
+    border-color: var(--color-mint-select);
+  }
+
+  :is(.live, .set-spec-demo) .line.tool { border-radius: var(--radius-row); background: transparent; }
+  :is(.live, .set-spec-demo) .line.tool > summary { align-items: center; gap: 10px; padding: 9px 12px; }
+  :is(.live, .set-spec-demo) .line.tool > summary::after {
+    content: '›';
+    margin-left: auto;
+    color: var(--color-faint);
+    font-size: 16px;
+    flex: none;
+    transition: transform .15s ease;
+  }
+
+  :is(.live, .set-spec-demo) .line.tool[open] > summary::after { transform: rotate(90deg); }
+  :is(.live, .set-spec-demo) .line.tool > summary:hover { background: var(--color-wash); }
+  :is(.live, .set-spec-demo) .line.tool .tool-name { flex: none; font-size: 11px; }
+  :is(.live, .set-spec-demo) .line.tool .tool-brief { min-width: 0; font-size: 11px; }
+  :is(.live, .set-spec-demo) .line.tool .tool-body {
+    padding: 12px;
+    background: var(--color-white);
+    font-size: 12px;
+    line-height: 1.8;
+    max-height: 320px;
+    overflow: auto;
+    border-radius: 0 0 var(--radius-row) var(--radius-row);
+  }
+
+  :is(.live, .set-spec-demo) .line.batch { display: flex; align-items: center; gap: 12px; }
+  :is(.live, .set-spec-demo) .line.batch::after { content: ''; height: 0; flex: 1; border-top: 1px solid var(--color-line); }
+  :is(.live, .set-spec-demo) .line.note { line-height: 1.8; }
+  .composer.composer {
+    container-type: inline-size;
+    padding: 10px;
+    background: var(--color-white);
+    box-shadow: 0 3px 16px var(--color-wash);
+    transition: border-color .15s ease, box-shadow .15s ease;
+  }
+
+  .composer.composer:focus-within {
+    border-color: var(--color-mint-select);
+    box-shadow: 0 0 0 3px var(--color-mint-wash);
+  }
+
+  .composer .composer-box textarea { padding: 8px 10px 12px; line-height: 1.75; }
+  .composer .composer-row { padding-top: 4px; flex-wrap: wrap; row-gap: 8px; }
+  .composer .composer-row > button:hover { background-color: var(--color-wash); }
+  .composer .composer-row > .composer-send:hover { background-color: var(--color-mint); }
+  .composer button:focus-visible,
+  :is(.live, .set-spec-demo) summary:focus-visible {
+    outline: 2px solid var(--color-mint);
+    outline-offset: 2px;
+  }
+
+  @container (max-width: 440px) {
+    .composer .composer-cache { flex-basis: 100%; order: 1; padding-left: 4px; }
+  }
+}
+
+/* Legacy .line rules are unlayered; keep the disclosure surface in the same cascade. */
+:is(.live, .set-spec-demo) .line.tool { padding: 0; background: transparent; }
+:is(.live, .set-spec-demo) .line.tool > summary { padding: 9px 12px; }
+
+
+/* Process reads like a quiet paragraph; tools are inline links, one inspector below. */
+:is(.live, .set-spec-demo) .line.tool.tool-group { margin: 12px 0 18px; padding: 2px 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; min-width: 0; }
+:is(.live, .set-spec-demo) .tool-group > .tool-head { display: flex; align-items: baseline; gap: 12px; margin-bottom: 6px; padding: 0; }
+:is(.live, .set-spec-demo) .tool-group-title { color: var(--color-faint); font-size: 11px; font-weight: 500; letter-spacing: .08em; }
+:is(.live, .set-spec-demo) .tool-group-count { color: var(--color-faint); font-size: 10px; opacity: .8; }
+:is(.live, .set-spec-demo) .tool-group-status { font-size: 10px; }
+:is(.live, .set-spec-demo) .tool-group-status.has-error { color: var(--color-soft-red); }
+:is(.live, .set-spec-demo) .tool-process { font-size: 13px; line-height: 2.1; color: var(--color-faint); overflow-wrap: anywhere; }
+:is(.live, .set-spec-demo) .tool-process-link { display: inline; padding: 2px 1px; border: 0; border-radius: 3px; background: transparent; color: var(--color-dim); font: inherit; line-height: inherit; cursor: pointer; text-align: left; overflow-wrap: anywhere; }
+:is(.live, .set-spec-demo) .tool-process-link::before { content: ''; display: inline-block; width: 5px; height: 5px; border-radius: 50%; background: var(--color-faint); margin: 0 6px 2px 0; }
+:is(.live, .set-spec-demo) .tool-process-link.is-returned::before { background: var(--color-mint-text); }
+:is(.live, .set-spec-demo) .tool-process-link.has-error { color: var(--color-soft-red); }
+:is(.live, .set-spec-demo) .tool-process-link.has-error::before { background: var(--color-soft-red); }
+:is(.live, .set-spec-demo) .tool-process-link:hover, :is(.live, .set-spec-demo) .tool-process-link[aria-expanded='true'] { color: var(--color-mint-text); background: var(--color-mint-wash); }
+:is(.live, .set-spec-demo) .tool-process-link:focus-visible, :is(.live, .set-spec-demo) .tool-inspector-close:focus-visible { outline: 2px solid var(--color-mint); outline-offset: 2px; }
+:is(.live, .set-spec-demo) .tool-process-arrow { margin: 0 8px; color: var(--color-faint); opacity: .65; white-space: normal; }
+
+:is(.live, .set-spec-demo) .tool-process-context { color: var(--color-faint); font-size: 12px; line-height: 2; }
+:is(.live, .set-spec-demo) .tool-process-separator { color: var(--color-faint); margin-right: 6px; }
+:is(.live, .set-spec-demo) .tool-process-link { font-family: var(--font-mono); font-size: 11px; padding: 1px 5px; border: 1px solid var(--color-line); border-radius: 5px; background: color-mix(in srgb, var(--color-white) 50%, transparent); }
+:is(.live, .set-spec-demo) .tool-process-link::before { width: 4px; height: 4px; margin-right: 5px; }
+:is(.live, .set-spec-demo) .tool-inspector { margin-top: 12px; border: 1px solid var(--color-line); border-radius: 12px; background: var(--color-white); box-shadow: 0 3px 12px var(--color-wash); overflow: hidden; }
+:is(.live, .set-spec-demo) .tool-inspector[hidden] { display: none; }
+:is(.live, .set-spec-demo) .tool-inspector-head { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 10px; padding: 6px 14px; }
+:is(.live, .set-spec-demo) .tool-inspector-identity { min-width: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; }
+:is(.live, .set-spec-demo) .tool-inspector-title { min-width: 0; max-width: 100%; font: 600 12px var(--font-mono); color: var(--color-ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+:is(.live, .set-spec-demo) .tool-inspector-caption { font-size: 11px; color: var(--color-faint); }
+:is(.live, .set-spec-demo) .tool-inspector-status { margin-left: 0; line-height: 1.4; white-space: nowrap; color: var(--color-mint-text); background: var(--color-mint-wash); border-radius: 20px; padding: 3px 8px; font-size: 10px; }
+:is(.live, .set-spec-demo) .tool-inspector-status.has-error { color: var(--color-soft-red); background: var(--color-wash); }
+:is(.live, .set-spec-demo) .tool-inspector-close { display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; flex: none; width: 28px; height: 28px; min-width: 28px; min-height: 28px; padding: 0; line-height: 1; border: 0; border-radius: 6px; background: transparent; color: var(--color-faint); font-size: 19px; cursor: pointer; }
+/* Draw the cross geometrically: glyph metrics differ between Windows/Linux fonts. */
+:is(.live, .set-spec-demo) .tool-inspector-close { position: relative; }
+:is(.live, .set-spec-demo) .tool-inspector-close::before, :is(.live, .set-spec-demo) .tool-inspector-close::after {
+  content: ''; position: absolute; top: 50%; left: 50%;
+  width: 13px; height: 1.5px; border-radius: 1px; background: currentColor;
+  transform: translate(-50%, -50%) rotate(45deg);
+}
+:is(.live, .set-spec-demo) .tool-inspector-close::after { transform: translate(-50%, -50%) rotate(-45deg); }
+:is(.live, .set-spec-demo) .tool-inspector-close:hover { color: var(--color-ink); background: var(--color-card); }
+:is(.live, .set-spec-demo) .tool-inspector-toolbar { display: flex; align-items: center; justify-content: space-between; padding: 0 16px; border-bottom: 1px solid var(--color-line); }
+:is(.live, .set-spec-demo) .tool-inspector-tabs { display: flex; gap: 18px; }
+:is(.live, .set-spec-demo) .tool-inspector-tab { border: 0; border-bottom: 2px solid transparent; padding: 8px 0; background: transparent; color: var(--color-faint); font-size: 11px; cursor: pointer; }
+:is(.live, .set-spec-demo) .tool-inspector-tab[aria-selected='true'] { border-bottom-color: var(--color-mint-text); color: var(--color-ink); }
+:is(.live, .set-spec-demo) .tool-inspector-copy { padding: 4px 6px; border: 0; border-radius: 5px; background: transparent; color: var(--color-faint); font-size: 10px; cursor: pointer; }
+:is(.live, .set-spec-demo) .tool-inspector-copy:hover { background: var(--color-card); color: var(--color-ink); }
+:is(.live, .set-spec-demo) .tool-inspector-pane { margin: 0; padding: 8px 14px; min-height: 32px; max-height: 180px; box-sizing: border-box; overflow-y: scroll; overflow-x: hidden; scrollbar-gutter: stable; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: var(--color-faint) transparent; color: var(--color-dim); font: 12px/1.9 var(--font-sans, sans-serif); white-space: pre-wrap; overflow-wrap: anywhere; }
+:is(.live, .set-spec-demo) .tool-inspector-pane.is-code { font: 11px/1.85 var(--font-mono); background: color-mix(in srgb, var(--color-card) 35%, transparent); }
+:is(.live, .set-spec-demo) .tool-inspector button:focus-visible { outline: 2px solid var(--color-mint); outline-offset: 2px; }
+:is(.live, .set-spec-demo) .tool-process { max-height: 144px; overflow-y: auto; overflow-x: hidden; }
+@media (max-width: 540px) { :is(.live, .set-spec-demo) .tool-inspector-head { padding-inline: 12px; gap: 7px; } :is(.live, .set-spec-demo) .tool-inspector-caption { flex-basis: 100%; } :is(.live, .set-spec-demo) .tool-inspector-toolbar { padding-inline: 12px; } :is(.live, .set-spec-demo) .tool-inspector-pane { padding-inline: 12px; } }
+
+/* Activity has a clear, quiet identity separate from conversational prose. */
+:is(.live, .set-spec-demo) .line.tool.tool-group { border-left: 1px solid var(--color-line); padding: 9px 0 9px 14px; margin-block: 12px 18px; }
+:is(.live, .set-spec-demo) .tool-group > .tool-head { gap: 10px; margin-bottom: 7px; }
+:is(.live, .set-spec-demo) .tool-group-title { display: inline-flex; align-items: center; gap: 6px; padding: 2px 7px; border: 1px solid var(--color-line); border-radius: 5px; background: var(--color-card); color: var(--color-dim); font-size: 10px; letter-spacing: .06em; }
+:is(.live, .set-spec-demo) .tool-group-title::before { content: ''; width: 5px; height: 5px; border-radius: 50%; background: var(--color-mint-text); }
+:is(.live, .set-spec-demo) .tool-process-context { font-size: 12px; }
+:is(.live, .set-spec-demo) .msg-actions { display: flex; justify-content: flex-start; min-height: 24px; padding-top: 5px; }
+:is(.live, .set-spec-demo) .msg.mine .msg-actions { justify-content: flex-end; }
+:is(.live, .set-spec-demo) .msg-copy { display: inline-flex; align-items: center; gap: 5px; min-width: 25px; min-height: 24px; padding: 3px 5px; border: 0; border-radius: 5px; background: transparent; color: var(--color-faint); cursor: pointer; opacity: .65; }
+:is(.live, .set-spec-demo) .msg:hover .msg-copy, :is(.live, .set-spec-demo) .msg-copy:focus-visible { opacity: 1; }
+:is(.live, .set-spec-demo) .msg-copy:hover { background: var(--color-wash); color: var(--color-ink); }
+:is(.live, .set-spec-demo) .msg-copy:focus-visible { outline: 2px solid var(--color-mint); outline-offset: 2px; }
+:is(.live, .set-spec-demo) .msg-copy-icon { display: block; flex: none; width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+
+/* Actions retain their footprint so hover does not move the conversation. */
+:is(.live, .set-spec-demo) .msg-copy { opacity: 0; pointer-events: none; justify-content: center; }
+:is(.live, .set-spec-demo) .msg:hover .msg-copy, :is(.live, .set-spec-demo) .msg:focus-within .msg-copy { opacity: 1; pointer-events: auto; }
+@media (hover: none) and (pointer: coarse) { :is(.live, .set-spec-demo) .msg-copy { opacity: .65; pointer-events: auto; } }
+.composer .composer-send { margin-left: 12px; display: inline-flex; align-items: center; justify-content: center; padding: 0; line-height: 1; flex: none; }
+.live .console-control-note {
+  display: flex; align-items: center; justify-content: center; gap: 12px;
+  margin: 4px 0; padding: 0; border: 0; min-width: 0;
+  color: var(--color-faint); font-size: 12px; line-height: 1.6;
+}
+.live .console-control-note > span {
+  display: inline-flex; align-items: center; gap: 8px; min-width: 0; max-width: 100%;
+  overflow-wrap: anywhere;
+}
+.live .console-control-note:not([data-busy="true"]):not(.console-completed)::before,
+.live .console-control-note:not([data-busy="true"]):not(.console-completed)::after {
+  content: ''; flex: 1; min-width: 16px; border-top: 1px solid var(--color-line);
+}
+.live .console-control-note[data-busy="true"],
+.live .console-completed { justify-content: flex-start; }
+.live .console-activity-icon {
+  display: block; flex: none; width: 13px; height: 13px; border: 1px solid currentColor;
+  border-radius: 4px; position: relative;
+}
+.live .console-activity-icon::after {
+  content: ''; position: absolute; width: 4px; height: 4px; left: 3px; top: 3px;
+  border-top: 1px solid currentColor; border-right: 1px solid currentColor; transform: rotate(45deg);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .live .console-control-note[data-busy="true"] .console-activity-text {
+    color: transparent;
+    background: linear-gradient(100deg, var(--color-faint) 20%, var(--color-ink) 40%, var(--color-accent, #416c9e) 50%, var(--color-ink) 60%, var(--color-faint) 80%);
+    background-size: 250% 100%;
+    background-clip: text; -webkit-background-clip: text;
+    font-weight: 600;
+    animation: console-activity-sweep 1.35s linear infinite;
+  }
+}
+@keyframes console-activity-sweep {
+  from { background-position: 140% 0; }
+  to { background-position: -100% 0; }
+}
+.live .console-control-note[hidden] { display: none; }
+
+:is(.live, .set-spec-demo) .msg-copy { width: 28px; height: 28px; min-width: 28px; min-height: 28px; padding: 4px; box-sizing: border-box; }
+/* Geometric icons keep their centers independent of platform font metrics. */
+.composer .composer-send, .composer .composer-send[data-processing="true"] { font-size: 0; }
+.composer .composer-send::before { content: ''; display: block; width: 12px; height: 12px; background: currentColor; clip-path: polygon(0 0, 100% 50%, 0 100%); transform: translateX(1px); }
+.composer .composer-send[data-processing="true"]::before { width: 10px; height: 10px; clip-path: none; border-radius: 1px; transform: none; }
+
+/* Batch boundaries are the top level; process text and outcomes share one inset.
+   Reset legacy .line padding so its invisible border cannot shift notice text. */
+:is(.live, .set-spec-demo) { --console-detail-indent: 24px; }
+:is(.live, .set-spec-demo) .line.batch {
+  margin: 8px 0; padding: 0; border: 0; border-radius: 0;
+  min-width: 0; font-size: 12px; font-weight: 500; line-height: 1.6;
+}
+:is(.live, .set-spec-demo) .line.tool.tool-group { padding-left: calc(var(--console-detail-indent) - 1px); }
+.live .console-control-note[data-busy="true"],
+.live .console-completed {
+  margin-left: var(--console-detail-indent);
+  justify-content: flex-start;
+}
+.live .console-control-note[data-busy="true"] > span { position: relative; }
+.live .console-control-note[data-busy="true"] .console-activity-icon {
+  position: absolute; left: -21px; top: 50%; transform: translateY(-50%);
+}
+/* Operation receipts use the full-width divider; only active work has an icon. */
+.live .console-control-note:not([data-busy="true"]) .console-activity-icon { display: none; }
+.live .console-control-note > span { white-space: normal; }
+/* The live status sits beside the stream in a centered flex column. Use internal
+   padding here: an outer margin would shift a full-width child by half its inset. */
+.live > .console-control-note[data-busy="true"] {
+  margin-left: 0;
+  padding-left: var(--console-detail-indent);
+  box-sizing: border-box;
+}
+
+/* Match the adjacent status controls, including pointer and keyboard feedback. */
+.composer :is(.composer-export, .composer-handoff) {
+  min-height: 28px;
+  padding: 3px 8px;
+  border-radius: var(--radius-chip);
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+  text-decoration: none;
+  transition: background-color 120ms, color 120ms;
+}
+.composer :is(.composer-export, .composer-handoff):hover:not(:disabled),
+.composer :is(.composer-export, .composer-handoff):active:not(:disabled) {
+  background: var(--color-mint-wash);
+  color: var(--color-ink);
+  text-decoration: none;
+}
+.composer :is(.composer-export, .composer-handoff):focus-visible {
+  outline: 2px solid var(--color-mint);
+  outline-offset: 3px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .composer :is(.composer-export, .composer-handoff) { transition: none; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .live .console-control-note[data-busy="true"] .console-activity-icon { animation: console-activity-pulse 1.35s ease-in-out infinite; }
+}
+@keyframes console-activity-pulse { 0%, 100% { opacity: .35; } 50% { opacity: 1; } }
+
+/* Host notices remain inspectable without masquerading as chat messages. */
+.console-system-notice {
+  margin: 12px 0 12px var(--console-detail-indent, 24px);
+  color: var(--color-faint); font-size: 12px; min-width: 0;
+}
+.console-system-notice > summary { cursor: pointer; padding: 6px 0; overflow-wrap: anywhere; }
+.console-system-notice > summary:hover { color: var(--color-ink); }
+.console-system-notice > summary:focus-visible { outline: 2px solid var(--color-mint); outline-offset: 3px; }
+.console-system-detail { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 240px;
+  overflow: auto; padding: 12px; border-left: 2px solid var(--color-line); }
+
+
+/* System requests and their observed tool receipts share one visual sequence. */
+.live .console-system-notice { margin: 0; padding: 4px 0; border: 0; color: var(--color-faint); }
+:is(.live, .set-spec-demo) .tool-group > .console-system-notice { margin-bottom: 6px; font-size: 11px; }
+.live .console-system-notice:has(+ .tool-group) { margin-bottom: -14px; padding-left: var(--console-detail-indent, 24px); }
+.live .console-system-notice + .line.tool.tool-group { margin-top: 0; }
+.composer-diagnostic-download { font-size: 12px; color: var(--color-mint-text); padding: 4px 2px; }
+.composer-diagnostic-download[hidden] { display: none; }
+
+.live .console-control-note > span:has(> .composer-diagnostic-download) { gap: 2px; }
+
+/* First-run messages remain separate from the replayable chat stream. */
+form[data-introducing], .console-introduction[hidden] { display: none !important; }
+.console-introduction { margin: 0 0 1rem; padding: 0 1rem; }
+.console-introduction p { margin: .45rem 0; }
+.console-introduction p:first-child { font-size: .85em; opacity: .75; }
+.console-introduction form { display: flex; align-items: center; flex-wrap: wrap; gap: .5rem; margin-top: .75rem; }
+.console-introduction input { min-width: 0; max-width: 100%; }

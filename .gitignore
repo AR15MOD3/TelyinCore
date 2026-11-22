@@ -1,0 +1,16 @@
+__pycache__/
+*.pyc
+.venv*/
+node_modules/
+.pytest_cache/
+core/data/
+core/.linux-*/
+core/extensions/
+core/linux-components/
+core/scripts/components/
+bots/
+runtime/
+services/
+models/
+.env
+engine.env

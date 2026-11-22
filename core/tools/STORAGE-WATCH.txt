@@ -1,0 +1,31 @@
+TelyinCore 本地容量软告警（用户已选择保留全部原文）
+默认：每Bot历史10GiB，全安装历史50GiB，安装卷或临时缓存所在卷可用空间低于10GiB。
+只告警，不拒绝新记录，不删除或迁移原文，不启动Bot/模型/QQ，不发送网络消息。
+这不是硬配额，忽略告警仍可能耗尽磁盘。精确检索计数默认保持不变。
+
+运行：使用本安装core虚拟环境Python执行 core/tools/storage_watch.py --check，只读检查。
+core/tools/storage_watch.py --once 发布本地状态，必要时请求桌面告警。
+core/scripts/install_storage_watch.py --install 显式安装本机15分钟监测计划；默认不带--install只打印计划。
+工具在自身安装目录下监测，不接管Core启动器、登录或运行进程。
+
+状态位于安装根目录 .storage-watch/容量状态.txt 和 status.json。包含统计时间，查看时注意是否过期。
+policy.json 可选，只支持 bot_bytes / total_bytes / free_bytes / notify_interval，正整数、字节单位；默认通知间隔3600秒。
+桌面通知整体每小时最多请求一次（所有阈值共用节流），恢复再超限也保留冷却；状态每次扫描都刷新。
+通知不可用时状态仍保留并在下一次监测重试；通知命令成功不等于用户确实看到。不开启模型/QQ/邮件告警。
+Windows计划只在当前用户登录时运行；Linux计划属于当前用户systemd。系统休眠/注销/通知关闭时不能保证即时桌面提醒。
+Windows监测子进程在256MiB/1CPU/45秒Job下运行，仅控制本工具创建的子进程；Linux服务256MiB/20%CPU/60秒上限。
+
+统计范围：安装的core/data（含各Bot运行目录）、bots、bots/.archives/旧bot-archives，及core/.linux-acceptance/.linux-dev隔离布局。
+只读历史文件元数据；仅为归属读取至多64KiB的身份/归档控制侧录，不读取对话正文或模型配置内容。
+逻辑历史字节包括上述范围内JSONL及其保留副本、record-history目录、synthetic-history.bin；多份保留副本分别占用预算，硬链接按路径计数。
+模型权重/源代码/虚拟环境不计入历史阈值；卷剩余空间包含所有占用。此数不是物理块占用或仅一份去重原文大小。
+另检查监测用户当前Python tempfile目录所在卷（status.json记录temporary_path）；同卷不重复告警，异卷分别报告。目录/卷信息不可用明确报统计不完整。
+Core的检索快照、排名原文暂存和调用回执暂存会登记实际临时目录；监测最多32条登记目录的身份与卷余量，同卷去重。不枚举或读取其中私有文件，不自动清理；不把临时卷占用冒充历史字节。
+登记文件为 .storage-watch/temporary-roots.json，最多64KiB；登记锁忙/无权限不阻断查询，之后重试。报告明确仅覆盖成功登记路径；登记损坏、超限、目录消失或身份变化报不完整。无自动发现全部进程/用户目录的保证。
+通常按模块所在安装根登记；嵌入宿主或隔离验收可用 TELYINCORE_STORAGE_OBSERVER_ROOT 指定登记所属安装根，监测时须选择同一根目录。生产默认无需设置此变量。
+归档以控制侧录名称归属；同布局大小写别名合并。无法归属的历史仍计入全局，另报统计不完整。
+每次最多200000目录项/20秒/32层/约1024归属，常规链接/目录联接不跟随；权限、文件变化、坏控制资料、限制中止都明确报不完整。
+部分统计只是已观察下界，不可据此认定容量正常。扫描不是对正在变化的文件树做原子快照，任何单次OS文件I/O也不保证硬时限。
+不完整结果仍可因已观察大小或卷余量发告警。派生索引、当前权限、查询计数和历史保留语义不被此监测工具改变。
+
+Windows计划参数依据：https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/schtasks-create

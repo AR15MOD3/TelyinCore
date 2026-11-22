@@ -1,0 +1,13 @@
+{
+  "name": "your-plugin-name",
+  "version": "0.1.0",
+  "description": "一句话说清这个插件干什么（市场卡片上显示的就是这一句）。",
+  "keywords": ["core-infinity"],
+  "main": "index.py",
+  "license": "MIT",
+  "telyincore": {
+    "kind": "infinity",
+    "api": 1,
+    "displayName": "给人的名字"
+  }
+}

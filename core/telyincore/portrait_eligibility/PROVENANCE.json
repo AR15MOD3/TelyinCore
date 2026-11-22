@@ -1,0 +1,65 @@
+{
+  "source_evidence": "portrait-v3-forced-chat-real-acceptance-20261029-r2-01a16dec",
+  "source_result_sha256": "5ba5206874c572ce144dbcf64ccb98f6c0880294c7cdadcd9d60de0ded43c87d",
+  "frozen_modules": [
+    {
+      "source": "portrait-v3-forced-chat-real-acceptance-20261029-r2-01a16dec/contracts.py",
+      "source_sha256": "0b7ab2e3dc9afe385410612309e07d0863d27481c5a2cdb71f36266aeff0f79d",
+      "target": "telyincore\\portrait_eligibility\\_frozen\\contracts.py",
+      "target_sha256": "0b7ab2e3dc9afe385410612309e07d0863d27481c5a2cdb71f36266aeff0f79d",
+      "only_change": "relative import namespace; AST identical after import level normalization"
+    },
+    {
+      "source": "portrait-v3-forced-chat-real-acceptance-20261029-r2-01a16dec/audited_admission.py",
+      "source_sha256": "bc15d94cc2768272546adf3623569f6f51e2c628c02935d00268fdb48776e44d",
+      "target": "telyincore\\portrait_eligibility\\_frozen\\audited_admission.py",
+      "target_sha256": "d08339efe58d641582aa5dc8cb90c4be41bd83840a7f727013c95ed257ed1bda",
+      "only_change": "relative import namespace and explicit UTF-8 decoding for the bundled JSON schema"
+    },
+    {
+      "source": "portrait-v3-forced-chat-real-acceptance-20261029-r2-01a16dec/textspan_v3.py",
+      "source_sha256": "b0fc03c539e9af00579dbce83c95a7572d9c43a02c5668f3c43d792fb7fb2405",
+      "target": "telyincore\\portrait_eligibility\\_frozen\\textspan_v3.py",
+      "target_sha256": "62df14089d141124e1527e75ec64e7d11aa2887b9a9836d8384b9113d3b76e2f",
+      "only_change": "relative import namespace; AST identical after import level normalization"
+    },
+    {
+      "source": "portrait-v3-forced-chat-real-acceptance-20261029-r2-01a16dec/stream_snapshot.py",
+      "source_sha256": "be74a647ad2d86cefa56b205409f9b1b664820430ec0993b26c7aa8780b30a0c",
+      "target": "telyincore\\portrait_eligibility\\_frozen\\stream_snapshot.py",
+      "target_sha256": "be74a647ad2d86cefa56b205409f9b1b664820430ec0993b26c7aa8780b30a0c",
+      "only_change": "relative import namespace; AST identical after import level normalization"
+    },
+    {
+      "source": "portrait-v3-forced-chat-real-acceptance-20261029-r2-01a16dec/provider_adapter.py",
+      "source_sha256": "238192ee7a67db0d81dcb8b28bd4693eacf9e7015cdd854471ae762208b15819",
+      "target": "telyincore\\portrait_eligibility\\_frozen\\provider_adapter.py",
+      "target_sha256": "08653ba33f6be5e4caeb592fe65c37fc2ffa267a552dbc7f04fd0c0c889e8255",
+      "only_change": "relative import namespace and explicit UTF-8 decoding for the bundled JSON schema"
+    },
+    {
+      "source": "portrait-v3-forced-chat-real-acceptance-20261029-r2-01a16dec/provider_adapter_v3.py",
+      "source_sha256": "8494276735487bd983716195b049b73d0c4d6aa6eb91925a8e86f90f824992d1",
+      "target": "telyincore\\portrait_eligibility\\_frozen\\provider_adapter_v3.py",
+      "target_sha256": "b9e695d34a0d484e2d3d010dc694c3a0264bc4329a0de758a22330d4917a9854",
+      "only_change": "relative import namespace; AST identical after import level normalization"
+    },
+    {
+      "source": "portrait-v3-forced-chat-real-acceptance-20261029-r2-01a16dec/forced_chat_codec.py",
+      "source_sha256": "72db4dbb63fb0609c2d9557c44ef588bb6a784d0f954e7eebaa0d6dd4cdf87a1",
+      "target": "telyincore\\portrait_eligibility\\_frozen\\forced_chat_codec.py",
+      "target_sha256": "7969dffa302846087fceb095d51f3dbfb3bf1fc0b3466fd8e21c203878308390",
+      "only_change": "relative import namespace; AST identical after import level normalization"
+    }
+  ],
+  "write_authorized": false,
+  "semantic_review_completed": false,
+  "deployment_schema_derivation": {
+    "field": "function.parameters.properties.who.enum",
+    "default": [],
+    "reason": "Always populated from the current source authors before proposal/wire verification; no bundled sample account",
+    "schema_before_sha256": "fe9b29b28c2cb3062596d9085cd3ae57dd923fc87fdf67d869cbe4df8c9a74a8",
+    "schema_after_sha256": "0554e9ba56cb275ed5fa2859ffe0fb2dac40d0432d4ac15b18f768fd2a020997",
+    "wire_equivalence": "6 selectors and 4 proposals byte-identical; full proof kept in acceptance artifact"
+  }
+}

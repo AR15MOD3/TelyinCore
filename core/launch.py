@@ -2928,7 +2928,7 @@ _THE_EXIT_PENS: dict[str, str] = {
     "self_account_add": "消化掉悬着的事后，仅将关于你自身身份与自我理解的认识写进自述；对方事实、知识详情和操作流程不属于自述。",
     "self_account_set": "仅整理自己的身份与自我理解；不要以自述收纳他人事实或工具操作手册。",
     "skill_note": "消化掉悬着的事后，只记录可复用的沟通方法或有触发条件的操作流程，不代存人物事实、计划、失败回执或知识正文。",
-    "send_private": "想主动找主人时用。问候、接着上次的话或聊自己的近况都可以，由你决定要不要开口。",
+    "send_private": "心里那件事自己消化不掉、想找人说说的时候用这个 —— 不用等谁先开口。",
     "unresolved_add": "只记你自己的挂念。要追踪具体事项的未知结果可用 attention_update 写 changes.waiting_for；画像被拒后别把草稿放进自己的挂念。",
     "unresolved_resolve": "放下自己的挂念时可划掉；事项结果仍未知的，继续保留其待确认状态。",
 }
@@ -4590,11 +4590,31 @@ def _main_impl(argv: list[str] | None = None, *, sharing_bridge_factory=None, pr
     )
     communication_memory = PreferenceMemory(home, lambda: tuple(console._active_batch))
     remember_handlers['communication_preference'] = communication_memory.handle
-    owner_delivery_plugin = "core-infinity-qq"
-
+    # **2026-10-07「第 3 刀 3b」**：那一件 SPEAK 的执行段（它主动开口 ）＋ **一条真通道**。
+    # ⚠️ **钟由入口读**（内核那几层一次都不读 —— 这里是最外层，读钟正该在这儿 ）。
+    # ⚠️ **"递到你眼前"今天只有本机这一条路**（一句桌面通知 ）；
+    # **"到手机"那一头没有** ⇒ 那一句实话由 `outbox.NO_ROAD` 带着走 （不假装 ）。
     def _the_clock() -> tuple[str, str]:
         now = datetime.datetime.now()
         return now.strftime("%Y%m%d-%H%M%S"), now.strftime("%Y-%m-%d")
+
+    def _tell_him(said: str, when: str) -> None:
+        """ **本机一句通知** —— 它崩了**不许带走那一轮**（那个 try 在 outbox 那一侧 ）。
+
+        ★ **2026-10-12（第 17 条那一笔，作者：「你直接做吧」）**：这里从前**也**推一帧上页
+        （`_the_said_frame`）—— 而核心那边（`Console.a_tool_row` ／ `Console._frames_for`）
+        今天把同一句画成气泡了 ⇒ **两处造同一帧**正是本仓点过名的病（"两处各答一个数"）
+        ⇒ 这一推**撤掉了**，气泡**只有一个制造口**（核心那两处：刚发生的走 `a_tool_row`、
+        翻出来的走 `_frames_for`）。⚠️ `when` 照旧留着（本机通知的文案用它）。"""
+        tip = str(said).replace("'", "''")[:200]
+        script = ("Add-Type -AssemblyName System.Windows.Forms; "
+                  "$n = New-Object System.Windows.Forms.NotifyIcon; "
+                  "$n.Icon = [System.Drawing.SystemIcons]::Information; "
+                  "$n.BalloonTipTitle = '" + str(args.bot) + "'; "
+                  "$n.BalloonTipText = '" + tip + "'; "
+                  "$n.Visible = $true; $n.ShowBalloonTip(5000)")
+        subprocess.run(["powershell", "-NoProfile", "-Command", script],
+                       capture_output=True, check=False)
 
     remember_handlers = dict(remember_handlers)
     # ★ 2026-10-17 批③：**合并那一支笔**由部署这一层接（声明也在这一层 ——
@@ -4612,9 +4632,9 @@ def _main_impl(argv: list[str] | None = None, *, sharing_bridge_factory=None, pr
 
     remember_handlers["skill_merge"] = _merge_scoped_skill
     remember_handlers.update(
-        outbox.handlers(Path(args.root), clock=_the_clock,
-                        deliver=partial(plugins.deliver_proactive, provider=owner_delivery_plugin),
-                        prepare_delivery=partial(plugins.prepare_proactive, provider=owner_delivery_plugin), bot_id=args.bot))
+        outbox.handlers(Path(args.root), clock=_the_clock, tell=_tell_him,
+                        deliver=plugins.deliver_proactive,
+                        prepare_delivery=plugins.prepare_proactive, bot_id=args.bot))
     from telyincore.reminder_delivery import ReminderJournal
     _reminders = ReminderJournal(args.root)
     # 2026-10-08：**`unresolved` 那两件也并进来** —— 它们**早就有执行段**
@@ -5456,8 +5476,8 @@ def _main_impl(argv: list[str] | None = None, *, sharing_bridge_factory=None, pr
         from scripts.linux_qq import require_connection, verify_ws
         plugin_host['linux_qq_check'] = lambda data: require_connection(core_root.parent.parent, data)
         plugin_host['linux_qq_ws'] = verify_ws
-    plugin_host["owner_qq_route"] = identity_book.owner_qq_route
     plugin_host["bot_id"] = args.bot
+    plugin_host["owner_qq_route"] = identity_book.owner_qq_route
     plugin_host["runtime_root"] = str(args.root)
     plugin_host["engine_root"] = str(engine.root)
     plugin_host["baseline_bot"] = baseline_bot
@@ -5781,7 +5801,7 @@ def _main_impl(argv: list[str] | None = None, *, sharing_bridge_factory=None, pr
         companion_lifecycle=(instance_lifecycle if instance_lifecycle is not None
             and getattr(instance_lifecycle,'companion_supported',False) else None),
         protocol_health=process_lifecycle is None,
-        owner_qq_route=identity_book.owner_qq_route, plugin_enabled=qq_plugin_enabled,
+        plugin_enabled=qq_plugin_enabled,
         plugin_connection=lambda data: plugin_connected(plugins._active_items(), data),
         plugin_running=lambda: any(
         row.get("name") == "core-infinity-qq" and row.get("loaded")
@@ -6217,7 +6237,7 @@ def _main_impl(argv: list[str] | None = None, *, sharing_bridge_factory=None, pr
                 outbox.the_facts(
                     Path(args.root),
                     day=datetime.datetime.now().strftime("%Y-%m-%d"),
-                    road=plugins.proactive_available(provider=owner_delivery_plugin)),
+                    road=plugins.proactive_available()),
                 # **2026-10-07（"由它压"那一刀）**：第三样 ——
                 # "那一本还有多少地方"（ 快满了才说 ）。
                 hers.a_room_line(persona.read_with_version(hers.HER_FILE)[0]),

@@ -2565,9 +2565,6 @@ class _Handler(BaseHTTPRequestHandler):
             "round-failures.json": collect("round-failures.json",
                 getattr(service, "round_failures", None) or (lambda: None)),
         }
-        qq_diagnostics = getattr(service, 'qq_startup_diagnostics', None)
-        if qq_diagnostics is not None:
-            files['qq-startup.json'] = collect('qq-startup.json', qq_diagnostics)
         if files["portrait-review.json"] is None:
             manifest["unavailable"].append("portrait-review.json")
         archive = io.BytesIO()
@@ -4964,14 +4961,6 @@ async def _serve_owned(console: Any, *, root: Any = "data", config: Any = None,
             path = getattr(session, 'path', None)
             return collect(path) if path is not None else None
         service.diagnostic_history = diagnostic_history
-        if sys.platform == 'win32' and persona_root is not None:
-            from qq_startup_diagnostics import collect as collect_qq_startup
-            core = Path(__file__).resolve().parents[1]
-            persona = Path(persona_root).absolute()
-            bot = persona.parent.name
-            if (persona == core.parent/'bots'/bot/'persona'
-                    and Path(root).absolute() in (core/'data',core/'data/bot-runtimes'/bot)):
-                service.qq_startup_diagnostics = lambda: collect_qq_startup(core, bot)
         console.round_control.on_change = lambda state: service.push({'kind': 'control_state', **state})
 
         # ⚠️⚠️ **先说"装好了"，再说那条地址**（次序是量出来的）：`assemble()` 之前

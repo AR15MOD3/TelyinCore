@@ -139,3 +139,17 @@ def test_download_matches_published_asset_and_survives_launcher_handoff(tmp_path
     assert "downloadUrl" not in checker().check(force=True)
     row["assets"][0].update(state="uploaded", name=updates.overlay_name("win", "beta.0.1.0", "beta.0.1.1"))
     assert "downloadUrl" not in checker().check(force=True)
+
+
+def test_acceptance_is_opt_in_and_cannot_replace_stable(tmp_path,monkeypatch):
+    installed(tmp_path, 'linux', 'beta.0.1.0')
+    rows=[release('linux-beta.0.1.2'),release('linux-acceptance-beta.0.1.1')]
+    rows[1]['assets']=[dict(name=updates.overlay_name('linux','beta.0.1.0','beta.0.1.1'),state='uploaded',size=1,label='core-online-update-v1')]
+    monkeypatch.setattr('urllib.request.urlopen',lambda req,timeout:io.BytesIO(json.dumps(rows).encode()))
+    def read():return updates.PackageUpdates(tmp_path,'linux','fixture/Core').check()
+    assert read()['latest']=='beta.0.1.2'
+    (tmp_path/'runtime').mkdir(exist_ok=True)
+    (tmp_path/'runtime/release-channel.json').write_text('{"channel":"acceptance"}')
+    result=read()
+    assert result['latest']=='beta.0.1.1' and result['installable']
+    assert '/linux-acceptance-beta.0.1.1/' in result['downloadUrl']

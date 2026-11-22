@@ -52,7 +52,7 @@ def _ids(value: object, field: str) -> set[str]:
     return ids
 
 
-def _config(path: Path, *, managed_owner: bool = False, model_root: Path | None = None, snapshot: dict | None = None
+def _config(path: Path, *, model_root: Path | None = None, snapshot: dict | None = None
             ) -> tuple[str, str, str, str, set[str], set[str], str, bool, str, str,
                        int, str, str, bool, int, str]:
     if snapshot is None and not path.is_file():
@@ -89,10 +89,10 @@ def _config(path: Path, *, managed_owner: bool = False, model_root: Path | None 
     proactive = got.get("proactiveTarget", "")
     if proactive not in ("", None):
         proactive = _qq_id(proactive)
-        if proactive is None or (not managed_owner and proactive not in privates):
+        if proactive is None or proactive not in privates:
             raise ValueError("proactiveTarget 必须是 privates 名单中的 QQ 号")
     sharing_owner = got.get("sharingOwner", "")
-    if not managed_owner and got.get("sharingEnabled", bool(sharing_owner)) is not False:
+    if got.get("sharingEnabled", bool(sharing_owner)) is not False:
         if (got.get("sharingEnabled", True) is not True or not isinstance(sharing_owner, str)
                 or _qq_id(sharing_owner) != sharing_owner or sharing_owner not in privates
                 or proactive != sharing_owner):
@@ -599,7 +599,7 @@ def create(ctx):
             self._tts_order = []
             self.privates: set[str] = set()
             self.groups: set[str] = set()
-            self._preferred_owner_qq = ""
+            self.proactive_target = ""
             self.sharing = None
             self.transcribe_voice = False
             self.tts_url = ""
@@ -662,12 +662,12 @@ def create(ctx):
             config_snapshot = config_path.read_bytes()
             settings = json.loads(config_snapshot)
             (url, token, self.ws_url, ws_token, self.privates, self.groups,
-             self._preferred_owner_qq, self.transcribe_voice, self.tts_url,
+             self.proactive_target, self.transcribe_voice, self.tts_url,
              self.asr_model_dir, self.backfill_minutes, self.tts_voice,
              self.asr_language, self.asr_use_itn, self.asr_threads,
              self.tts_send_mode) = _config(
                 Path(ctx.get("qq_config_path") or (Path(ctx["packageDir"]) / "config.json")),
-                managed_owner=callable(ctx.get("owner_qq_route")), model_root=Path(ctx["root"]) / "models", snapshot=settings
+                model_root=Path(ctx["root"]) / "models", snapshot=settings
             )
             if callable(ctx.get('linux_qq_check')):
                 self._linux_account_config = settings
@@ -696,14 +696,9 @@ def create(ctx):
                 self.tts_client = httpx.Client(
                     base_url=self.tts_url,
                     timeout=httpx.Timeout(180.0, connect=5.0), trust_env=False)
-            if settings.get("sharingEnabled", callable(ctx.get("owner_qq_route")) or bool(settings.get("sharingOwner"))) is True:
+            if settings.get("sharingEnabled", bool(settings.get("sharingOwner"))) is True:
                 from telyincore.sharing_native import NativeSharing
-                try:
-                    self.sharing = NativeSharing(self, ctx, config_path, config_snapshot=config_snapshot)
-                except (OSError, ValueError) as exc:
-                    if not callable(ctx.get("owner_qq_route")):
-                        raise
-                    self._log(f"跨会话分享暂不可用：{type(exc).__name__}")
+                self.sharing = NativeSharing(self, ctx, config_path, config_snapshot=config_snapshot)
             self.ws_headers = {"Authorization": f"Bearer {ws_token}"} if ws_token else {}
             self._ingress_order = _IngressOrder(self._emit_current, self._log, start_thread=ctx.get('start_background_thread'))
             self._stopping.clear()
@@ -1528,8 +1523,6 @@ def create(ctx):
                         self._log(f"QQ WebSocket 断开：{type(exc).__name__}")
                 finally:
                     self.connected = False
-                    if self.sharing is not None and callable(ctx.get("owner_qq_route")):
-                        self.sharing.disconnect()
                 if not self._stopping.is_set() and not self._account_conflict.is_set():
                     await asyncio.sleep(delay)
                     delay = min(delay * 2, 30)
@@ -1586,16 +1579,13 @@ def create(ctx):
                     owned_scope = 'qq:' + scope + ':' + target
                 else:
                     owned_scope = 'qq:catalog'
-                proactive = self.proactive_target
-                if name in ('qq_proactive_send', 'qq_sharing_proactive') and target != proactive:
-                    raise RuntimeError('proactive recipient changed')
                 if sharing_call:
-                    if not proactive or self.sharing is None or self.sharing.owner != proactive:
+                    if self.sharing is None or self.sharing.owner != self.proactive_target:
                         raise RuntimeError('sharing owner is no longer current')
-                    owned_scope = 'qq:sharing:' + proactive
+                    owned_scope = 'qq:sharing:' + self.proactive_target
                 snapshot = QqToolSnapshot(bot, owned_scope, self.client, self.media_client,
                     self.tts_client, self._tts_owner, frozenset(self.privates),
-                    frozenset(self.groups), proactive,
+                    frozenset(self.groups), self.proactive_target,
                     freeze_batch(batch_provider if batch_provider is not None
                                  else ctx.get('active_events')), self.tts_voice,
                     uuid.uuid4().hex if name in ('qq_send_voice', 'qq_output_tap') else '',
@@ -2483,17 +2473,6 @@ def create(ctx):
             metrics["corpus_ms"] = round((time.perf_counter() - corpus_started) * 1000, 1)
             return receipt
 
-        @property
-        def proactive_target(self):
-            resolve = ctx.get("owner_qq_route")
-            if not callable(resolve):
-                return self._preferred_owner_qq
-            try:
-                target = resolve(self._preferred_owner_qq)["target"]
-            except (OSError, ValueError, KeyError, TypeError):
-                return ""
-            return target if target in self.privates and target != self._observed_account else ""
-
         def proactive_available(self) -> bool:
             _require_legacy_runtime()
             return bool(self.client is not None and self.proactive_target)
@@ -2502,14 +2481,6 @@ def create(ctx):
             _require_legacy_runtime()
             if not self.proactive_available():
                 return None
-            if callable(ctx.get("owner_qq_route")):
-                from telyincore.plugins import prepare_proactive
-                try:
-                    asyncio.get_running_loop()
-                except RuntimeError:
-                    deliver = prepare_proactive(text, bot=ctx["bot_id"], provider="core-infinity-qq")
-                    return asyncio.run(deliver())
-                raise RuntimeError("异步轮次须使用 Core 已登记的主动投递入口")
             if self.sharing is not None:
                 return self.sharing.proactive_send(text)
             return self.send_text("private", self.proactive_target, text)
@@ -2584,21 +2555,10 @@ def create(ctx):
             from telyincore.async_tools import WorkOwner
             if not isinstance(text, str) or not text.strip():
                 raise ValueError('empty proactive text')
-            from telyincore.batch_snapshot import freeze_batch
-            from telyincore.sharing_native import ordinary_owner_turn
-            target = self.proactive_target
-            batch = freeze_batch(ctx.get('active_events'))
-            events = json.loads(batch) if batch is not None else None
             sharing = self.sharing
-            if callable(ctx.get("owner_qq_route")):
-                if ordinary_owner_turn(events, target):
-                    sharing = None
-                elif sharing is None:
-                    raise ValueError("跨会话内容须经过来源审核")
             name = 'qq_sharing_proactive' if sharing is not None else 'qq_proactive_send'
             snapshot = self._freeze_tool(name, {'scope': 'private',
-                                                'target': target},
-                                         batch_provider=(lambda: events) if events is not None else None)
+                                                'target': self.proactive_target})
 
             async def body():
                 ticket = current_system_call.get()
@@ -2642,12 +2602,8 @@ def create(ctx):
                 sharing = self.sharing
                 if sharing is None or getattr(handler, '__self__', None) is not sharing:
                     raise RuntimeError('sharing instance has changed')
-                if name == 'qq_share_to_owner' and bound.arguments.get('remembered_text'):
-                    route = {'scope': 'private', 'target': self.proactive_target}
-                else:
-                    route = {'scope': bound.arguments['source_scope'],
-                             'target': bound.arguments['source_target']}
-                snapshot = self._freeze_tool(name, route)
+                snapshot = self._freeze_tool(name, {'scope': bound.arguments['source_scope'],
+                                                  'target': bound.arguments['source_target']})
                 encoded = json.dumps(dict(bound.arguments), ensure_ascii=False, allow_nan=False)
                 owner = WorkOwner(snapshot.bot, snapshot.scope, invocation.call_id, name)
 
@@ -2888,9 +2844,7 @@ def create(ctx):
                 description="列出收藏表情、描述和标签。未识别的表情先用 qq_inspect_custom_face 查看；按自己的喜好和当前语境决定是否使用。",
                 parameters={
                     "type": "object",
-                    "properties": {"count": {"type": "integer", "minimum": 1, "maximum": 48},
-                                   "query": {"type": "string", "maxLength": 100,
-                                             "description": "按描述和标签检索，可省略"}},
+                    "properties": {"count": {"type": "integer", "minimum": 1, "maximum": 48}, "query": {"type": "string", "maxLength": 100, "description": "按描述和标签检索，可省略"}},
                     "additionalProperties": False,
                 },
                 tags=(ToolTag.READ,),

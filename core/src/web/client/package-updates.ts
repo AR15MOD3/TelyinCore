@@ -1,5 +1,6 @@
 interface PackageStatus {
   platform: string;
+  channel?: 'stable' | 'acceptance';
   current: string | null;
   latest?: string;
   releaseUrl?: string;
@@ -17,14 +18,14 @@ function paint(card: HTMLElement, state: PackageStatus) {
   const current = card.querySelector<HTMLElement>('[data-version]')!;
   const notice = card.querySelector<HTMLElement>('[data-update-message]')!;
   const platform = ({win: 'Windows', linux: 'Linux'} as Record<string, string>)[state.platform] ?? '';
-  current.textContent = [platform, state.current ? '已安装 ' + state.current : '未识别安装版本'].filter(Boolean).join(' · ');
+  current.textContent = [platform, state.channel === 'acceptance' ? '验收更新' : '', state.current ? '已安装 ' + state.current : '未识别安装版本'].filter(Boolean).join(' · ');
   const install = card.querySelector<HTMLButtonElement>('[data-install]')!;
   install.hidden = !(state.pendingVersion || (state.installable && state.status === 'available'));
   install.textContent = state.pendingVersion ? '重启并安装' : '在 Core 中更新';
   if (state.pendingVersion) {
     notice.textContent = state.pendingVersion + ' 已下载并校验。重启会短暂中断会话，也可等下次启动时安装。';
   } else if (state.status === 'available') {
-    const tag = state.platform + '-' + state.latest;
+    const tag = state.platform + (state.channel === 'acceptance' ? '-acceptance-' : '-') + state.latest;
     const file = `Telyincore_${state.platform}_${state.current}_to_${state.latest}_update.zip`;
     const base = state.releaseUrl?.split('/releases/tag/')[0];
     const direct = base?.startsWith('https://github.com/')

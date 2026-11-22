@@ -124,7 +124,8 @@ def stage(checker):
         raise ValueError('当前没有可安装的新版')
     base,version,platform=state['current'],state['latest'],state['platform']
     name=f'Telyincore_{platform}_{base}_to_{version}_update.zip'
-    tag=f'{platform}-{version}'
+    from .package_updates import release_tag
+    tag=release_tag(platform, version, checker.channel)
     repo=checker.repository
     api=f'https://api.github.com/repos/{repo}/releases/tags/{tag}'
     headers={'User-Agent':'TelyinCore-online-update','Accept':'application/vnd.github+json'}
@@ -154,7 +155,13 @@ def stage(checker):
             out.flush();os.fsync(out.fileno())
         if count!=asset['size'] or checksum.hexdigest()!=expected:
             raise ValueError('下载校验失败，请重新检查更新')
-        with zipfile.ZipFile(temp) as z:inspect_zip(root,z,platform,base,version)
+        with zipfile.ZipFile(temp) as z:
+            files = inspect_zip(root,z,platform,base,version)
+            for item in files:
+                path = safe_file(root, item['path'])
+                actual = sha(path.read_bytes()) if path.exists() else None
+                if actual not in (item['old_sha256'], item['new_sha256']):
+                    raise ValueError('本机程序文件与更新包不匹配，已保留：' + item['path'])
         temp.replace(cache/(expected+'.zip'))
         receipt=dict(platform=platform,base=base,version=version,sha256=expected)
         atomic(cache/'pending.json',json.dumps(receipt).encode(),0o600)

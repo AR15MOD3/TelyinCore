@@ -36,7 +36,19 @@ CHECK_INTERVAL = 30 * 60
 _PAGE_SIZE = 50
 
 
-def github_latest(repository: str, platform: str) -> dict:
+def release_tag(platform, version, channel="stable"):
+    return f"{platform}-acceptance-{version}" if channel == "acceptance" else f"{platform}-{version}"
+
+
+def installed_channel(root):
+    try:
+        setting = json.loads((root/"runtime/release-channel.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return "stable"
+    return "acceptance" if setting == {"channel": "acceptance"} else "stable"
+
+
+def github_latest(repository: str, platform: str, *, channel="stable") -> dict:
     from urllib.parse import quote
     from urllib.request import Request, urlopen
 
@@ -61,7 +73,12 @@ def github_latest(repository: str, platform: str) -> dict:
             if not isinstance(release, dict) or release.get("draft") is not False:
                 continue
             tag = release.get("tag_name")
-            match = _TAG.fullmatch(tag) if isinstance(tag, str) else None
+            if not isinstance(tag, str):
+                continue
+            prefix = release_tag(platform, "", channel)
+            if not tag.startswith(prefix):
+                continue
+            match = _TAG.fullmatch(platform + "-" + tag[len(prefix):])
             if not match or match[1] != platform or not _VERSION.fullmatch(match[2]):
                 continue
             version = match[2]
@@ -84,18 +101,19 @@ def overlay_name(platform, current, latest):
     return f"Telyincore_{platform}_{current}_to_{latest}_update.zip"
 
 
-def overlay_url(repository, platform, current, latest):
+def overlay_url(repository, platform, current, latest, channel="stable"):
     name = overlay_name(platform, current, latest)
-    return f"https://github.com/{repository}/releases/download/{platform}-{latest}/{name}"
+    return f"https://github.com/{repository}/releases/download/{release_tag(platform, latest, channel)}/{name}"
 
 
 class PackageUpdates:
-    def __init__(self, root, platform, repository, fetch=github_latest):
+    def __init__(self, root, platform, repository, fetch=None):
         from threading import Lock
         self.root = root
         self.platform = platform
         self.repository = repository
-        self.fetch = fetch
+        self.channel = installed_channel(root)
+        self.fetch = fetch or (lambda repo, plat: github_latest(repo, plat, channel=self.channel))
         self._lock = Lock()
         self._cache = None
         self._checked_at = 0.0
@@ -124,7 +142,7 @@ class PackageUpdates:
             if self._cache is not None:
                 if time.monotonic() - self._checked_at < (5 if force else CHECK_INTERVAL):
                     return self._cache
-            result = {"platform": self.platform, "current": None}
+            result = {"platform": self.platform, "current": None, "channel": self.channel}
             try:
                 current = installed_package(self.root, self.platform)
             except (OSError, ValueError):
@@ -142,7 +160,7 @@ class PackageUpdates:
                         result.update({k: v for k, v in release.items() if k not in ("assets", "native_assets")}, status=status)
                         if status == "available" and overlay_name(self.platform, current, release["latest"]) in release.get("assets", ()):
                             result["installable"] = overlay_name(self.platform, current, release["latest"]) in release.get("native_assets", ())
-                            result["downloadUrl"] = overlay_url(self.repository, self.platform, current, release["latest"])
+                            result["downloadUrl"] = overlay_url(self.repository, self.platform, current, release["latest"], self.channel)
                     except HTTPError as exc:
                         message = ("GitHub 暂时限制了检查频率，请稍后重试。" if exc.code in (403, 429)
                                    else f"暂时无法读取发行仓库（HTTP {exc.code}）。")
@@ -160,7 +178,7 @@ class PackageUpdates:
         import tempfile
         result = self.check(force=True)
         if result["current"] and self.repository:
-            path = self.root / "runtime" / "launcher-release-check.json"
+            path = self.root / "runtime" / ("launcher-release-check.json" if self.channel == "stable" else "launcher-release-check-acceptance.json")
             temporary = None
             try:
                 path.parent.mkdir(exist_ok=True)
@@ -181,7 +199,7 @@ class PackageUpdates:
 
     def _from_launcher(self):
         # Only version numbers cross the process boundary. Derive links locally.
-        path = self.root / "runtime" / "launcher-release-check.json"
+        path = self.root / "runtime" / ("launcher-release-check.json" if self.channel == "stable" else "launcher-release-check-acceptance.json")
         try:
             with path.open("rb") as f:
                 stamp, repository, platform, current, latest, *asset = json.loads(f.read(513))
@@ -189,20 +207,20 @@ class PackageUpdates:
             if not (0 <= age < (CHECK_INTERVAL if self._cache is not None else 120) and repository == self.repository and platform == self.platform
                     and current == installed_package(self.root, self.platform)):
                 return
-            result = {"current": current, "platform": platform}
+            result = {"current": current, "platform": platform, "channel": self.channel}
             if latest is None:
                 result.update(status="unavailable", message="启动自检暂未取得公开版本，可手动重试。")
             else:
                 local, remote = version_key(current), version_key(latest)
                 result.update(latest=latest,
                               status="available" if remote > local else "ahead" if local > remote else "current",
-                              releaseUrl=f"https://github.com/{repository}/releases/tag/{platform}-{latest}")
+                              releaseUrl=f"https://github.com/{repository}/releases/tag/{release_tag(platform, latest, self.channel)}")
                 if result["status"] == "available":
                     if not asset:
                         return  # Earlier launchers did not check the release assets.
                     if asset[0] is True:
                         result["installable"] = len(asset) == 2 and asset[1] is True
-                        result["downloadUrl"] = overlay_url(repository, platform, current, latest)
+                        result["downloadUrl"] = overlay_url(repository, platform, current, latest, self.channel)
             checked_at = time.monotonic() - age
             with self._lock:
                 if self._cache is None or stamp > self._checked_wall:

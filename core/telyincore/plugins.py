@@ -1593,11 +1593,9 @@ def _retain_plugin_dependency(instance, value):
     return ManagedAwaitable(value, before, release)
 
 
-def _proactive_instances(provider: str | None = None) -> list[Any]:
+def _proactive_instances() -> list[Any]:
     ready: list[Any] = []
-    for name, instance in _active_items():
-        if provider is not None and name != provider:
-            continue
+    for _, instance in _active_items():
         available = getattr(instance, "proactive_available", None)
         sender = getattr(instance, "proactive_send", None)
         if not callable(available) or not callable(sender):
@@ -1610,14 +1608,14 @@ def _proactive_instances(provider: str | None = None) -> list[Any]:
     return ready
 
 
-def proactive_available(*, provider: str | None = None) -> bool:
+def proactive_available() -> bool:
     """Whether there is exactly one configured destination for proactive speech."""
-    return len(_proactive_instances(provider)) == 1
+    return len(_proactive_instances()) == 1
 
 
-def deliver_proactive(text: str, *, provider: str | None = None) -> str | None:
+def deliver_proactive(text: str) -> str | None:
     """Let the one configured infinity deliver speech without naming its channel."""
-    ready = _proactive_instances(provider)
+    ready = _proactive_instances()
     if not ready:
         return None
     if len(ready) != 1:
@@ -1625,13 +1623,13 @@ def deliver_proactive(text: str, *, provider: str | None = None) -> str | None:
     return ready[0].proactive_send(text)
 
 
-def prepare_proactive(text: str, *, bot: str, provider: str | None = None):
+def prepare_proactive(text: str, *, bot: str):
     """Freeze one native destination before outbox append/any await.
 
     Missing/malformed native registration is not permission to call sync I/O.
     The returned cold closure starts no work until actually awaited once.
     """
-    ready = _proactive_instances(provider)
+    ready = _proactive_instances()
     if len(ready) > 1:
         raise RuntimeError('multiple proactive destinations; no delivery attempted')
     captured = None

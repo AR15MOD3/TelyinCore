@@ -557,6 +557,35 @@ def _the_channels(given: Any) -> list[dict[str, Any]]:
     return out
 
 
+def incompatible_plugin(manifest, current=None):
+    """Missing declarations retain legacy behavior. Explicit requirements are binding."""
+    from .package_updates import package_updates, installed_package, version_key
+    box = manifest.get("telyincore")
+    if not isinstance(box, dict):
+        box = manifest.get("cortico")
+    if not isinstance(box, dict):
+        return ""
+    kind, api = box.get("kind"), box.get("api")
+    if "api" in box and (type(api) is not int or api < 1 or CONTRACTS.get(kind or "infinity") != api):
+        return f"插件声明的接口 {kind or 'infinity'} v{api} 与此 Core 不兼容。"
+    limits = box.get("coreVersions")
+    if limits is None:
+        return ""
+    try:
+        if not isinstance(limits, dict) or not limits or limits.keys() - {"min", "max"}:
+            raise ValueError()
+        lower = version_key(limits["min"]) if "min" in limits else None
+        upper = version_key(limits["max"]) if "max" in limits else None
+        if lower and upper and lower > upper:
+            raise ValueError()
+        actual = version_key(current or installed_package(package_updates.root, package_updates.platform))
+    except (ValueError, TypeError, KeyError, OSError):
+        return "无法核对插件声明的 Core 兼容范围。"
+    if (lower and actual < lower) or (upper and actual > upper):
+        return f"插件支持的 Core 版本范围为 {limits.get('min', '不限')} 至 {limits.get('max', '不限')}。"
+    return ""
+
+
 def _contract_said(kind: str, api: Any) -> str:
     """返回插件契约的诊断信息；本函数只报告，不执行装卸。
 
@@ -843,6 +872,9 @@ def carry(root: Any, name: str, *, host: Any = None, scope=None) -> dict[str, An
     if manifest is None:
         return {"ok": False, "said": f"「{name}」那份 package.json 读不出来。",
                 "what": None, "got": None}
+    reason = incompatible_plugin(manifest)
+    if reason:
+        return {"ok": False, "said": reason, "what": None, "got": None}
     # These bundled adapters have private resources, not just switches. A
     # mixed rollout must never silently load an old shared-data implementation.
     # This is a compatibility declaration, NOT a lifecycle capability/guard.

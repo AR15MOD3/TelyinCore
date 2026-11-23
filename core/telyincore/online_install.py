@@ -56,7 +56,8 @@ def safe_file(root, name):
 
 def program_path(name):
     p = PurePosixPath(name)
-    if name in {'candidate.json','MANIFEST.sha256','启动 Telyincore.sh','启动 TelyinCore.bat'}:
+    if name in {'candidate.json','MANIFEST.sha256','启动 Telyincore.sh','启动 TelyinCore.bat','README-验收.md',
+                'runtime/wheels/pillow-12.2.0-cp311-cp311-win_amd64.whl'}:
         return True
     if len(p.parts) < 2 or p.parts[0] != 'core':
         return False
@@ -211,7 +212,11 @@ def stage(checker):
     proxy = selected_proxy("official", checker.proxy_root)
     checker.install_progress = "正在向发布方核对附件 SHA-256"
     url = f'https://github.com/{repo}/releases/download/{tag}/{name}'
-    size, expected = release_asset(api, tag, url, name, headers, proxy)
+    preview = getattr(checker, "preview", None)
+    if preview:
+        size, expected = preview.metadata(platform, version, name, MAX_BYTES)
+    else:
+        size, expected = release_asset(api, tag, url, name, headers, proxy)
     cache=folder(root);cache.mkdir(parents=True,exist_ok=True)
     with tempfile.NamedTemporaryFile(dir=cache,delete=False) as out:
         temp=Path(out.name)
@@ -225,6 +230,13 @@ def stage(checker):
         route = 'local'
         if reusable:
             checker.install_progress = '已找到校验通过的本地更新包'
+        elif preview:
+            checker.install_progress = "正在从本机验收源下载"
+            data = preview.read(name, size)
+            if len(data) != size or sha(data) != expected:
+                raise ValueError("本机验收附件下载校验失败")
+            temp.write_bytes(data)
+            source, route = "preview", "direct"
         else:
             for target, via in github_routes(url, proxy):
                 is_origin = target == url
@@ -255,9 +267,9 @@ def stage(checker):
         temp.unlink(missing_ok=True)
 
 
-def apply_pending(root, platform):
+def apply_pending(root, platform, manual_package=None):
     root=Path(root).resolve()
-    if pending(root) is None:
+    if manual_package is None and pending(root) is None:
         return False
     with ExitStack() as stack:
         if platform=='linux':
@@ -275,6 +287,32 @@ def apply_pending(root, platform):
                 raise ValueError('请先正常休止此部署的其他 Bot 并结束档案维护')
         else:
             raise ValueError('不支持的平台')
+        if manual_package is not None:
+            cache=folder(root)
+            cache.mkdir(parents=True,exist_ok=True)
+            with Path(manual_package).open("rb") as source:
+                digest = hashlib.file_digest(source, "sha256").hexdigest()
+                previous = pending(root)
+                if previous and previous.get("sha256") != digest:
+                    raise ValueError("已有其他更新等待完成")
+                source.seek(0)
+                with zipfile.ZipFile(source) as package:
+                    meta = json.loads(package.read("UPDATE.json"))
+                    base, version = meta["from_version"], meta["to_version"]
+                    files = inspect_zip(root, package, platform, base, version)
+                    local = json.loads((root/"candidate.json").read_bytes())
+                    if candidate_platform(local) != platform or local["version"] not in ({base,version} if previous else {base}):
+                        raise ValueError("已安装版本与增量包不符")
+                    for item in files:
+                        path = safe_file(root, item["path"])
+                        actual = sha(path.read_bytes()) if path.exists() else None
+                        if actual not in (item["old_sha256"], item["new_sha256"]):
+                            raise ValueError("本机程序文件已变更，已保留：" + item["path"])
+                if not previous:
+                    source.seek(0)
+                    atomic(cache/(digest+".zip"), source.read(), 0o600)
+                    atomic(cache/"pending.json", json.dumps(dict(platform=platform,base=base,
+                           version=version,sha256=digest)).encode(), 0o600)
         r=pending(root)
         if r is None:return False
         if r['platform']!=platform or not SUM.fullmatch(r['sha256']):

@@ -72,18 +72,31 @@ def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('previous',type=Path);parser.add_argument('current',type=Path)
     parser.add_argument('--out',type=Path,required=True)
+    parser.add_argument('--also-from', type=Path, action='append', default=[], help='另一个支持直升的完整基线包，可重复')
     parser.add_argument('--publish',action='store_true')
     parser.add_argument('--notes-file',type=Path)
     args=parser.parse_args()
     if args.publish and not args.notes_file:parser.error('--publish 需要 --notes-file')
-    tag,package,checksum=build(args.previous,args.current,args.out)
+    import tempfile
+    args.out.mkdir(parents=True, exist_ok=True)
+    assets = []
+    with tempfile.TemporaryDirectory(dir=args.out) as temporary:
+        staging = Path(temporary)
+        for previous in [args.previous, *args.also_from]:
+            tag, package, checksum = build(previous, args.current, staging)
+            assets.extend((package.name, checksum.name))
+        if any((args.out / name).exists() for name in assets):
+            raise FileExistsError("输出目录已含同名更新包")
+        for name in assets:
+            (staging / name).rename(args.out / name)
+    attachments = [str(args.out / name) + ("#core-online-update-v1" if name.endswith(".zip") else "") for name in assets]
     if args.publish:
         commit=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip()
         if subprocess.check_output(['git','status','--porcelain','--untracked-files=no'],cwd=ROOT):raise ValueError('请先提交源码')
-        subprocess.run(['gh','release','create',tag,str(package)+'#core-online-update-v1',str(checksum),
+        subprocess.run(['gh','release','create',tag,*attachments,
             '--repo',RELEASE_REPOSITORY,'--target',commit,'--prerelease','--title',tag,
             '--notes-file',str(args.notes_file)],check=True,cwd=ROOT)
-    print(package)
+    print("\n".join(str(args.out / name) for name in assets))
 
 
 if __name__=='__main__':main()

@@ -86,6 +86,17 @@ def github_latest(repository: str, platform: str, *, channel="stable", proxy_roo
             version = match[2]
             if latest is None or version_key(version) > version_key(latest["latest"]):
                 latest = {"latest": version, "releaseUrl": f"https://github.com/{repository}/releases/tag/{quote(tag)}"}
+                # A mirror may announce a version, but only an official release can
+                # declare a breaking compatibility floor for an ordinary deployment.
+                if "TelyinCore-Minimum:" in (release.get("body") or ""):
+                    official = github_json(
+                        f"https://api.github.com/repos/{repository}/releases/tags/{quote(tag)}",
+                        {"User-Agent": "TelyinCore-release-check"}, selected_proxy("official", proxy_root),
+                        official_only=True, timeout=4)
+                    if official.get("tag_name") == tag and official.get("draft") is False:
+                        floor = re.search(r"(?m)^TelyinCore-Minimum: (beta\.[0-9.]+)\s*$", official.get("body") or "")
+                        if floor and version_key(floor[1]) <= version_key(version):
+                            latest["minimum"] = floor[1]
                 latest["assets"] = [a["name"] for a in release.get("assets", [])
                                     if isinstance(a, dict) and isinstance(a.get("name"), str)
                                     and a.get("state") == "uploaded" and a.get("size", 0) > 0]
@@ -117,7 +128,10 @@ class PackageUpdates:
         self.channel = installed_channel(root)
         from .download_sources import settings_root
         self.proxy_root = settings_root(root / "core")
-        self.fetch = fetch or (lambda repo, plat: github_latest(repo, plat, channel=self.channel, proxy_root=self.proxy_root))
+        from .release_preview import LocalRelease
+        preview = LocalRelease(root)
+        self.preview = preview if self.channel == "acceptance" and preview.config.is_file() else None
+        self.fetch = fetch or (self.preview.latest if self.preview else None) or (lambda repo, plat: github_latest(repo, plat, channel=self.channel, proxy_root=self.proxy_root))
         self.install_lock = Lock()
         self.install_progress = ""
         self._restart_requested = False
@@ -134,7 +148,7 @@ class PackageUpdates:
             record = json.loads((folder(self.root) / "last-install.json").read_bytes())
             if (isinstance(record, dict) and record.get("platform") == self.platform
                     and record.get("version") == installed_package(self.root, self.platform)
-                    and record.get("source") in ("mirror", "official", "cache", "offline")
+                    and record.get("source") in ("mirror", "official", "cache", "offline", "preview")
                     and record.get("route") in ("direct", "proxy", "local")):
                 status["lastInstall"] = {k: record[k] for k in ("version", "source", "route")}
         except (OSError, ValueError):
@@ -158,7 +172,7 @@ class PackageUpdates:
         from urllib.error import HTTPError
         from http.client import HTTPException
 
-        if not force:
+        if not force and not self.preview:
             self._from_launcher()
         with self._lock:
             if self._cache is not None:
@@ -180,9 +194,12 @@ class PackageUpdates:
                         remote = version_key(release["latest"])
                         status = "available" if remote > local else "ahead" if local > remote else "current"
                         result.update({k: v for k, v in release.items() if k not in ("assets", "native_assets")}, status=status)
+                        floor = release.get("minimum")
+                        result["required"] = bool(floor and local < version_key(floor) <= remote)
                         if status == "available" and overlay_name(self.platform, current, release["latest"]) in release.get("assets", ()):
                             result["installable"] = overlay_name(self.platform, current, release["latest"]) in release.get("native_assets", ())
-                            result["downloadUrl"] = overlay_url(self.repository, self.platform, current, release["latest"], self.channel)
+                            if not self.preview:
+                                result["downloadUrl"] = overlay_url(self.repository, self.platform, current, release["latest"], self.channel)
                     except HTTPError as exc:
                         message = ("GitHub 暂时限制了检查频率，请稍后重试。" if exc.code in (403, 429)
                                    else f"暂时无法读取发行仓库（HTTP {exc.code}）。")
@@ -194,6 +211,14 @@ class PackageUpdates:
             self._checked_at = time.monotonic()
             self._checked_wall = time.time()
             return result
+
+    def wake_block(self):
+        if not (self.root / "candidate.json").is_file():
+            return ""
+        state = self.check()
+        if state.get("required"):
+            return f"本机 {state['current']}，此版本要求至少 {state['minimum']}。请从控制台更新后再唤醒 Bot。"
+        return ""
 
     def launcher_check(self):
         """Hand the launcher's fresh platform/version result to the Bot process."""
@@ -207,7 +232,7 @@ class PackageUpdates:
                 with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=path.parent,
                                                  delete=False) as f:
                     temporary = Path(f.name)
-                    json.dump([time.time(), self.repository, self.platform, result["current"], result.get("latest"), bool(result.get("downloadUrl")), bool(result.get("installable"))], f)
+                    json.dump([time.time(), self.repository, self.platform, result["current"], result.get("latest"), bool(result.get("downloadUrl")), bool(result.get("installable")), result.get("minimum")], f)
                 temporary.replace(path)
             except OSError:
                 pass  # Read-only installations still report the check.
@@ -237,11 +262,13 @@ class PackageUpdates:
                 result.update(latest=latest,
                               status="available" if remote > local else "ahead" if local > remote else "current",
                               releaseUrl=f"https://github.com/{repository}/releases/tag/{release_tag(platform, latest, self.channel)}")
+                if len(asset) == 3 and asset[2] and local < version_key(asset[2]) <= remote:
+                    result.update(required=True, minimum=asset[2])
                 if result["status"] == "available":
                     if not asset:
                         return  # Earlier launchers did not check the release assets.
                     if asset[0] is True:
-                        result["installable"] = len(asset) == 2 and asset[1] is True
+                        result["installable"] = len(asset) >= 2 and asset[1] is True
                         result["downloadUrl"] = overlay_url(repository, platform, current, latest, self.channel)
             checked_at = time.monotonic() - age
             with self._lock:

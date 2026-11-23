@@ -6,9 +6,11 @@ interface PackageStatus {
   releaseUrl?: string;
   downloadUrl?: string;
   installable?: boolean;
+  localPreview?: boolean;
+  required?: boolean;
   pendingVersion?: string;
   installProgress?: string;
-  lastInstall?: {version: string; source: 'mirror' | 'official' | 'cache' | 'offline'; route: 'direct' | 'proxy' | 'local'};
+  lastInstall?: {version: string; source: 'mirror' | 'official' | 'cache' | 'offline' | 'preview'; route: 'direct' | 'proxy' | 'local'};
   status: 'available' | 'current' | 'ahead' | 'unavailable' | 'unconfigured' | 'unknown';
   message?: string;
 }
@@ -22,12 +24,12 @@ function paint(card: HTMLElement, state: PackageStatus) {
   const current = card.querySelector<HTMLElement>('[data-version]')!;
   const notice = card.querySelector<HTMLElement>('[data-update-message]')!;
   const platform = ({win: 'Windows', linux: 'Linux'} as Record<string, string>)[state.platform] ?? '';
-  current.textContent = [platform, state.channel === 'acceptance' ? '验收更新' : '', state.current ? '已安装 ' + state.current : '未识别安装版本'].filter(Boolean).join(' · ');
+  current.textContent = [platform, state.localPreview ? '本机验收源' : state.channel === 'acceptance' ? '验收更新' : '', state.current ? '已安装 ' + state.current : '未识别安装版本'].filter(Boolean).join(' · ');
   const history = card.querySelector<HTMLElement>('[data-update-history]')!;
   const receipt = state.lastInstall;
   history.hidden = !receipt;
   if (receipt) {
-    const source = {mirror: 'GitHub 镜像', official: 'GitHub 官方源', cache: '本地缓存', offline: '离线更新包'}[receipt.source];
+    const source = {mirror: 'GitHub 镜像', official: 'GitHub 官方源', cache: '本地缓存', offline: '离线更新包', preview: '本机验收源'}[receipt.source];
     const route = receipt.route === 'proxy' ? ' · 代理' : receipt.route === 'direct' ? ' · 直连' : '';
     history.textContent = '上次安装来源　' + source + route;
   }
@@ -43,7 +45,7 @@ function paint(card: HTMLElement, state: PackageStatus) {
     const direct = base?.startsWith('https://github.com/')
       && state.releaseUrl === base + '/releases/tag/' + tag
       && state.downloadUrl === base + '/releases/download/' + tag + '/' + file;
-    notice.textContent = '发现新版本 ' + state.latest + (state.installable ? '。更新完成后 Core 会自动重启。' : '。');
+    notice.textContent = (state.required ? '当前版本已低于最低兼容版本，请先更新再唤醒 Bot。目标版本 ' : '发现新版本 ') + state.latest + (state.installable ? '。更新完成后 Core 会自动重启。' : '。');
     if (direct && state.downloadUrl && !state.installable) {
       const download = document.createElement('a');
       download.href = state.downloadUrl;

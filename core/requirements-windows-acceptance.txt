@@ -12,3 +12,4 @@ idna==3.20
 typing_extensions==4.16.0
 cffi==2.1.1
 pycparser==3.12
+Pillow==12.2.0

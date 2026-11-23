@@ -218,6 +218,10 @@ def install_url(root: Any, url: str, *, proxy_root=None) -> dict[str, Any]:
         # **先解到一个"临时那一格"** ⇒ 读它 `package.json` 的 `name` ⇒ 再挪到真名下
         _unpack(raw, stage)
         manifest = json.loads((stage / MANIFEST).read_text(encoding="utf-8"))
+        from .plugins import incompatible_plugin
+        reason = incompatible_plugin(manifest)
+        if reason:
+            raise ValueError(reason)
         named = validate_plugin_name(str(manifest.get("name") or folder))
         place = plugin_destination(home, named)
         words = [str(w) for w in (manifest.get("keywords") or [])]
@@ -261,6 +265,10 @@ def install_from(root: Any, source: Any) -> dict[str, Any]:
         return {"ok": False, "said": f"那一份里没有 {MANIFEST}（那不像一个插件）。",
                 "where": "", "name": ""}
     manifest = json.loads((src / MANIFEST).read_text(encoding="utf-8"))
+    from .plugins import incompatible_plugin
+    reason = incompatible_plugin(manifest)
+    if reason:
+        return {"ok": False, "said": reason, "where": "", "name": manifest.get("name", "")}
     words = [str(w) for w in (manifest.get("keywords") or [])]
     if KEYWORD not in words:
         return {"ok": False, "where": "", "name": str(manifest.get("name") or ""),

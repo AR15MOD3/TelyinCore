@@ -1797,6 +1797,11 @@ def _set_the_gate(closed: bool) -> None:
         （ 免得"开了闸而它发不出去"）；
          在线那一条没有进程要起 ⇒ 直接开 。
     """
+    if not closed:
+        from telyincore.package_updates import package_updates
+        block = package_updates.wake_block()
+        if block:
+            raise ValueError(block)
     if closed:
         # 第 ⑧ 步： 这一下把**上一次那一段等待作废** （ 免得它几秒后自己开闸 ）。
         _THE_GATE["round"] = int(_THE_GATE.get("round") or 0) + 1
@@ -3767,6 +3772,12 @@ def _main_impl(argv: list[str] | None = None, *, sharing_bridge_factory=None, pr
         from telyincore.console_canary import ConsoleCanary
         canary = ConsoleCanary(lambda: _THE_GATE.update(closed=True))
         _THE_GATE['console_only_canary'] = True
+    if not args.start_paused:
+        from telyincore.package_updates import package_updates
+        block = package_updates.wake_block()
+        if block:
+            print(block, file=sys.stderr)
+            args.start_paused = True
     if args.start_paused:
         # Close before any host, plugin, timer or model initialization. Do not
         # call _set_the_gate: that also controls a separate local model service.

@@ -5846,7 +5846,7 @@ def _main_impl(argv: list[str] | None = None, *, sharing_bridge_factory=None, pr
         from infinity_control import QQControl
         from qq_protocol_health import plugin_connected
         if linux_qq_release:
-            from scripts.linux_qq import LinuxQQControl as QQControl
+            from scripts.linux_qq_lifecycle import LinuxQQControl as QQControl
         return QQControl(p_root, proxy_root=engine.root, bot_scope=qq_bot_scope, snow_instance=qq_instance(),
             process_lifecycle=process_lifecycle, recovery_store=process_lifecycle is not None,
             companion_lifecycle=(instance_lifecycle if instance_lifecycle is not None

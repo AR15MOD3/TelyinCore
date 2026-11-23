@@ -42,7 +42,7 @@ class OptionalQQTests(unittest.TestCase):
     @unittest.skipUnless(sys.platform == "linux", "Linux service adapter")
     def test_linux_wake_reuses_or_starts_the_service(self):
         from types import SimpleNamespace
-        from scripts import linux_qq
+        from scripts import linux_qq_lifecycle as linux_qq
         with tempfile.TemporaryDirectory() as tmp:
             core = Path(tmp) / "core"
             (core / "linux-components").mkdir(parents=True)

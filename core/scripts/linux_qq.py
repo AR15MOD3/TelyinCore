@@ -1,6 +1,7 @@
 """Linux QQ host for the release's private Mybot workspace."""
 from __future__ import annotations
 
+import argparse
 import asyncio
 import getpass
 import json
@@ -8,6 +9,8 @@ import os
 import re
 from pathlib import Path
 import sys
+import tempfile
+import threading
 from urllib.parse import urlsplit
 from uuid import uuid4
 
@@ -20,9 +23,24 @@ from qq_protocol_health import eligible, probe
 from infinity_control import QQControl, _tail
 from snowluma_connection import connection_settings
 
-from scripts.linux_profile_start import main, save_json
-
 PLUGIN = 'core-infinity-qq'
+
+
+def save_json(path, data):
+    path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(mode='w', encoding='utf-8', dir=path.parent, delete=False) as stream:
+        pending = Path(stream.name)
+        try:
+            json.dump(data, stream, ensure_ascii=False, indent=2)
+            stream.flush()
+            os.fsync(stream.fileno())
+        except BaseException:
+            pending.unlink(missing_ok=True)
+            raise
+    try:
+        os.replace(pending, path)
+    finally:
+        pending.unlink(missing_ok=True)
 
 
 def trusted(core, config):
@@ -125,20 +143,8 @@ class LinuxQQControl(QQControl):
         finally:
             super().close()
 
-    def ensure_snowluma_on_wake(self):
-        if listener_pid(self.release_core, {self.management_port}) is not None:
-            return True
-        if not (self.release_core / 'linux-components').is_dir():
-            if (self.release_core.parent / 'candidate.json').is_file():
-                raise ValueError('缺少随包 SnowLuma 组件，请检查 Linux 部署包')
-            return False
-        self.action("snowluma_start_service")
-        if listener_pid(self.release_core, {self.management_port}) is None:
-            raise ValueError('SnowLuma 启动后尚未确认管理服务就绪，请查看 QQ 插件日志')
-        return True
-
     def start_snowluma_with_bot(self, *, enabled=False):
-        if not enabled or not self.ensure_snowluma_on_wake():
+        if not enabled or listener_pid(self.release_core, {self.management_port}) is None:
             return
         from scripts.linux_qq_wake import wake
         fd = os.pidfd_open(os.getpid())
@@ -222,22 +228,9 @@ class LinuxQQControl(QQControl):
             lines.append(line.partition(' params=')[0])
         return '\n'.join(lines)
 
-    def stop_owned_bridge(self, *, required=False):
-        import select
-        import signal
-        from scripts.linux_sl_companion import managed_watcher
-        with managed_watcher(self.release_core, self.management_port) as fd:
-            if fd is None:
-                if required:
-                    raise ValueError('此 SL 由独立终端启动，请在原窗口休止')
-                return
-            self.recovery.cancel()
-            signal.pidfd_send_signal(fd, signal.SIGTERM)
-            if not select.select([fd], [], [], 12)[0]:
-                raise ValueError('SL 正在收尾，请稍后刷新')
-
     def action(self, action):
-        from scripts.linux_sl_companion import ensure
+        from scripts.linux_sl_companion import ensure, managed_watcher
+        import select, signal
         self._require_open()
         if action in ('snowluma_start', 'snowluma_start_service', 'snowluma_recover'):
             fd = os.pidfd_open(os.getpid())
@@ -248,7 +241,13 @@ class LinuxQQControl(QQControl):
             if action != 'snowluma_start_service':
                 self.recovery.start()
         elif action == 'snowluma_stop':
-            self.stop_owned_bridge(required=True)
+            with managed_watcher(self.release_core, self.management_port) as fd:
+                if fd is None:
+                    raise ValueError('此 SL 由独立终端启动，请在原窗口休止')
+                self.recovery.cancel()
+                signal.pidfd_send_signal(fd, signal.SIGTERM)
+                if not select.select([fd], [], [], 12)[0]:
+                    raise ValueError('SL 正在收尾，请稍后刷新')
         elif action == 'snowluma_stop_installation':
             raise ValueError('独立启动的 SL 请在原窗口休止')
         else:
@@ -317,6 +316,11 @@ def configure(core, config_path):
         raise ValueError('SL WebSocket 账号核对失败，请检查正向 Universal 节点、端口和令牌。') from error
     save_json(config_path, data)
     print('HTTP 和 WebSocket 账号核对通过，已保存会话名单。')
+
+
+def main(argv=None):
+    from scripts.linux_profile_start import main as start_profile
+    return start_profile(argv)
 
 
 if __name__ == '__main__':

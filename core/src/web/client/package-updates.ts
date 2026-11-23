@@ -8,6 +8,7 @@ interface PackageStatus {
   installable?: boolean;
   pendingVersion?: string;
   installProgress?: string;
+  lastInstall?: {version: string; source: 'mirror' | 'official' | 'cache' | 'offline'; route: 'direct' | 'proxy' | 'local'};
   status: 'available' | 'current' | 'ahead' | 'unavailable' | 'unconfigured' | 'unknown';
   message?: string;
 }
@@ -22,6 +23,14 @@ function paint(card: HTMLElement, state: PackageStatus) {
   const notice = card.querySelector<HTMLElement>('[data-update-message]')!;
   const platform = ({win: 'Windows', linux: 'Linux'} as Record<string, string>)[state.platform] ?? '';
   current.textContent = [platform, state.channel === 'acceptance' ? '验收更新' : '', state.current ? '已安装 ' + state.current : '未识别安装版本'].filter(Boolean).join(' · ');
+  const history = card.querySelector<HTMLElement>('[data-update-history]')!;
+  const receipt = state.lastInstall;
+  history.hidden = !receipt;
+  if (receipt) {
+    const source = {mirror: 'GitHub 镜像', official: 'GitHub 官方源', cache: '本地缓存', offline: '离线更新包'}[receipt.source];
+    const route = receipt.route === 'proxy' ? ' · 代理' : receipt.route === 'direct' ? ' · 直连' : '';
+    history.textContent = '上次安装来源　' + source + route;
+  }
   const install = card.querySelector<HTMLButtonElement>('[data-install]')!;
   install.hidden = !(state.pendingVersion || (state.installable && state.status === 'available'));
   install.textContent = state.pendingVersion ? '继续安装并重启' : '立即更新并重启';
@@ -208,7 +217,10 @@ export function packageUpdateCard() {
       install.disabled = false;
     }
   });
-  card.append(title, current, notice, install, button);
+  const history = document.createElement('p');
+  history.dataset.updateHistory = '';
+  history.hidden = true;
+  card.append(title, current, notice, history, install, button);
   if (last) paint(card, last);
   else notice.textContent = '正在读取版本信息…';
   void check();

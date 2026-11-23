@@ -127,9 +127,18 @@ class PackageUpdates:
         self._checked_wall = 0.0
 
     def installation(self):
-        from .online_install import pending
+        from .online_install import folder, pending
         row = pending(self.root)
         status = {"pendingVersion": row["version"]} if row else {}
+        try:
+            record = json.loads((folder(self.root) / "last-install.json").read_bytes())
+            if (isinstance(record, dict) and record.get("platform") == self.platform
+                    and record.get("version") == installed_package(self.root, self.platform)
+                    and record.get("source") in ("mirror", "official", "cache", "offline")
+                    and record.get("route") in ("direct", "proxy", "local")):
+                status["lastInstall"] = {k: record[k] for k in ("version", "source", "route")}
+        except (OSError, ValueError):
+            pass
         if self.install_lock.locked() and self.install_progress:
             status["installProgress"] = self.install_progress
         return status

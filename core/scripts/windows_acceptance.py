@@ -20,6 +20,7 @@ import tempfile
 CORE = Path(__file__).resolve().parents[1]
 if str(CORE) not in sys.path:
     sys.path.insert(0, str(CORE))
+from telyincore.download_sources import pip_install, settings_root
 from launcher_presentation import notice, startup_header
 PROBE = (
     "import os,sys,sysconfig; "
@@ -92,8 +93,9 @@ def supported_runtime() -> bool:
             and sys.getwindowsversion().major >= 10)
 
 
-def run(command: list[str]) -> int:
-    environment = dict(os.environ, PYTHONUTF8="1")
+def run(command: list[str], environment=None) -> int:
+    if environment is None:
+        environment = dict(os.environ, PYTHONUTF8="1")
     checking = ('--verify-packages' in command or any(str(p).endswith('ensure_runtime.py') for p in command))
     installing = 'pip' in command and 'install' in command
     if not checking and not installing:
@@ -180,6 +182,7 @@ def main(argv=None) -> int:
                         help="Check persona, memory and text indexes on a temporary Bot")
     parser.add_argument("--port", type=int, default=7799)
     parser.add_argument("--no-browser", action="store_true")
+    parser.add_argument("--bot", help="启动指定的已有 Bot 档案")
     args = parser.parse_args(argv)
     if args.check_documents and (args.check or args.install or args.verify_packages):
         parser.error("--check-documents is a separate acceptance mode")
@@ -234,12 +237,13 @@ def main(argv=None) -> int:
                 return 1
             wheels = CORE.parent / "runtime" / "wheels"
             install = [str(python), "-m", "pip", "install", "--disable-pip-version-check"]
+            install += ["-r", str(locked)]
+            code = 1
             if wheels.is_dir():
                 notice('setup', '正在从离线包安装固定版本依赖…')
-                install += ["--no-index", "--only-binary=:all:", "--find-links", str(wheels)]
-            else:
-                notice('setup', '正在联网安装固定版本依赖…')
-            code = run(install + ["-r", str(locked)])
+                code = run(install + ["--no-index", "--only-binary=:all:", "--find-links", str(wheels)])
+            if code:
+                code = pip_install(install, run, settings_root(CORE))
             if code:
                 notice('setup', '依赖安装未完成，请查看上方诊断记录后重试。', level='ERROR')
                 return code
@@ -260,6 +264,8 @@ def main(argv=None) -> int:
             return 0
         notice('startup', '4 / 4  运行组件准备完成，请选择要唤醒的 Bot。')
         command = [str(python), "-u", str(Path(__file__).resolve()), "--run", "--port", str(args.port)]
+        if args.bot:
+            command.extend(["--bot", args.bot])
         if args.no_browser:
             command.append("--no-browser")
         if args.check_documents:
@@ -282,6 +288,8 @@ def launch(args) -> int:
     sys.path.insert(0, str(CORE))
     from startup import main as startup_main
     arguments = ["--port", str(args.port)]
+    if getattr(args, "bot", None):
+        arguments.extend(["--bot", args.bot])
     if args.no_browser:
         arguments.append("--no-browser")
     # Pause a newly launched Bot; a verified existing Bot keeps its current state.

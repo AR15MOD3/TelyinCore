@@ -4,12 +4,13 @@ from __future__ import annotations
 import shutil
 from pathlib import Path
 from voice_download import VoiceDownload
+from telyincore.download_sources import HF
 
 import httpx
 
 NAME = "Fun-CosyVoice3-0.5B-2512"
-BASE = "https://huggingface.co/"
-SOURCES = {"mirror": "https://hf-mirror.com/", "official": BASE}
+SOURCES = {key: url + "/" for key, url in HF.items()}
+BASE = SOURCES["official"]
 FILES = (('CosyVoice-BlankEN/config.json',
   'FunAudioLLM/Fun-CosyVoice3-0.5B-2512/resolve/29e01c4e8d000f4bcd70751be16fa94bf3d85a18/CosyVoice-BlankEN/config.json',
   659,

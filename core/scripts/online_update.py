@@ -42,6 +42,8 @@ def original_exited(pid):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--after-exit', type=int)
+    parser.add_argument('--relaunch', action='store_true')
+    parser.add_argument('--bot')
     parser.add_argument('--port', type=int, default=7810)
     args = parser.parse_args()
     platform = 'win' if os.name == 'nt' else 'linux'
@@ -49,12 +51,24 @@ def main():
         raise ValueError('原 Core 尚未退出，已保留待安装更新')
     if not pending(ROOT):
         return
-    if not apply_pending(ROOT, platform):
-        return
+    deadline = time.monotonic() + 30
+    while True:
+        try:
+            if not apply_pending(ROOT, platform):
+                return
+            break
+        except (BlockingIOError, ValueError) as exc:
+            busy = isinstance(exc, BlockingIOError) or str(exc) == 'another startup/maintenance admission owns this core'
+            if not (args.after_exit or args.relaunch) or not busy or time.monotonic() >= deadline:
+                raise
+            time.sleep(.25)
     print('更新安装完成', flush=True)
-    if args.after_exit:
+    if args.after_exit or args.relaunch:
         if platform == 'win':
-            os.startfile(str(ROOT/'启动 TelyinCore.bat'))
+            from bot_registry import bot_id
+            subprocess.Popen([sys.executable, str(CORE/'scripts/windows_acceptance.py'), '--start',
+                              '--bot', bot_id(args.bot), '--port', str(args.port), '--no-browser'],
+                             cwd=CORE, creationflags=subprocess.CREATE_NEW_CONSOLE)
         else:
             os.chdir(ROOT)
             os.execlp('bash', 'bash', str(ROOT/'启动 Telyincore.sh'), '--port', str(args.port), '--no-browser')

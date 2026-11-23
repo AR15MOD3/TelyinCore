@@ -12,7 +12,7 @@ import time
 import zipfile
 from contextlib import ExitStack
 from pathlib import Path, PurePosixPath
-from urllib.request import Request, urlopen
+from urllib.request import Request
 
 MAX_BYTES = 256 * 1024 * 1024
 SUM = re.compile(r'[a-f0-9]{64}')
@@ -117,6 +117,84 @@ def pending(root):
     return None
 
 
+def fetch_asset(url, proxy, path, size, expected, user_agent):
+    from .download_sources import open_public
+    # Retain an interrupted prefix across mirrors. If its hash poisons the
+    # completed file, allow a single clean download from the same origin.
+    for attempt in range(2):
+        offset = path.stat().st_size
+        if offset >= size:
+            offset = 0
+        headers = {'User-Agent': user_agent, 'Accept-Encoding': 'identity'}
+        if offset:
+            headers['Range'] = f'bytes={offset}-'
+        with open_public(Request(url, headers=headers), 15, proxy) as response:
+            if getattr(response, 'status', 200) == 206:
+                if response.headers.get('Content-Range') != f'bytes {offset}-{size-1}/{size}':
+                    raise ValueError('更新包续传范围不符')
+            else:
+                offset = 0
+            with path.open('ab' if offset else 'wb') as out:
+                count = offset
+                deadline = time.monotonic() + 180
+                while block := response.read(256 * 1024):
+                    count += len(block)
+                    if count > size or time.monotonic() > deadline:
+                        raise ValueError('更新包长度异常或下载超时')
+                    out.write(block)
+                out.flush()
+                os.fsync(out.fileno())
+        if count != size:
+            raise ValueError('更新包下载不完整')
+        with path.open('rb') as stream:
+            if hashlib.file_digest(stream, 'sha256').hexdigest() == expected:
+                return
+        with path.open('wb'):
+            pass
+        if not offset or attempt:
+            raise ValueError('更新包 SHA-256 校验失败')
+
+
+def release_asset(api, tag, url, name, headers, proxy):
+    from http.client import HTTPException
+    from urllib.error import HTTPError
+    from .download_sources import github_json, open_public
+
+    proof = None
+    try:
+        release = github_json(api, headers, proxy, official_only=True)
+    except (OSError, HTTPException) as exc:
+        if isinstance(exc, HTTPError) and exc.code in (401, 404, 410):
+            raise
+        # The API may be rate-limited while the release website is reachable.
+        # Anchor the checksum on GitHub itself before using mirrored metadata.
+        request = Request(url[:-4] + '.sha256', headers={'User-Agent': headers['User-Agent']})
+        with open_public(request, 8, proxy) as response:
+            raw = response.read(513)
+        if len(raw) > 512:
+            raise ValueError('官方校验文件过大')
+        parts = raw.decode('ascii').split()
+        if len(parts) != 2 or not SUM.fullmatch(parts[0]) or parts[1] != name:
+            raise ValueError('官方校验文件与目标更新包不符')
+        proof = parts[0]
+        release = github_json(api, headers, proxy)
+    if not isinstance(release, dict) or release.get('draft') is not False or release.get('tag_name') != tag:
+        raise ValueError('未取得该平台的公开发布记录')
+    matches = [asset for asset in release.get('assets', []) if isinstance(asset, dict)
+               and asset.get('name') == name and asset.get('browser_download_url') == url
+               and asset.get('state') == 'uploaded' and asset.get('label') == 'core-online-update-v1']
+    if len(matches) != 1:
+        raise ValueError('没有适用于当前版本的增量包')
+    asset = matches[0]
+    expected = str(asset.get('digest') or '').removeprefix('sha256:')
+    size = asset.get('size')
+    if not SUM.fullmatch(expected) or type(size) is not int or not 0 < size <= MAX_BYTES:
+        raise ValueError('GitHub 附件缺少 SHA-256 或大小超限')
+    if proof is not None and proof != expected:
+        raise ValueError('镜像元数据与官方校验文件不符')
+    return size, expected
+
+
 def stage(checker):
     root=checker.root.resolve()
     state=checker.check(force=True)
@@ -129,40 +207,43 @@ def stage(checker):
     repo=checker.repository
     api=f'https://api.github.com/repos/{repo}/releases/tags/{tag}'
     headers={'User-Agent':'TelyinCore-online-update','Accept':'application/vnd.github+json'}
-    with urlopen(Request(api,headers=headers),timeout=12) as response:
-        release=json.loads(response.read(2*1024*1024))
-    if release.get('draft') is not False or release.get('tag_name')!=tag:
-        raise ValueError('未取得该平台的公开发布记录')
-    url=f'https://github.com/{repo}/releases/download/{tag}/{name}'
-    matches=[a for a in release.get('assets',[]) if a.get('name')==name and a.get('browser_download_url')==url and a.get('state')=='uploaded']
-    if len(matches)!=1:
-        raise ValueError('没有适用于当前版本的增量包')
-    asset=matches[0]
-    expected=str(asset.get('digest') or '').removeprefix('sha256:')
-    if not SUM.fullmatch(expected) or not 0<asset['size']<=MAX_BYTES:
-        raise ValueError('GitHub 附件缺少 SHA-256 或大小超限')
+    from .download_sources import github_routes, selected_proxy, TRANSFER_ERRORS
+    proxy = selected_proxy("official", checker.proxy_root)
+    checker.install_progress = "正在向发布方核对附件 SHA-256"
+    url = f'https://github.com/{repo}/releases/download/{tag}/{name}'
+    size, expected = release_asset(api, tag, url, name, headers, proxy)
     cache=folder(root);cache.mkdir(parents=True,exist_ok=True)
     with tempfile.NamedTemporaryFile(dir=cache,delete=False) as out:
         temp=Path(out.name)
     try:
-        with temp.open('wb') as out, urlopen(Request(url,headers={'User-Agent':headers['User-Agent']}),timeout=25) as response:
-            count=0; checksum=hashlib.sha256();deadline=time.monotonic()+180
-            while block:=response.read(256*1024):
-                count+=len(block)
-                if count>asset['size'] or time.monotonic()>deadline:
-                    raise ValueError('更新包下载中断或长度异常')
-                checksum.update(block);out.write(block)
-            out.flush();os.fsync(out.fileno())
-        if count!=asset['size'] or checksum.hexdigest()!=expected:
-            raise ValueError('下载校验失败，请重新检查更新')
-        with zipfile.ZipFile(temp) as z:
+        cached = cache / (expected + '.zip')
+        reusable = False
+        if cached.is_file() and cached.stat().st_size == size:
+            with cached.open('rb') as stream:
+                reusable = hashlib.file_digest(stream, 'sha256').hexdigest() == expected
+        if reusable:
+            checker.install_progress = '已找到校验通过的本地更新包'
+        else:
+            for target, via in github_routes(url, proxy):
+                is_origin = target == url
+                label = '官方源' if is_origin else 'GitHub 镜像'
+                checker.install_progress = label + (' · 代理' if via else ' · 直连')
+                try:
+                    fetch_asset(target, via, temp, size, expected, headers['User-Agent'])
+                    break
+                except TRANSFER_ERRORS:
+                    if is_origin:
+                        raise
+        checker.install_progress = '正在核对更新包和本机版本'
+        with zipfile.ZipFile(cached if reusable else temp) as z:
             files = inspect_zip(root,z,platform,base,version)
             for item in files:
                 path = safe_file(root, item['path'])
                 actual = sha(path.read_bytes()) if path.exists() else None
                 if actual not in (item['old_sha256'], item['new_sha256']):
                     raise ValueError('本机程序文件与更新包不匹配，已保留：' + item['path'])
-        temp.replace(cache/(expected+'.zip'))
+        if not reusable:
+            temp.replace(cached)
         receipt=dict(platform=platform,base=base,version=version,sha256=expected)
         atomic(cache/'pending.json',json.dumps(receipt).encode(),0o600)
         return receipt
@@ -228,18 +309,36 @@ def start_restart(root, port):
     """The verified local worker waits for the original service to leave normally."""
     import subprocess
     import sys
-    if not pending(root):
+    receipt = pending(root)
+    if not receipt:
         raise ValueError('请先下载并校验更新包')
     script = root/'core/scripts/online_update.py'
     args = [sys.executable, str(script), '--after-exit', str(os.getpid()), '--port', str(port)]
+    if os.name == 'nt':
+        if '--bot' not in sys.argv:
+            raise ValueError('无法确认当前 Bot 档案，更新包已保留')
+        from bot_registry import bot_id
+        bot = bot_id(sys.argv[sys.argv.index('--bot') + 1])
+        record = dict(bot=bot, port=port, sha256=receipt['sha256'])
+        atomic(folder(root) / f'restart-{os.getpid()}.json', json.dumps(record).encode(), 0o600)
+        return  # The owning launcher relaunches after retiring the child and its job.
     log = folder(root)/'restart.log'
     if sys.platform == 'linux' and os.environ.get('INVOCATION_ID') and shutil.which('systemd-run'):
         subprocess.run(['systemd-run', '--user', '--collect', '--quiet',
                         '--property=Type=exec', *args], check=True, timeout=10)
     else:
-        options = ({'creationflags': subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS}
-                   if os.name == 'nt' else {'start_new_session': True})
         with log.open('ab') as output:
             subprocess.Popen(args, cwd=root, stdin=subprocess.DEVNULL, stdout=output,
-                             stderr=subprocess.STDOUT, close_fds=True, **options)
+                             stderr=subprocess.STDOUT, close_fds=True, start_new_session=True)
 
+
+def requested_windows_restart(root, pid, bot, port):
+    path = folder(root) / f'restart-{pid}.json'
+    if not path.is_file():
+        return False
+    try:
+        receipt = pending(root)
+        return bool(receipt and json.loads(path.read_bytes()) == {
+            'bot': bot, 'port': port, 'sha256': receipt['sha256']})
+    finally:
+        path.unlink(missing_ok=True)

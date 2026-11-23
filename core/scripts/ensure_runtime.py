@@ -15,6 +15,10 @@ import tomllib
 
 
 ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+from telyincore.download_sources import pip_install, settings_root
+
 PROBES = {
     "pillow": "from PIL import Image; Image.init(); assert all(fmt in Image.OPEN for fmt in ('GIF', 'PNG', 'JPEG', 'WEBP'))",
     "certifi": "import certifi, ssl; ssl.create_default_context().load_verify_locations(certifi.where())",
@@ -39,8 +43,8 @@ def dependency_probe(requirements: list[str]) -> str:
     return "; ".join(checks)
 
 
-def run(argv: list[str], root: Path) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(argv, cwd=root, env=dict(os.environ, PYTHONUTF8="1"),
+def run(argv: list[str], root: Path, env=None) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(argv, cwd=root, env=env if env is not None else dict(os.environ, PYTHONUTF8="1"),
                           capture_output=True, text=True, encoding="utf-8",
                           errors="replace", shell=False)
 
@@ -64,13 +68,20 @@ def ensure(root: Path, *, install: bool = False) -> int:
             print(bootstrap.stdout + bootstrap.stderr, flush=True)
             return 1
     print("Installing core dependencies; internet access is required...", flush=True)
-    result = run([sys.executable, "-m", "pip", "install", "--disable-pip-version-check",
-                  *requirements], root)
+    command = [sys.executable, "-m", "pip", "install", *requirements]
     logs = root / "data"
     logs.mkdir(exist_ok=True)
-    (logs / "setup-core.log").write_text(result.stdout + result.stderr, encoding="utf-8")
-    print(result.stdout + result.stderr, flush=True)
-    if result.returncode:
+    def install_from(argv, env):
+        result = run(argv, root, env)
+        output = result.stdout + result.stderr
+        (logs / "setup-core.log").write_text(output, encoding="utf-8")
+        print(output, flush=True)
+        return result.returncode
+
+    wheels = root.parent / "runtime/wheels"
+    if wheels.is_dir() and install_from([*command, "--no-index", "--find-links", str(wheels)], None) == 0:
+        return ensure(root)
+    if pip_install(command, install_from, settings_root(root)):
         print("Install failed. See data/setup-core.log; check network/Python compatibility.",
               flush=True)
         return 1

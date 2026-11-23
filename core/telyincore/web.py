@@ -1712,7 +1712,7 @@ class _Handler(BaseHTTPRequestHandler):
                 return
             self._accept_the_look()
             return
-        if route in ("/package-update/stage", "/package-update/restart"):
+        if route in ("/package-update/install", "/package-update/stage", "/package-update/restart"):
             if not self.headers.get("Origin") or not self._same_origin() or self.client_address[0] not in ("127.0.0.1", "::1"):
                 self._reject_cross_origin("更新操作仅供本机控制台使用")
                 return
@@ -1722,6 +1722,9 @@ class _Handler(BaseHTTPRequestHandler):
             if checker is None:
                 self._send_json(503, {"error": "安装包版本服务尚未接入"})
                 return
+            if not checker.install_lock.acquire(blocking=False):
+                self._send_json(409, {"error": "更新正在进行中"})
+                return
             try:
                 if route.endswith("/stage"):
                     row = checker.prepare_install()
@@ -1729,10 +1732,14 @@ class _Handler(BaseHTTPRequestHandler):
                     return
                 if getattr(self._service, "_shutdown_callback", None) is None:
                     raise ValueError("请从已安装的 Core 启动器启动，再执行重启")
+                if route.endswith("/install") and not checker.installation().get("pendingVersion"):
+                    checker.prepare_install()
                 checker.restart_for_update(self.server.server_address[1])
             except Exception as exc:
                 self._send_json(409, {"error": str(exc) if isinstance(exc, ValueError) else "更新未完成，请检查网络与更新包后重试"})
                 return
+            finally:
+                checker.install_lock.release()
             self._accept_the_shutdown()
             return
         if route == "/shutdown":

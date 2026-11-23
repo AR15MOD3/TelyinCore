@@ -48,27 +48,23 @@ def installed_channel(root):
     return "acceptance" if setting == {"channel": "acceptance"} else "stable"
 
 
-def github_latest(repository: str, platform: str, *, channel="stable") -> dict:
+def github_latest(repository: str, platform: str, *, channel="stable", proxy_root=None) -> dict:
     from urllib.parse import quote
-    from urllib.request import Request, urlopen
+    from .download_sources import github_json, selected_proxy
 
     if not re.fullmatch(r"[A-Za-z0-9-]+/[A-Za-z0-9_.-]+", repository):
         raise ValueError("发行仓库名称无效")
     latest = None
-    deadline = time.monotonic() + 5
+    deadline = time.monotonic() + 12
+    bucket = int(time.time() // 60)
     for page in range(1, 11):
-        url = f"https://api.github.com/repos/{repository}/releases?per_page={_PAGE_SIZE}&page={page}"
-        req = Request(url, headers={"Accept": "application/vnd.github+json", "User-Agent": "TelyinCore-release-check"})
+        url = f"https://api.github.com/repos/{repository}/releases?per_page={_PAGE_SIZE}&page={page}&check={bucket}"
         remaining = deadline - time.monotonic()
         if remaining <= 0:
             raise TimeoutError("GitHub 检查超时")
-        with urlopen(req, timeout=remaining) as reply:
-            body = reply.read(4 * 1024 * 1024 + 1)
-        if len(body) > 4 * 1024 * 1024:
-            raise ValueError("GitHub 发布列表过大")
-        releases = json.loads(body)
-        if not isinstance(releases, list):
-            raise ValueError("GitHub 发布列表格式无效")
+        releases = github_json(url, {"Accept": "application/vnd.github+json", "User-Agent": "TelyinCore-release-check"},
+                               selected_proxy("official", proxy_root), timeout=min(4, remaining / 2),
+                               expected=lambda rows: isinstance(rows, list) and all(isinstance(row, dict) for row in rows))
         for release in releases:
             if not isinstance(release, dict) or release.get("draft") is not False:
                 continue
@@ -113,7 +109,12 @@ class PackageUpdates:
         self.platform = platform
         self.repository = repository
         self.channel = installed_channel(root)
-        self.fetch = fetch or (lambda repo, plat: github_latest(repo, plat, channel=self.channel))
+        from .download_sources import settings_root
+        self.proxy_root = settings_root(root / "core")
+        self.fetch = fetch or (lambda repo, plat: github_latest(repo, plat, channel=self.channel, proxy_root=self.proxy_root))
+        self.install_lock = Lock()
+        self.install_progress = ""
+        self._restart_requested = False
         self._lock = Lock()
         self._cache = None
         self._checked_at = 0.0
@@ -122,15 +123,21 @@ class PackageUpdates:
     def installation(self):
         from .online_install import pending
         row = pending(self.root)
-        return {"pendingVersion": row["version"]} if row else {}
+        status = {"pendingVersion": row["version"]} if row else {}
+        if self.install_lock.locked() and self.install_progress:
+            status["installProgress"] = self.install_progress
+        return status
 
     def prepare_install(self):
         from .online_install import stage
+        self.install_progress = "正在检查版本"
         return stage(self)
 
     def restart_for_update(self, port):
         from .online_install import start_restart
-        start_restart(self.root, port)
+        if not self._restart_requested:
+            start_restart(self.root, port)
+            self._restart_requested = True
 
     def check(self, force=False):
         from urllib.error import HTTPError

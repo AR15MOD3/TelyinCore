@@ -18,6 +18,7 @@
 from __future__ import annotations
 
 import json
+import re
 import urllib.parse
 import urllib.request
 from pathlib import Path
@@ -45,13 +46,14 @@ def _ask(url: str, proxy=None) -> Any:
     ⚠️ **不吞错**（与页上那几格不同）：那几格是"刷页顺手问一下"、拉不到就写"没拉到" ；
        而这是**市场那一半** ⇒ 拉不到要**交回一句能读的话**（由调用方决定怎么说 ）。
     """
-    req = urllib.request.Request(url)
-    req.add_header("User-Agent", USER_AGENT)
-    req.add_header("Accept", "application/vnd.github+json")
-    from .plugin_network import opener as network_opener
-    opener = network_opener(proxy) if proxy else network_opener()
-    with opener.open(req, timeout=20.0) as resp:
-        return json.loads(resp.read(4_000_000).decode("utf-8", "replace"))
+    from .download_sources import github_json
+    def expected(value):
+        if url.startswith(SEARCH_URL):
+            return isinstance(value, dict) and isinstance(value.get("items"), list)
+        return isinstance(value, list)
+
+    return github_json(url, {"User-Agent": USER_AGENT, "Accept": "application/vnd.github+json"},
+                       proxy, expected=expected)
 
 
 def _an_archive(owner: str, repo: str, branch: str, proxy=None) -> tuple[str, str]:
@@ -103,7 +105,7 @@ def _fetch_fresh(cache: Any = None, proxy=None) -> dict[str, Any]:
     got = _ask(url, proxy) if proxy else _ask(url)
     for one in (got.get("items") or []):
         full = str(one.get("full_name") or "")
-        if "/" not in full:
+        if not re.fullmatch(r"[A-Za-z0-9-]+/[A-Za-z0-9_.-]+", full) or full.endswith(("/.", "/..")):
             continue
         owner, repo = full.split("/", 1)
         branch = str(one.get("default_branch") or "main")

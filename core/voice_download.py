@@ -9,7 +9,16 @@ from time import monotonic
 
 import httpx
 from runtime_identity import safe_path
+from telyincore.download_sources import selected_proxy, source_order
 from telyincore.owned_blocking import InstallationOwner
+
+
+class InvalidTransfer(ValueError):
+    pass
+
+
+class DigestMismatch(InvalidTransfer):
+    pass
 
 
 class Interrupted(Exception):
@@ -65,7 +74,7 @@ class VoiceDownload(InstallationOwner):
 
     def control(self, action, source=None):
         if action in ('start', 'resume'):
-            return self.start(source or self.read()['source'])
+            return self.start(source or getattr(self, 'preferred_source', 'mirror'))
         if action not in ('pause', 'cancel'):
             raise ValueError('未知下载操作')
         with self.lock:
@@ -91,6 +100,7 @@ class VoiceDownload(InstallationOwner):
             if self.state['busy'] or (self._install_thread and self._install_thread.is_alive()):
                 return dict(self.state, busy=True)
             self.intent = ''
+            self.preferred_source = source
             self.state.update(busy=True, file='', source=source, phase='download', route=None, bytesPerSecond=0,
                               message='正在准备下载…')
             self._launch_install_locked(source)
@@ -121,7 +131,7 @@ class VoiceDownload(InstallationOwner):
                 response.raise_for_status()
                 if getattr(response, 'status_code', 200) == 206:
                     if response.headers.get('content-range') != f'bytes {count}-{size-1}/{size}':
-                        raise ValueError('下载源返回了错误的续传范围')
+                        raise InvalidTransfer('下载源返回了错误的续传范围')
                 elif count:
                     count, sha = 0, hashlib.sha256()
                 last, previous = monotonic(), count
@@ -130,7 +140,7 @@ class VoiceDownload(InstallationOwner):
                         self._checkpoint()
                         count += len(chunk)
                         if count > size:
-                            raise ValueError('下载大小超过预期')
+                            raise InvalidTransfer('下载大小超过预期')
                         output.write(chunk)
                         sha.update(chunk)
                         now = monotonic()
@@ -141,12 +151,12 @@ class VoiceDownload(InstallationOwner):
                                 last, previous = now, count
         self._checkpoint()
         if count != size:
-            raise ValueError('下载文件不完整，可继续下载')
+            raise InvalidTransfer('下载文件不完整，可继续下载')
         if sha.hexdigest() != digest:
             path.unlink()
-            raise ValueError('模型校验失败，该文件需要重新下载')
+            raise DigestMismatch('模型校验失败，该文件需要重新下载')
 
-    def _model(self, client, target, source):
+    def _model(self, target, source):
         if target.exists():
             if self.setup is None:
                 raise FileExistsError('模型目录已存在，未覆盖。')
@@ -177,7 +187,28 @@ class VoiceDownload(InstallationOwner):
         base = 0
         for name, remote, size, digest in self.files:
             self._checkpoint()
-            self._transfer(client, name, self.sources[source]+remote, size, digest, base)
+            for choice in source_order(source):
+                self._checkpoint()
+                proxy = selected_proxy(choice, self.proxy_root)
+                with self.lock:
+                    self.state.update(source=choice, route='proxy' if proxy else 'direct')
+                try:
+                    with httpx.Client(follow_redirects=True, timeout=30, trust_env=False,
+                                      **({'proxy': proxy} if proxy else {})) as client:
+                        url = self.sources[choice] + remote
+                        had_prefix = self._path(name).is_file()
+                        try:
+                            self._transfer(client, name, url, size, digest, base)
+                        except DigestMismatch:
+                            if choice != 'official' or not had_prefix:
+                                raise
+                            self._checkpoint()
+                            self._transfer(client, name, url, size, digest, base)
+                    break
+                except (httpx.HTTPError, InvalidTransfer):
+                    self._checkpoint()
+                    if choice == 'official':
+                        raise
             base += size
         with self.lock:
             self._checkpoint()
@@ -190,14 +221,8 @@ class VoiceDownload(InstallationOwner):
         try:
             self.parent.mkdir(parents=True, exist_ok=True)
             with stage_lock(self.parent):
-                from telyincore.model_proxy import auxiliary_proxy
-                proxy = auxiliary_proxy(self.proxy_root, 'downloads') if self.proxy_root and source=='official' else None
-                with self.lock:
-                    self.state['route'] = 'proxy' if proxy else 'direct'
                 target = self.parent/self.name
-                with httpx.Client(follow_redirects=True, timeout=30, trust_env=False,
-                                  **({'proxy':proxy} if proxy else {})) as client:
-                    self._model(client, target, source)
+                self._model(target, source)
                 if self.setup is not None:
                     with self.lock:
                         self.state['downloaded'] = self.state['total']

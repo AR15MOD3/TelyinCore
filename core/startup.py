@@ -222,15 +222,20 @@ def main(argv=None, *, host_registry=None, launch_options=None,
     from bot_global_admission import StartupAdmission
     from launcher_exit_log import launcher_exit_log
     core = Path(__file__).resolve().parent
+    update_handoff = []
     with launcher_exit_log(core), StartupAdmission(core) as admission:
         code = _main_owned(argv, host_registry=host_registry, launch_options=launch_options,
-                           reuse_start_paused=reuse_start_paused)
+                           reuse_start_paused=reuse_start_paused, update_handoff=update_handoff)
         admission.finish(code)
-        return code
+    if code == 0 and update_handoff:
+        name, port = update_handoff[0]
+        return subprocess.call([sys.executable, str(core/'scripts/online_update.py'), '--relaunch',
+                                '--bot', name, '--port', str(port)], cwd=core)
+    return code
 
 
 def _main_owned(argv=None, *, host_registry=None, launch_options=None,
-                reuse_start_paused=False) -> int:
+                reuse_start_paused=False, update_handoff=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--port', type=int, default=7799)
     parser.add_argument('--bot', help='跳过交互，启动指定Bot')
@@ -449,6 +454,10 @@ def _main_owned(argv=None, *, host_registry=None, launch_options=None,
             code = watch(process, live, controlled=controlled, shutdown=shutdown,
                          pump=getattr(parent_channel,'watch_tick',parent_channel.tick))
         from launcher_exit_log import exit_event
+        if os.name == 'nt' and code == 0 and update_handoff is not None:
+            from telyincore.online_install import requested_windows_restart
+            if requested_windows_restart(core.parent, process.pid, name, port):
+                update_handoff.append((name, port))
         exit_event('controller_exited', exit_code=code)
         notice('shutdown', 'Bot 进程已退出，正在检查页面和后台服务是否已关闭。')
         return code

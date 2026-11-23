@@ -9,11 +9,13 @@ from pathlib import Path
 from threading import Lock
 from telyincore.owned_blocking import InstallationOwner
 
+from telyincore.download_sources import HF, selected_proxy, settings_root, source_order
+
 import httpx
 
 NAME = "Qwen3.5-0.8B-GGUF"
 REVISION = "6ab461498e2023f6e3c1baea90a8f0fe38ab64d0"
-SOURCES = {"mirror": "https://hf-mirror.com", "official": "https://huggingface.co"}
+SOURCES = HF
 FILES = (
     ("Qwen3.5-0.8B-Q4_K_M.gguf", 532517120,
      "bd258782e35f7f458f8aced1adc053e6e92e89bc735ba3be89d38a06121dc517"),
@@ -31,7 +33,8 @@ def model_present(path: Path) -> bool:
 
 
 class VisionInstaller(InstallationOwner):
-    def __init__(self, parent: Path):
+    def __init__(self, parent: Path, proxy_root=None):
+        self.proxy_root = proxy_root if proxy_root is not None else settings_root(Path(__file__).resolve().parent)
         self.parent = Path(parent)
         self.lock = Lock()
         self._init_install_owner()
@@ -71,27 +74,38 @@ class VisionInstaller(InstallationOwner):
             if (self.parent / NAME).exists():
                 raise FileExistsError("模型目录已存在，未覆盖；请检查文件完整性。")
             stage = Path(tempfile.mkdtemp(prefix=".vision-download-", dir=self.parent))
-            with httpx.Client(follow_redirects=True, timeout=45, trust_env=False) as client:
-                for name, size, digest in FILES:
+            completed = 0
+            for name, size, digest in FILES:
+                for choice in source_order(source):
+                    proxy = selected_proxy(choice, self.proxy_root)
                     with self.lock:
-                        self.state.update(file=name, phase="download")
-                    url = f"{SOURCES[source]}/unsloth/{NAME}/resolve/{REVISION}/{name}"
-                    actual, count = hashlib.sha256(), 0
-                    with client.stream("GET", url) as response:
-                        response.raise_for_status()
-                        with (stage / name).open("wb") as output:
-                            for chunk in response.iter_bytes(1024 * 1024):
-                                count += len(chunk)
-                                if count > size:
-                                    raise ValueError("下载大小超过预期")
-                                output.write(chunk)
-                                actual.update(chunk)
-                                with self.lock:
-                                    self.state["downloaded"] += len(chunk)
-                    with self.lock:
-                        self.state.update(phase="verify", message="正在校验大小与 SHA256…")
-                    if count != size or actual.hexdigest() != digest:
-                        raise ValueError("模型校验未通过")
+                        self.state.update(file=name, phase="download", source=choice,
+                                          route="proxy" if proxy else "direct", downloaded=completed)
+                    url = f"{SOURCES[choice]}/unsloth/{NAME}/resolve/{REVISION}/{name}"
+                    try:
+                        actual, count = hashlib.sha256(), 0
+                        with httpx.Client(follow_redirects=True, timeout=45, trust_env=False,
+                                          **({"proxy": proxy} if proxy else {})) as client:
+                            with client.stream("GET", url) as response:
+                                response.raise_for_status()
+                                with (stage / name).open("wb") as output:
+                                    for chunk in response.iter_bytes(1024 * 1024):
+                                        count += len(chunk)
+                                        if count > size:
+                                            raise ValueError("下载大小超过预期")
+                                        output.write(chunk)
+                                        actual.update(chunk)
+                                        with self.lock:
+                                            self.state["downloaded"] = completed + count
+                        with self.lock:
+                            self.state.update(phase="verify", message="正在校验大小与 SHA256…")
+                        if count != size or actual.hexdigest() != digest:
+                            raise ValueError("模型校验未通过")
+                        completed += size
+                        break
+                    except (httpx.HTTPError, ValueError):
+                        if choice == "official":
+                            raise
             (stage / "SOURCE.txt").write_text(
                 f"unsloth/{NAME} @ {REVISION}\nQ4_K_M + F16 mmproj; Apache-2.0\n",
                 encoding="utf-8")

@@ -28,7 +28,7 @@ export function modelProxySettings(): HTMLElement {
   const note = document.createElement('p');
   note.className = 'set-note';
   coreSetUIText(note, 'textContent',
-    corePhrase('按用途启用代理。插件市场通过 GitHub 搜索和下载；TTS、ASR 的镜像源直接连接。'));
+    corePhrase('国内镜像始终直连。切换到官方源时，按下方用途使用代理。'));
   const enabledLabel = document.createElement('label');
   enabledLabel.className = 'model-proxy-toggle';
   const enabled = document.createElement('input');
@@ -72,7 +72,7 @@ export function modelProxySettings(): HTMLElement {
   uses.append(usesTitle);
   const extraBoxes = ([
     ['market_enabled', '插件市场（GitHub 搜索与下载）'],
-    ['downloads_enabled', '模型下载（TTS、ASR 官方源）'],
+    ['downloads_enabled', '下载（模型、运行环境和 Core 更新）'],
   ] as const).map(([id, name]) => {
     const label = document.createElement('label');
     label.className = 'model-proxy-provider';

@@ -1,10 +1,10 @@
 // Simplified/traditional UI catalog. Only explicitly marked UI literals use this table.
 export const traditional: Readonly<Record<string, string>> = {
-  "按用途启用代理。插件市场通过 GitHub 搜索和下载；TTS、ASR 的镜像源直接连接。": "按用途啟用代理。外掛市集透過 GitHub 搜尋與下載；TTS、ASR 的鏡像來源直接連線。",
+  "国内镜像始终直连。切换到官方源时，按下方用途使用代理。": "國內鏡像一律直連。切換到官方來源時，依下方用途使用代理。",
   "模型 API": "模型 API",
   "其他用途": "其他用途",
   "插件市场（GitHub 搜索与下载）": "外掛市集（GitHub 搜尋與下載）",
-  "模型下载（TTS、ASR 官方源）": "模型下載（TTS、ASR 官方來源）",
+  "下载（模型、运行环境和 Core 更新）": "下載（模型、執行環境和 Core 更新）",
   "正在读取网络代理设置…": "正在讀取網路代理設定…",
   "启用代理前请填写代理地址。": "啟用代理前請填寫代理位址。",
   "缺少 CosyVoice3 运行环境。推荐模型下载只安装权重，请先安装运行环境。": "缺少 CosyVoice3 執行環境。推薦模型下載只安裝權重，請先安裝執行環境。",

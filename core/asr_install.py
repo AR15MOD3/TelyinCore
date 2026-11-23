@@ -4,12 +4,13 @@ from __future__ import annotations
 import shutil
 from pathlib import Path
 from voice_download import VoiceDownload
+from telyincore.download_sources import HF
 
 import httpx
 
 NAME = "SenseVoiceSmall-onnx"
-BASE = "https://huggingface.co/"
-SOURCES = {"mirror": "https://hf-mirror.com/", "official": BASE}
+SOURCES = {key: url + "/" for key, url in HF.items()}
+BASE = SOURCES["official"]
 FILES = (
     ("model.int8.onnx", "csukuangfj/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17/resolve/2365bae/model.int8.onnx", 239233841, "c71f0ce00bec95b07744e116345e33d8cbbe08cef896382cf907bf4b51a2cd51"),
     ("tokens.txt", "csukuangfj/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17/resolve/2365bae/tokens.txt", 315894, "f449eb28dc567533d7fa59be34e2abca8784f771850c78a47fb731a31429a1dc"),

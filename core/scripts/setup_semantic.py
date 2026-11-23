@@ -12,6 +12,7 @@ import os
 import shutil
 import subprocess
 import sys
+import urllib.error
 import urllib.request
 
 CORE = Path(__file__).resolve().parents[1]
@@ -20,7 +21,9 @@ if str(CORE) not in sys.path:
 from telyincore.embeddings import DEFAULT_MODEL
 from telyincore.source_guard import lease
 
-MODEL_ENDPOINTS = ('https://hf-mirror.com', 'https://huggingface.co')
+from telyincore.download_sources import HF, TORCH, TRANSFER_ERRORS, open_public, pip_install, selected_proxy, settings_root
+
+MODEL_ENDPOINTS = tuple(HF.values())
 
 DEPENDENCIES = {'torch': '2.15.0+cpu', 'sentence-transformers': '5.2.3', 'transformers': '4.57.6'}
 
@@ -71,7 +74,7 @@ def ready(model=Path(DEFAULT_MODEL)):
         return False
 
 
-def download(url, partial, expected_size):
+def download(url, partial, expected_size, proxy=None):
     """Resume interrupted immutable downloads, with full hash validation after."""
     for attempt in range(3):
         try:
@@ -79,17 +82,27 @@ def download(url, partial, expected_size):
             if offset >= expected_size:
                 partial.unlink(missing_ok=True)
                 offset = 0
-            request = urllib.request.Request(url, headers={'Range': f'bytes={offset}-'} if offset else {})
-            with urllib.request.urlopen(request, timeout=120) as response:
+            headers = {'User-Agent': 'TelyinCore-model-download', 'Accept-Encoding': 'identity'}
+            if offset:
+                headers['Range'] = f'bytes={offset}-'
+            request = urllib.request.Request(url, headers=headers)
+            with open_public(request, timeout=25, proxy=proxy) as response:
                 resume = offset and response.status == 206
                 if resume and not response.headers.get('Content-Range', '').startswith(f'bytes {offset}-'):
-                    raise RuntimeError('模型下载续传范围不符')
+                    raise ValueError('模型下载续传范围不符')
                 with partial.open('ab' if resume else 'wb') as output:
-                    shutil.copyfileobj(response, output, 1024 * 1024)
+                    count = offset if resume else 0
+                    while block := response.read(1024 * 1024):
+                        count += len(block)
+                        if count > expected_size:
+                            raise ValueError('模型文件过大')
+                        output.write(block)
             if partial.stat().st_size != expected_size:
                 raise OSError('模型下载未完成')
             return
-        except (OSError, TimeoutError):
+        except OSError as exc:
+            if isinstance(exc, urllib.error.HTTPError) and 400 <= exc.code < 500 and exc.code not in (408, 429):
+                raise
             if attempt == 2:
                 raise
             print('模型下载中断，正在续传重试…', flush=True)
@@ -126,13 +139,21 @@ def prepare_model(model, source=None):
             for endpoint in MODEL_ENDPOINTS:
                 url = f"{endpoint}/{spec['repo']}/resolve/{spec['revision']}/{name}"
                 try:
-                    print('下载源：' + endpoint, flush=True)
-                    download(url, partial, expected['size'])
-                    if not valid_file(partial, expected):
+                    proxy = selected_proxy('official' if endpoint == HF['official'] else 'mirror', settings_root(CORE))
+                    print('下载源：' + endpoint + (' · 代理' if proxy else ' · 直连'), flush=True)
+                    had_prefix = partial.is_file()
+                    for attempt in range(2):
+                        if proxy:
+                            download(url, partial, expected['size'], proxy)
+                        else:
+                            download(url, partial, expected['size'])
+                        if valid_file(partial, expected):
+                            break
                         partial.unlink(missing_ok=True)
-                        raise OSError('模型文件校验失败')
+                        if endpoint != MODEL_ENDPOINTS[-1] or not had_prefix or attempt:
+                            raise OSError('模型文件校验失败')
                     break
-                except (OSError, TimeoutError):
+                except TRANSFER_ERRORS:
                     if endpoint == MODEL_ENDPOINTS[-1]:
                         raise
                     print('国内镜像暂不可用，回退官方源。', flush=True)
@@ -148,14 +169,19 @@ def install_dependencies():
             return importlib.metadata.version(name)
         except importlib.metadata.PackageNotFoundError:
             return None
+    def run(argv, env):
+        return subprocess.run(argv, env=env).returncode
+
+    command = [sys.executable, '-m', 'pip', 'install', '--only-binary=:all:']
+    root = settings_root(CORE)
     if installed('torch') != DEPENDENCIES['torch']:
-        subprocess.run([sys.executable, '-m', 'pip', 'install', '--only-binary=:all:',
-                        'torch==' + DEPENDENCIES['torch'], '--index-url',
-                        'https://download.pytorch.org/whl/cpu'], check=True)
+        indexes = {key: url + '/cpu' for key, url in TORCH.items()}
+        if pip_install([*command, 'torch==' + DEPENDENCIES['torch']], run, root, indexes=indexes):
+            raise RuntimeError('语义模型的 CPU 推理环境安装失败')
     if any(installed(name) != value for name, value in DEPENDENCIES.items()):
-        subprocess.run([sys.executable, '-m', 'pip', 'install', '--only-binary=:all:',
-                        'sentence-transformers==' + DEPENDENCIES['sentence-transformers'],
-                        'transformers==' + DEPENDENCIES['transformers']], check=True)
+        if pip_install([*command, 'sentence-transformers==' + DEPENDENCIES['sentence-transformers'],
+                        'transformers==' + DEPENDENCIES['transformers']], run, root):
+            raise RuntimeError('语义模型依赖安装失败')
 
 
 def main(argv=None):

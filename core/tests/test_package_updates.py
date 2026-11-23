@@ -28,12 +28,12 @@ def test_published_platform_versions(tmp_path, monkeypatch, platform, current, e
     pages = [[release("win-beta.0.5.4.9"), release("linux-beta.0.1.0"), release("win-beta.9.9.9", draft=True)],
              [release("win-beta.0.5.4.10"), release("unrelated")]]
     calls = []
-    def open_page(request, timeout):
+    def open_page(request, timeout, proxy):
         calls.append(request.full_url)
         assert 'Authorization' not in request.headers
         return io.BytesIO(json.dumps(pages[len(calls) - 1]).encode())
     monkeypatch.setattr(updates, "_PAGE_SIZE", 3)
-    monkeypatch.setattr("urllib.request.urlopen", open_page)
+    monkeypatch.setattr("telyincore.download_sources.open_public", open_page)
     checker = updates.PackageUpdates(tmp_path, platform, "fixture/Core")
     result = checker.check()
     assert result["status"] == expected
@@ -129,7 +129,7 @@ def test_download_matches_published_asset_and_survives_launcher_handoff(tmp_path
     tag = "linux-beta.0.1.1"
     name = updates.overlay_name("linux", "beta.0.1.0", "beta.0.1.1")
     row = {**release(tag), "assets": [{"name": name, "state": "uploaded", "size": 100}]}
-    monkeypatch.setattr("urllib.request.urlopen", lambda req, timeout: io.BytesIO(json.dumps([row]).encode()))
+    monkeypatch.setattr("telyincore.download_sources.open_public", lambda req, timeout, proxy: io.BytesIO(json.dumps([row]).encode()))
     def checker():
         return updates.PackageUpdates(tmp_path, "linux", "fixture/Core")
     launcher = checker()
@@ -145,7 +145,7 @@ def test_acceptance_is_opt_in_and_cannot_replace_stable(tmp_path,monkeypatch):
     installed(tmp_path, 'linux', 'beta.0.1.0')
     rows=[release('linux-beta.0.1.2'),release('linux-acceptance-beta.0.1.1')]
     rows[1]['assets']=[dict(name=updates.overlay_name('linux','beta.0.1.0','beta.0.1.1'),state='uploaded',size=1,label='core-online-update-v1')]
-    monkeypatch.setattr('urllib.request.urlopen',lambda req,timeout:io.BytesIO(json.dumps(rows).encode()))
+    monkeypatch.setattr('telyincore.download_sources.open_public',lambda req,timeout,proxy:io.BytesIO(json.dumps(rows).encode()))
     def read():return updates.PackageUpdates(tmp_path,'linux','fixture/Core').check()
     assert read()['latest']=='beta.0.1.2'
     (tmp_path/'runtime').mkdir(exist_ok=True)

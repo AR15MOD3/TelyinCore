@@ -14,6 +14,7 @@ from zipfile import ZipFile
 
 from runtime_identity import safe_path
 from voice_download import stage_lock
+from telyincore.download_sources import PYPI, TORCH, pip_environment as network_env, pip_install
 
 CORE = Path(__file__).resolve().parent
 ASSETS = CORE / "scripts/voice"
@@ -43,19 +44,6 @@ def ready(kind, runtime, model):
                 and (kind != "tts" or python_at(runtime).is_file()))
     except (OSError, ValueError, KeyError):
         return False
-
-
-def network_env(source, proxy_root):
-    from telyincore.model_proxy import auxiliary_proxy
-    env = {k: v for k, v in os.environ.items()
-           if "PROXY" not in k.upper() and not k.startswith(("PIP_", "UV_"))}
-    env.update(PIP_CONFIG_FILE=os.devnull, PIP_DISABLE_PIP_VERSION_CHECK="1",
-               PYTHONUTF8="1", PYTHONUNBUFFERED="1")
-    if source == "official" and proxy_root:
-        proxy = auxiliary_proxy(proxy_root, "downloads")
-        if proxy:
-            env.update(HTTPS_PROXY=proxy, HTTP_PROXY=proxy)
-    return env
 
 
 class RuntimeSetup:
@@ -103,10 +91,16 @@ class RuntimeSetup:
             raise ValueError("语音环境准备失败，可继续重试。日志位于 " + str(log))
         return proc.returncode == 0
 
-    def pip(self, owner, py, packages, env, log, source, *options):
-        index = "https://pypi.tuna.tsinghua.edu.cn/simple" if source == "mirror" else "https://pypi.org/simple"
-        self.command(owner, [py, "-m", "pip", "install", "--index-url", index,
-                             "--retries", "3", *options, *packages], env, log)
+    def pip(self, owner, py, packages, env, log, source, *options, indexes=PYPI):
+        def run(command, network):
+            self.status(owner, "environment", "正在安装依赖 · " + command[command.index("--index-url") + 1]
+                        + (" · 代理" if "HTTPS_PROXY" in network else " · 直连"))
+            extras = {k: v for k, v in env.items() if k.startswith(("TELYIN_", "HF_", "TRANSFORMERS_"))}
+            return 0 if self.command(owner, command, {**network, **extras}, log, required=False) else 1
+
+        if pip_install([py, "-m", "pip", "install", *options, *packages], run, self.proxy_root,
+                       preferred=source, indexes=indexes):
+            raise ValueError("语音环境准备失败，日志位于 " + str(log))
 
     def prepare_python(self, owner, env, log):
         py = python_at(self.runtime)
@@ -193,11 +187,9 @@ class RuntimeSetup:
                 self.pip(owner, py, ["setuptools==70.3.0", "wheel==0.45.1"], env, log, source)
                 torch_index, torch_version = self.torch_source()
                 if os.name == "nt" or torch_index in ("cpu", "cu128"):
-                    torch_env = network_env("official", self.proxy_root)
-                    self.status(owner, "environment", "正在从 PyTorch 官方源安装推理引擎（遵循下载代理设置）…")
-                    self.command(owner, [py, "-m", "pip", "install", "--index-url",
-                        "https://download.pytorch.org/whl/" + torch_index,
-                        "torch==" + torch_version, "torchaudio==" + torch_version], torch_env, log)
+                    indexes = {key: url + "/" + torch_index for key, url in TORCH.items()}
+                    self.pip(owner, py, ["torch==" + torch_version, "torchaudio==" + torch_version],
+                             env, log, source, indexes=indexes)
                 else:
                     self.pip(owner, py, ["torch==" + torch_version, "torchaudio==" + torch_version],
                              env, log, source)

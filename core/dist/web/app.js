@@ -17,7 +17,7 @@ var CorePackageReleaseUI = (() => {
   };
   var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 
-  // public-source/core/src/web/client/package-updates.ts
+  // src/web/client/package-updates.ts
   var package_updates_exports = {};
   __export(package_updates_exports, {
     packageUpdateCard: () => packageUpdateCard,
@@ -25,14 +25,16 @@ var CorePackageReleaseUI = (() => {
   });
   var last;
   var pending;
+  var installing = false;
   function paint(card, state) {
+    if (installing) return;
     const current = card.querySelector("[data-version]");
     const notice = card.querySelector("[data-update-message]");
     const platform = { win: "Windows", linux: "Linux" }[state.platform] ?? "";
     current.textContent = [platform, state.channel === "acceptance" ? "验收更新" : "", state.current ? "已安装 " + state.current : "未识别安装版本"].filter(Boolean).join(" · ");
     const install = card.querySelector("[data-install]");
     install.hidden = !(state.pendingVersion || state.installable && state.status === "available");
-    install.textContent = state.pendingVersion ? "重启并安装" : "在 Core 中更新";
+    install.textContent = state.pendingVersion ? "继续安装并重启" : "立即更新并重启";
     if (state.pendingVersion) {
       notice.textContent = state.pendingVersion + " 已下载并校验。重启会短暂中断会话，也可等下次启动时安装。";
     } else if (state.status === "available") {
@@ -40,15 +42,15 @@ var CorePackageReleaseUI = (() => {
       const file = `Telyincore_${state.platform}_${state.current}_to_${state.latest}_update.zip`;
       const base = state.releaseUrl?.split("/releases/tag/")[0];
       const direct = base?.startsWith("https://github.com/") && state.releaseUrl === base + "/releases/tag/" + tag && state.downloadUrl === base + "/releases/download/" + tag + "/" + file;
-      notice.textContent = "发现新版本 " + state.latest + "。";
-      if (direct && state.downloadUrl) {
+      notice.textContent = "发现新版本 " + state.latest + (state.installable ? "。更新完成后 Core 会自动重启。" : "。");
+      if (direct && state.downloadUrl && !state.installable) {
         const download = document.createElement("a");
         download.href = state.downloadUrl;
         download.download = file;
         download.className = "package-download";
         download.textContent = "下载更新包";
         notice.append(" ", download);
-      } else {
+      } else if (!state.installable) {
         notice.append("请在发布说明或分发 QQ 群中获取适用的更新包。");
       }
       if (state.releaseUrl?.startsWith("https://github.com/")) {
@@ -174,11 +176,24 @@ var CorePackageReleaseUI = (() => {
     install.dataset.install = "";
     install.hidden = true;
     install.addEventListener("click", async () => {
+      if (installing) return;
+      const targetVersion = last?.pendingVersion || last?.latest;
+      if (!targetVersion) return;
+      installing = true;
       install.disabled = true;
-      const restart = !!last?.pendingVersion;
-      notice.textContent = restart ? "正在正常退出，启动器将安装更新…" : "正在下载并校验更新包…";
+      notice.textContent = "正在下载并校验，安装完成后会自动重启…";
+      let waitingForTransfer = true;
+      const showProgress = window.setInterval(async () => {
+        try {
+          const response = await fetch("/package-update", { cache: "no-store", signal: AbortSignal.timeout(2e3) });
+          if (!response.ok) return;
+          const state = await response.json();
+          if (waitingForTransfer && state.installProgress) notice.textContent = state.installProgress;
+        } catch {
+        }
+      }, 2e3);
       try {
-        const response = await fetch("/package-update/" + (restart ? "restart" : "stage"), {
+        const response = await fetch("/package-update/install", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: "{}"
@@ -187,18 +202,28 @@ var CorePackageReleaseUI = (() => {
           const detail = await response.json().catch(() => ({}));
           throw new Error(detail.error || "更新未完成，请重试");
         }
-        if (restart) {
-          notice.textContent = "正在重启，服务就绪后请刷新控制台。";
-        } else {
-          const result = await response.json();
-          if (last) {
-            last.pendingVersion = result.pendingVersion;
-            paint(card, last);
+        waitingForTransfer = false;
+        window.clearInterval(showProgress);
+        notice.textContent = "正在重启，等待新版 Core 就绪…";
+        const deadline = Date.now() + 12e4;
+        while (Date.now() < deadline) {
+          await new Promise((resolve) => setTimeout(resolve, 1500));
+          try {
+            const state = await fetch("/package-update", { cache: "no-store", signal: AbortSignal.timeout(4e3) });
+            if (state.ok && (await state.json()).current === targetVersion) {
+              window.location.reload();
+              return;
+            }
+          } catch {
           }
         }
+        notice.textContent = "尚未收到新版 Core 的就绪回应。请查看启动器状态。";
       } catch (error) {
         notice.textContent = error instanceof Error ? error.message : "更新失败，请重试。";
       } finally {
+        waitingForTransfer = false;
+        window.clearInterval(showProgress);
+        installing = false;
         install.disabled = false;
       }
     });
@@ -541,11 +566,11 @@ function qqStickers() {
 
 // src/web/client/ui-phrases.ts
 var traditional = {
-  "按用途启用代理。插件市场通过 GitHub 搜索和下载；TTS、ASR 的镜像源直接连接。": "按用途啟用代理。外掛市集透過 GitHub 搜尋與下載；TTS、ASR 的鏡像來源直接連線。",
+  "国内镜像始终直连。切换到官方源时，按下方用途使用代理。": "國內鏡像一律直連。切換到官方來源時，依下方用途使用代理。",
   "模型 API": "模型 API",
   "其他用途": "其他用途",
   "插件市场（GitHub 搜索与下载）": "外掛市集（GitHub 搜尋與下載）",
-  "模型下载（TTS、ASR 官方源）": "模型下載（TTS、ASR 官方來源）",
+  "下载（模型、运行环境和 Core 更新）": "下載（模型、執行環境和 Core 更新）",
   "正在读取网络代理设置…": "正在讀取網路代理設定…",
   "启用代理前请填写代理地址。": "啟用代理前請填寫代理位址。",
   "缺少 CosyVoice3 运行环境。推荐模型下载只安装权重，请先安装运行环境。": "缺少 CosyVoice3 執行環境。推薦模型下載只安裝權重，請先安裝執行環境。",
@@ -13643,7 +13668,7 @@ function modelProxySettings() {
   coreSetUIText(
     note,
     "textContent",
-    corePhrase("按用途启用代理。插件市场通过 GitHub 搜索和下载；TTS、ASR 的镜像源直接连接。")
+    corePhrase("国内镜像始终直连。切换到官方源时，按下方用途使用代理。")
   );
   const enabledLabel = document.createElement("label");
   enabledLabel.className = "model-proxy-toggle";
@@ -13688,7 +13713,7 @@ function modelProxySettings() {
   uses.append(usesTitle);
   const extraBoxes = [
     ["market_enabled", "插件市场（GitHub 搜索与下载）"],
-    ["downloads_enabled", "模型下载（TTS、ASR 官方源）"]
+    ["downloads_enabled", "下载（模型、运行环境和 Core 更新）"]
   ].map(([id, name]) => {
     const label2 = document.createElement("label");
     label2.className = "model-proxy-provider";

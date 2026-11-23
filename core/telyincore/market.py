@@ -78,15 +78,65 @@ def _fetch(url: str, proxy=None) -> bytes:
     ⚠️ **不吞错**（ 与市场那两格不同）：那两格是"刷页时顺手问一下"，拉不到就写"没拉到" ；
        而**装**是一个**动作** ⇒ 它失败了要**说出来**（抛上去，由调用方交一句人话 ）。
     """
-    req = urllib.request.Request(url)
-    req.add_header("User-Agent", USER_AGENT)
-    from .plugin_network import opener as network_opener
-    opener = network_opener(proxy) if proxy else network_opener()
-    with opener.open(req, timeout=30.0) as resp:
-        raw = resp.read(UNPACK_CEILING + 1)
+    import re
+    from .download_sources import github_json, github_routes, open_public, TRANSFER_ERRORS
+    from .plugin_network import github_destination
+    headers = {"User-Agent": USER_AGENT}
+
+    def read(target, via):
+        request = urllib.request.Request(target, headers=headers)
+        if via:
+            from .plugin_network import opener
+            connection = opener(via).open(request, timeout=30)
+        else:
+            connection = open_public(request, 30)
+        with connection as resp:
+            raw = resp.read(UNPACK_CEILING + 1)
         if len(raw) > UNPACK_CEILING:
             raise ValueError("下载包超过大小上限")
         return raw
+
+    # Arbitrary user-provided URLs keep their original origin and proxy policy.
+    if not github_destination(url):
+        if proxy:
+            raise urllib.error.URLError("插件市场代理仅用于 GitHub")
+        from .plugin_network import opener
+        with opener().open(urllib.request.Request(url, headers=headers), timeout=30) as response:
+            raw = response.read(UNPACK_CEILING + 1)
+        if len(raw) > UNPACK_CEILING:
+            raise ValueError("下载包超过大小上限")
+        return raw
+
+    match = re.fullmatch(r"https://github\.com/([\w.-]+/[\w.-]+)/archive/refs/(heads|tags)/([\w./-]+)\.tar\.gz", url, re.ASCII)
+    if match:
+        repo, kind, ref = match.groups()
+        mirror, _ = github_routes(url, proxy)[0]
+        try:
+            raw = read(mirror, None)
+            # The mirror supplies bytes. GitHub independently identifies every
+            # file we would install, including when a branch or tag has moved.
+            api = f"https://api.github.com/repos/{repo}/git/trees/refs/{kind}/{ref}?recursive=1"
+            tree = github_json(api, headers, proxy, official_only=True)
+            if not isinstance(tree, dict) or tree.get("truncated") is not False:
+                raise ValueError("未取得完整插件文件清单")
+            expected = {row["path"]: row["sha"] for row in tree["tree"] if row["type"] == "blob"}
+            import tempfile
+            import hashlib
+            with tempfile.TemporaryDirectory() as tmp:
+                stage = Path(tmp)
+                _unpack(raw, stage)
+                actual = {}
+                for file in stage.rglob("*"):
+                    if file.is_file():
+                        blob = file.read_bytes()
+                        actual[file.relative_to(stage).as_posix()] = hashlib.sha1(
+                            b"blob " + str(len(blob)).encode() + b"\0" + blob).hexdigest()
+            if actual and actual == expected:
+                return raw
+        except (*TRANSFER_ERRORS, tarfile.TarError, KeyError, TypeError):
+            pass
+    # Links without an independent file inventory are read from the publisher.
+    return read(url, proxy)
 
 
 def _unpack(raw: bytes, into: Path) -> None:

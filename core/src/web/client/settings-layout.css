@@ -509,19 +509,24 @@
 
 
 .topbar-update {
-  margin-inline-start: auto; flex-shrink: 0; display: inline-flex; align-items: center;
-  justify-content: center; gap: 5px; padding: 0 6px; min-height: 24px;
-  border-radius: var(--radius-chip); color: var(--color-dim); cursor: pointer;
-  font: inherit; font-size: 11.5px; font-variant-numeric: tabular-nums;
+  appearance: none; display: inline-flex; align-items: center; gap: 4px;
+  flex: none; position: relative; min-height: 24px; padding: 0 4px;
+  margin-inline-start: 3px; border: 0; background: transparent;
+  border-radius: 3px; cursor: pointer; color: var(--color-dim);
+  font: inherit; font-size: 11px; line-height: 1; font-variant-numeric: tabular-nums;
 }
-.topbar-update.has-update {
-  color: var(--color-ink); font-weight: 600; background: var(--color-mint-wash);
+.topbar-update::before {
+  content: ''; position: absolute; inset-inline-start: -4px; top: 7px;
+  height: 10px; width: 1px; background: currentColor; opacity: .32;
 }
-.topbar-update.has-update::before {
-  content: ''; width: 5px; height: 5px; border-radius: 50%; background: var(--color-mint);
+.topbar-update .topbar-version-mark { display: none; }
+.topbar-update.has-update { color: var(--color-mint-text); font-weight: 600; }
+.topbar-update.has-update .topbar-version-mark {
+  display: inline-block; width: 9px; height: 10px; background: currentColor;
+  clip-path: polygon(43% 100%, 43% 25%, 10% 55%, 0 43%, 50% 0, 100% 43%, 90% 55%, 57% 25%, 57% 100%);
 }
 .topbar-update:hover { color: var(--color-ink); background: var(--color-wash); }
-.topbar-update:focus-visible { outline: 2px solid var(--color-mint); outline-offset: 1px; }
+.topbar-update:focus-visible { outline: 2px solid var(--color-mint); outline-offset: 2px; }
 .package-update-dialog .package-update-card { padding: 0; border: 0; background: transparent; }
 .package-update-card p { margin: .4rem 0; overflow-wrap: anywhere; }
 .package-update-card button { margin-top: .5rem; }

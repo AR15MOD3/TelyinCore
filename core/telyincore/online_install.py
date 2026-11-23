@@ -221,6 +221,8 @@ def stage(checker):
         if cached.is_file() and cached.stat().st_size == size:
             with cached.open('rb') as stream:
                 reusable = hashlib.file_digest(stream, 'sha256').hexdigest() == expected
+        source = 'cache'
+        route = 'local'
         if reusable:
             checker.install_progress = '已找到校验通过的本地更新包'
         else:
@@ -230,6 +232,8 @@ def stage(checker):
                 checker.install_progress = label + (' · 代理' if via else ' · 直连')
                 try:
                     fetch_asset(target, via, temp, size, expected, headers['User-Agent'])
+                    source = 'official' if is_origin else 'mirror'
+                    route = 'proxy' if via else 'direct'
                     break
                 except TRANSFER_ERRORS:
                     if is_origin:
@@ -244,7 +248,7 @@ def stage(checker):
                     raise ValueError('本机程序文件与更新包不匹配，已保留：' + item['path'])
         if not reusable:
             temp.replace(cached)
-        receipt=dict(platform=platform,base=base,version=version,sha256=expected)
+        receipt=dict(platform=platform,base=base,version=version,sha256=expected,source=source,route=route)
         atomic(cache/'pending.json',json.dumps(receipt).encode(),0o600)
         return receipt
     finally:
@@ -300,6 +304,10 @@ def apply_pending(root, platform):
                     else:
                         mode=stat.S_IMODE(target.stat().st_mode) if target.exists() else (0o755 if name.endswith('.sh') else 0o644)
                         atomic(target,z.read('payload/'+name),mode)
+        source, route = r.get('source', 'offline'), r.get('route', 'local')
+        record = dict(platform=platform, base=r['base'], version=r['version'], sha256=r['sha256'],
+                      source=source, route=route, installed_at=int(time.time()))
+        atomic(cache/'last-install.json', json.dumps(record).encode(), 0o600)
         (cache/'pending.json').unlink()
         archive.unlink(missing_ok=True)
         return True

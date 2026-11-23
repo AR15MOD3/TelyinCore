@@ -43,6 +43,12 @@ def release_tag(platform, version, channel="stable"):
 def installed_channel(root):
     try:
         setting = json.loads((root/"runtime/release-channel.json").read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        try:
+            candidate = json.loads((root / "candidate.json").read_text(encoding="utf-8-sig"))
+            return "acceptance" if isinstance(candidate, dict) and candidate.get("release_channel") == "acceptance" else "stable"
+        except (OSError, ValueError):
+            return "stable"
     except (OSError, ValueError):
         return "stable"
     return "acceptance" if setting == {"channel": "acceptance"} else "stable"

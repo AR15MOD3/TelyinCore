@@ -84,7 +84,9 @@ async function check(force = false) {
     if (button) {
       const available = state.status === 'available' && !!state.latest;
       button.classList.toggle('has-update', available);
-      button.textContent = available ? '新版 ' + state.latest!.replace(/^beta\./, '') : '更新';
+      const label = button.querySelector<HTMLElement>('.topbar-version-label')!;
+      label.textContent = available ? '新版 ' + state.latest!.replace(/^beta\./, '')
+        : state.current ? 'v' + state.current.replace(/^beta\./, '') : '版本';
       button.title = available ? '发现新版本 ' + state.latest + '，查看版本更新' : '版本更新 · 检查更新';
       button.setAttribute('aria-label', button.title);
     }
@@ -115,7 +117,13 @@ export function startPackageUpdates() {
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'topbar-update';
-    button.textContent = '更新';
+    const mark = document.createElement('span');
+    mark.className = 'topbar-version-mark';
+    mark.setAttribute('aria-hidden', 'true');
+    const label = document.createElement('span');
+    label.className = 'topbar-version-label';
+    label.textContent = '版本';
+    button.append(mark, label);
     button.title = '版本更新 · 检查更新';
     button.setAttribute('aria-haspopup', 'dialog');
     button.setAttribute('aria-label', button.title);

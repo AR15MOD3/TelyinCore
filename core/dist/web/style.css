@@ -9140,77 +9140,25 @@ form[data-introducing], .console-introduction[hidden] { display: none !important
 .console-introduction form { display: flex; align-items: center; flex-wrap: wrap; gap: .5rem; margin-top: .75rem; }
 .console-introduction input { min-width: 0; max-width: 100%; }
 
-
-/* QQ sticker library */
-.qq-sticker-library { container-type: inline-size; }
-.qq-sticker-heading, .qq-sticker-toolbar, .qq-sticker-actions {
-  display: flex; align-items: center; gap: 8px;
-}
-.qq-sticker-heading { margin-bottom: 12px; }
-.qq-sticker-library .qq-sticker-heading h3 { margin: 0; }
-.qq-sticker-count, .qq-sticker-tags small { color: var(--color-faint); font-size: 12px; }
-.qq-sticker-toolbar { flex-wrap: wrap; margin-bottom: 14px; }
-.qq-sticker-toolbar input {
-  flex: 1 1 160px; min-width: 0; min-height: 34px; color: var(--color-ink);
-  border: 1px solid var(--color-line); border-radius: var(--radius-row);
-  background: var(--color-focus); padding: 6px 10px; font: inherit; font-size: 13px;
-}
-.qq-sticker-library .infinity-hint:empty { display: none; }
-.qq-sticker-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 255px), 1fr)); align-items: start; }
-.qq-sticker-card { min-width: 0; border: 1px solid var(--color-line); border-radius: var(--radius-row); overflow: hidden; }
-.qq-sticker-overview { display: grid; grid-template-columns: 84px minmax(0, 1fr); gap: 12px; padding: 12px; align-items: center; }
-.qq-sticker-preview { display: grid; place-items: center; aspect-ratio: 1; overflow: hidden; border-radius: var(--radius-row); background: var(--color-focus); color: var(--color-faint); font-size: 12px; }
-.qq-sticker-preview img { width: 100%; height: 100%; object-fit: contain; }
-.qq-sticker-summary { margin: 0; color: var(--color-ink); font-size: 13px; line-height: 1.55; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
-.qq-sticker-tags { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-top: 7px; }
-.qq-sticker-tags span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: 1.5; padding: 1px 6px; font-size: 11px; border-radius: var(--radius-pill); background: var(--color-focus); color: var(--color-dim); }
-.qq-sticker-footer { position: relative; border-top: 1px solid var(--color-line); padding: 0 12px; }
-.qq-sticker-details summary { cursor: pointer; width: fit-content; padding: 11px 0; font-size: 12px; color: var(--color-dim); }
-.qq-sticker-details dl { margin: 0 0 14px; display: grid; gap: 4px; }
-.qq-sticker-details dt { color: var(--color-faint); font-size: 11px; }
-.qq-sticker-details dd { margin: 0 0 5px; color: var(--color-ink); font-size: 13px; line-height: 1.6; overflow-wrap: anywhere; white-space: pre-wrap; }
-.qq-sticker-footer .qq-sticker-actions { position: absolute; inset: 4px 8px auto auto; gap: 4px; }
-.qq-sticker-footer button { min-height: 27px; padding: 3px 7px; font-size: 12px; }
-.qq-sticker-editor:not([hidden]) { display: grid; gap: 10px; padding: 14px; margin: 0 0 14px; background: var(--color-focus); border: 1px solid var(--color-line); border-radius: var(--radius-row); }
-.qq-sticker-editor .infinity-field, .qq-sticker-editor h3 { margin: 0; }
-.qq-sticker-editor [hidden] { display: none; }
-.qq-sticker-editor .qq-sticker-actions { justify-content: flex-end; }
-@container (max-width: 360px) {
-  .qq-sticker-toolbar input { flex-basis: 100%; }
-  .qq-sticker-overview { grid-template-columns: 72px minmax(0, 1fr); }
-}
-.qq-sticker-edit-fields { display: grid; gap: 10px; }
-.qq-sticker-upload {
-  position: relative; display: flex; align-items: center; gap: 14px; min-height: 100px;
-  padding: 14px; border: 1px dashed var(--color-line); border-radius: var(--radius-row);
-  background: var(--color-white); cursor: pointer;
-}
-.qq-sticker-upload:focus-within, .qq-sticker-upload.is-over { outline: 2px solid var(--color-accent); outline-offset: 2px; }
-.qq-sticker-upload input { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
-.qq-sticker-upload img { width: 72px; height: 72px; object-fit: contain; border-radius: var(--radius-row); background: var(--color-focus); }
-.qq-sticker-file-info { flex: 1; min-width: 0; display: grid; gap: 4px; }
-.qq-sticker-file-info strong { font-size: 13px; color: var(--color-ink); overflow-wrap: anywhere; }
-.qq-sticker-file-info small, .qq-sticker-file-action { font-size: 12px; color: var(--color-dim); }
-.qq-sticker-file-action { padding: 4px 8px; border: 1px solid var(--color-line); border-radius: var(--radius-row); }
-.qq-sticker-editor .infinity-hint { margin-bottom: 0; }
-.qq-sticker-heading { flex-wrap: wrap; }
-.qq-sticker-preference { margin-inline-start: auto; cursor: pointer; }
-
-
 .topbar-update {
-  margin-inline-start: auto; flex-shrink: 0; display: inline-flex; align-items: center;
-  justify-content: center; gap: 5px; padding: 0 6px; min-height: 24px;
-  border-radius: var(--radius-chip); color: var(--color-dim); cursor: pointer;
-  font: inherit; font-size: 11.5px; font-variant-numeric: tabular-nums;
+  appearance: none; display: inline-flex; align-items: center; gap: 4px;
+  flex: none; position: relative; min-height: 24px; padding: 0 4px;
+  margin-inline-start: 3px; border: 0; background: transparent;
+  border-radius: 3px; cursor: pointer; color: var(--color-dim);
+  font: inherit; font-size: 11px; line-height: 1; font-variant-numeric: tabular-nums;
 }
-.topbar-update.has-update {
-  color: var(--color-ink); font-weight: 600; background: var(--color-mint-wash);
+.topbar-update::before {
+  content: ''; position: absolute; inset-inline-start: -4px; top: 7px;
+  height: 10px; width: 1px; background: currentColor; opacity: .32;
 }
-.topbar-update.has-update::before {
-  content: ''; width: 5px; height: 5px; border-radius: 50%; background: var(--color-mint);
+.topbar-update .topbar-version-mark { display: none; }
+.topbar-update.has-update { color: var(--color-mint-text); font-weight: 600; }
+.topbar-update.has-update .topbar-version-mark {
+  display: inline-block; width: 9px; height: 10px; background: currentColor;
+  clip-path: polygon(43% 100%, 43% 25%, 10% 55%, 0 43%, 50% 0, 100% 43%, 90% 55%, 57% 25%, 57% 100%);
 }
 .topbar-update:hover { color: var(--color-ink); background: var(--color-wash); }
-.topbar-update:focus-visible { outline: 2px solid var(--color-mint); outline-offset: 1px; }
+.topbar-update:focus-visible { outline: 2px solid var(--color-mint); outline-offset: 2px; }
 .package-update-dialog .package-update-card { padding: 0; border: 0; background: transparent; }
 .package-update-card p { margin: .4rem 0; overflow-wrap: anywhere; }
 .package-update-card button { margin-top: .5rem; }

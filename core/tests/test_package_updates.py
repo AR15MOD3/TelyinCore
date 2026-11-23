@@ -153,3 +153,11 @@ def test_acceptance_is_opt_in_and_cannot_replace_stable(tmp_path,monkeypatch):
     result=read()
     assert result['latest']=='beta.0.1.1' and result['installable']
     assert '/linux-acceptance-beta.0.1.1/' in result['downloadUrl']
+
+
+def test_acceptance_build_channel_survives_manual_update(tmp_path):
+    (tmp_path / 'candidate.json').write_text('{"release_channel":"acceptance"}')
+    assert updates.installed_channel(tmp_path) == "acceptance"
+    (tmp_path / "runtime").mkdir()
+    (tmp_path / "runtime/release-channel.json").write_text('{"channel":"stable"}')
+    assert updates.installed_channel(tmp_path) == "stable"

@@ -17,7 +17,7 @@ var CorePackageReleaseUI = (() => {
   };
   var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 
-  // src/web/client/package-updates.ts
+  // public-source/core/src/web/client/package-updates.ts
   var package_updates_exports = {};
   __export(package_updates_exports, {
     packageUpdateCard: () => packageUpdateCard,
@@ -95,7 +95,8 @@ var CorePackageReleaseUI = (() => {
       if (button) {
         const available = state.status === "available" && !!state.latest;
         button.classList.toggle("has-update", available);
-        button.textContent = available ? "新版 " + state.latest.replace(/^beta\./, "") : "更新";
+        const label = button.querySelector(".topbar-version-label");
+        label.textContent = available ? "新版 " + state.latest.replace(/^beta\./, "") : state.current ? "v" + state.current.replace(/^beta\./, "") : "版本";
         button.title = available ? "发现新版本 " + state.latest + "，查看版本更新" : "版本更新 · 检查更新";
         button.setAttribute("aria-label", button.title);
       }
@@ -129,7 +130,13 @@ var CorePackageReleaseUI = (() => {
       const button = document.createElement("button");
       button.type = "button";
       button.className = "topbar-update";
-      button.textContent = "更新";
+      const mark = document.createElement("span");
+      mark.className = "topbar-version-mark";
+      mark.setAttribute("aria-hidden", "true");
+      const label = document.createElement("span");
+      label.className = "topbar-version-label";
+      label.textContent = "版本";
+      button.append(mark, label);
       button.title = "版本更新 · 检查更新";
       button.setAttribute("aria-haspopup", "dialog");
       button.setAttribute("aria-label", button.title);
@@ -235,334 +242,6 @@ var CorePackageReleaseUI = (() => {
   }
   return __toCommonJS(package_updates_exports);
 })();
-
-// src/web/client/qq-stickers.ts
-function qqStickers() {
-  function element3(tag, text2 = "") {
-    const e = document.createElement(tag);
-    if (text2) e.textContent = text2;
-    return e;
-  }
-  function button2(text2, click) {
-    const b = element3("button", text2);
-    b.type = "button";
-    b.className = "infinity-action";
-    b.addEventListener("click", click);
-    return b;
-  }
-  const root = element3("section");
-  root.className = "infinity-pane infinity-pane-single qq-stickers";
-  const library = element3("div");
-  library.className = "infinity-settings-card qq-sticker-library";
-  const heading2 = element3("div");
-  heading2.className = "qq-sticker-heading";
-  const count4 = element3("span");
-  count4.className = "qq-sticker-count";
-  heading2.append(element3("h3", "表情包"), count4);
-  const notice = element3("p");
-  notice.className = "infinity-hint";
-  notice.setAttribute("role", "status");
-  const toolbar = element3("div");
-  toolbar.className = "qq-sticker-toolbar";
-  const collection = element3("div");
-  collection.className = "qq-sticker-grid";
-  const editor = element3("form");
-  editor.hidden = true;
-  editor.className = "qq-sticker-editor";
-  const title = element3("h3");
-  const file = element3("input");
-  file.type = "file";
-  file.accept = "image/gif,image/png,image/jpeg,image/webp";
-  const desc = element3("textarea");
-  desc.maxLength = 300;
-  desc.rows = 2;
-  const tags = element3("input");
-  tags.placeholder = "用逗号分隔";
-  const reason = element3("textarea");
-  reason.rows = 2;
-  reason.maxLength = 300;
-  function field(name, input2) {
-    const label = element3("label", name);
-    label.className = "infinity-field";
-    label.append(input2);
-    return label;
-  }
-  const upload = element3("label");
-  upload.className = "qq-sticker-upload";
-  const image = element3("img");
-  image.hidden = true;
-  image.alt = "待添加的表情包";
-  const pick2 = element3("strong", "选择图片");
-  const meta = element3("small", "也可以把图片拖到这里");
-  const choose = element3("span");
-  choose.className = "qq-sticker-file-action";
-  choose.textContent = "浏览文件";
-  const fileInfo = element3("div");
-  fileInfo.className = "qq-sticker-file-info";
-  fileInfo.append(pick2, meta);
-  upload.append(file, image, fileInfo, choose);
-  const format = element3("p", "PNG、JPEG、GIF 或 WebP，最大 8 MiB。描述、标签和使用想法由 Bot 生成。");
-  format.className = "infinity-hint";
-  const uploadArea = element3("div");
-  uploadArea.append(upload, format);
-  const textFields = element3("div");
-  textFields.className = "qq-sticker-edit-fields";
-  textFields.append(field("描述", desc), field("标签", tags), field("收藏理由或备注", reason));
-  let selectedFile = null, previewURL = "";
-  function releaseFile() {
-    if (previewURL) URL.revokeObjectURL(previewURL);
-    previewURL = "";
-    selectedFile = null;
-    file.value = "";
-    image.removeAttribute("src");
-    image.hidden = true;
-    pick2.textContent = "选择图片";
-    meta.textContent = "也可以把图片拖到这里";
-    choose.textContent = "浏览文件";
-  }
-  function selectFile(value) {
-    if (!value) return;
-    releaseFile();
-    notice.textContent = "";
-    if (!value.size || value.size > 8 * 1024 * 1024 || value.type && !file.accept.split(",").includes(value.type)) {
-      notice.textContent = "请选择支持格式的图片，大小须在 8 MiB 以内";
-      return;
-    }
-    selectedFile = value;
-    previewURL = URL.createObjectURL(value);
-    image.src = previewURL;
-    image.hidden = false;
-    pick2.textContent = value.name;
-    meta.textContent = Math.max(1, Math.round(value.size / 1024)) + " KiB";
-    choose.textContent = "更换图片";
-  }
-  file.addEventListener("change", () => selectFile(file.files?.[0]));
-  upload.addEventListener("dragover", (e) => {
-    e.preventDefault();
-    if (!busy) upload.classList.add("is-over");
-  });
-  upload.addEventListener("dragleave", () => upload.classList.remove("is-over"));
-  upload.addEventListener("drop", (e) => {
-    e.preventDefault();
-    upload.classList.remove("is-over");
-    if (!busy) selectFile(e.dataTransfer?.files[0]);
-  });
-  let current2, bot = "", account = "", faces = [], busy = false;
-  let loaded = false;
-  function edit(face) {
-    current2 = face;
-    releaseFile();
-    notice.textContent = "";
-    uploadArea.hidden = !!face;
-    textFields.hidden = !face;
-    title.textContent = face ? "编辑表情包" : "添加表情包";
-    save.textContent = face ? "保存修改" : "识别并添加";
-    desc.value = face?.description || "";
-    tags.value = face?.tags.join("，") || "";
-    reason.value = face?.reason || "";
-    editor.hidden = false;
-    (face ? desc : file).focus();
-  }
-  async function api(body) {
-    const r = await fetch("/infinity/qq/stickers", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ bot, account, ...body }),
-      cache: "no-store"
-    });
-    const value = await r.json();
-    if (!r.ok || !value.ok) throw new Error(value.said || "收藏操作失败");
-    return value;
-  }
-  async function run(task) {
-    if (busy) return;
-    busy = true;
-    root.setAttribute("aria-busy", "true");
-    const controls = Array.from(root.querySelectorAll("button,input,textarea"));
-    controls.forEach((c) => c.disabled = true);
-    try {
-      await task();
-    } catch (e) {
-      notice.textContent = e instanceof Error ? e.message : "收藏操作失败";
-    } finally {
-      busy = false;
-      root.removeAttribute("aria-busy");
-      controls.forEach((c) => c.disabled = false);
-      auto.disabled = savedAuto === void 0;
-    }
-  }
-  const preference = element3("label");
-  preference.className = "infinity-toggle qq-sticker-preference";
-  const auto = element3("input");
-  auto.type = "checkbox";
-  auto.disabled = true;
-  preference.append(auto, element3("span", "允许 Bot 自主收藏表情包"));
-  let savedAuto;
-  auto.addEventListener("change", () => {
-    const enabled = auto.checked;
-    void run(async () => {
-      try {
-        const updated = await api({ action: "setAutoCollect", enabled });
-        savedAuto = updated.autoCollect;
-        notice.textContent = enabled ? "已开启自主收藏" : "已关闭自主收藏";
-      } finally {
-        auto.checked = savedAuto === true;
-      }
-    });
-  });
-  const search = element3("input");
-  search.type = "search";
-  search.placeholder = "搜索描述、标签或收藏理由";
-  search.setAttribute("aria-label", search.placeholder);
-  function render2() {
-    collection.replaceChildren();
-    const term = search.value.trim().toLocaleLowerCase();
-    for (const face of faces) {
-      if (term && ![face.description, ...face.tags, face.reason].join(" ").toLocaleLowerCase().includes(term)) continue;
-      const card = element3("article");
-      card.className = "qq-sticker-card";
-      const preview = element3("div");
-      preview.className = "qq-sticker-preview";
-      if (face.url) {
-        const img = element3("img");
-        img.loading = "lazy";
-        img.referrerPolicy = "no-referrer";
-        img.alt = face.tags.slice(0, 2).join("、") || "表情包";
-        img.src = face.url;
-        preview.append(img);
-      } else {
-        preview.textContent = "暂无预览";
-      }
-      const summary = element3("p", face.description || "暂无描述");
-      summary.className = "qq-sticker-summary";
-      const chips = element3("div");
-      chips.className = "qq-sticker-tags";
-      for (const tag of face.tags.slice(0, 3)) chips.append(element3("span", tag));
-      if (face.tags.length > 3) chips.append(element3("small", "+" + (face.tags.length - 3)));
-      const body = element3("div");
-      body.className = "qq-sticker-body";
-      body.append(summary, chips);
-      const top = element3("div");
-      top.className = "qq-sticker-overview";
-      top.append(preview, body);
-      const details = element3("details");
-      details.className = "qq-sticker-details";
-      details.append(element3("summary", "详情"));
-      const fields = element3("dl");
-      for (const [label, value] of [
-        ["添加来源", face.addedBy || "账号原有·来源未记录"],
-        ["完整描述", face.description || "暂无描述"],
-        ["标签", face.tags.join(" · ") || "暂无标签"],
-        [face.editedReason ? "手动备注" : face.addedBy === "Bot 自主收藏" ? "收藏理由" : "使用想法", face.reason || "尚未记录"]
-      ]) fields.append(element3("dt", label), element3("dd", value));
-      details.append(fields);
-      const actions = element3("div");
-      actions.className = "qq-sticker-actions";
-      actions.append(button2("编辑", () => edit(face)), button2("删除", () => {
-        if (!window.confirm("从当前 QQ 账号删除这张收藏表情？")) return;
-        void run(async () => {
-          await api({ action: "delete", id: face.id });
-          editor.hidden = true;
-          await load();
-        });
-      }));
-      const footer = element3("div");
-      footer.className = "qq-sticker-footer";
-      footer.append(details, actions);
-      card.append(top, footer);
-      collection.append(card);
-    }
-    count4.textContent = term ? collection.childElementCount + " / " + faces.length + " 张" : faces.length + " 张";
-    if (!collection.childElementCount) collection.append(element3("p", term ? "没有匹配的表情" : "暂无收藏表情"));
-  }
-  async function load() {
-    const pref = await api({ action: "preferences" });
-    if (bot && bot !== pref.bot) {
-      releaseFile();
-      editor.hidden = true;
-    }
-    bot = pref.bot;
-    savedAuto = pref.autoCollect;
-    auto.checked = pref.autoCollect;
-    const data = await api({ action: "list" });
-    if (account && (account !== data.account || bot !== data.bot)) {
-      releaseFile();
-      editor.hidden = true;
-    }
-    bot = data.bot;
-    account = data.account;
-    faces = data.items;
-    loaded = true;
-    notice.textContent = "";
-    render2();
-  }
-  function readFile(f) {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(String(reader.result).split(",")[1]);
-      reader.onerror = () => reject(new Error("图片读取失败"));
-      reader.readAsDataURL(f);
-    });
-  }
-  const save = element3("button", "保存");
-  save.className = "infinity-action";
-  save.type = "submit";
-  editor.addEventListener("submit", (e) => {
-    e.preventDefault();
-    void run(async () => {
-      let duplicate = false;
-      if (current2) await api({
-        action: "edit",
-        id: current2.id,
-        description: desc.value.trim(),
-        tags: tags.value.split(/[，,、]/).map((v) => v.trim()).filter(Boolean),
-        reason: reason.value.trim()
-      });
-      else {
-        const f = selectedFile;
-        if (!f || f.size > 8 * 1024 * 1024) throw new Error("请选择 8 MiB 以内的图片");
-        notice.textContent = "Bot 正在看图并整理标签…";
-        save.textContent = "正在识别…";
-        try {
-          duplicate = (await api({ action: "add", file: await readFile(f) })).duplicate;
-        } finally {
-          save.textContent = "识别并添加";
-        }
-      }
-      releaseFile();
-      editor.hidden = true;
-      await load();
-      notice.textContent = duplicate ? "这张图已经收藏过了" : current2 ? "已保存修改" : "已添加表情包";
-    });
-  });
-  const formActions = element3("div");
-  formActions.className = "qq-sticker-actions";
-  formActions.append(button2("取消", () => {
-    releaseFile();
-    editor.hidden = true;
-    notice.textContent = "";
-  }), save);
-  save.classList.add("qq-primary-action");
-  editor.append(title, uploadArea, textFields, formActions);
-  search.addEventListener("input", render2);
-  const add = button2("添加表情包", () => {
-    if (loaded) edit();
-    else void run(async () => {
-      await load();
-      edit();
-    });
-  });
-  add.classList.add("qq-primary-action");
-  toolbar.append(search, button2("刷新", () => {
-    void run(load);
-  }), add);
-  heading2.append(preference);
-  library.append(heading2, toolbar, notice, editor, collection);
-  root.append(library);
-  return { root, open: () => {
-    if (editor.hidden) void run(load);
-  } };
-}
 
 // src/web/client/ui-phrases.ts
 var traditional = {
@@ -4871,45 +4550,38 @@ function infinityPage(shell2, pluginName = "") {
   setupDetails.append(node2("summary", "", "账号与管理凭据"), accountFields, accountActions);
   let setupInitialStateApplied = false;
   const setupHint = node2("p", "infinity-hint");
-  setupHint.setAttribute("role", "status");
   setupHint.hidden = true;
   snowCard.append(commonActions, setupHint, checkResult, firstSetup, setupDetails);
   if (pluginName === "core-infinity-qq") {
-    const stickers = qqStickers();
-    const sections = [
-      { label: "SnowLuma", pane: snowPane, id: 0 },
-      { label: "会话路由", pane: routePane, id: 1 },
-      { label: "表情包", pane: stickers.root, id: 5 },
-      { label: "语音模型", pane: voicePane, id: 2 },
-      { label: "终端", pane: terminalPane, id: 3 },
-      { label: "环境", pane: environmentPane, id: 4 }
-    ];
+    const names = ["SnowLuma", "会话路由", "语音模型", "终端", "环境"];
+    const panes = [snowPane, routePane, voicePane, terminalPane, environmentPane];
     let tabTouched = false;
-    sections.forEach((section, index) => {
-      const tab = node2("button", "infinity-tab", section.label);
+    names.forEach((name, index) => {
+      const tab = node2("button", "infinity-tab", name);
       tab.type = "button";
       tab.setAttribute("role", "tab");
       tab.setAttribute("aria-selected", String(index === 0));
       tab.addEventListener("click", () => {
         clearFeedback();
+        if (index !== 0) clearInitialPassword();
         tabTouched = true;
-        writePluginTab("core-infinity-qq", section.id);
-        if (section.pane !== snowPane) clearInitialPassword();
-        for (const [position, item] of sections.entries()) {
-          item.pane.hidden = section !== item;
-          tabs.children[position].setAttribute("aria-selected", String(section === item));
+        writePluginTab("core-infinity-qq", index);
+        for (const [position, pane] of panes.entries()) {
+          pane.hidden = position !== index;
+          if (position === 3) {
+            if (position === index) terminalView.activate();
+            else terminalView.deactivate();
+          }
+          const item = tabs.children[position];
+          item.setAttribute("aria-selected", String(position === index));
         }
-        if (section.pane === terminalPane) terminalView.activate();
-        else terminalView.deactivate();
-        if (section.pane === stickers.root) stickers.open();
       });
       tabs.append(tab);
-      section.pane.hidden = index !== 0;
+      panes[index].hidden = index !== 0;
     });
     void readyPluginDisplay().then(() => {
-      const saved = readPluginTab("core-infinity-qq");
-      const position = sections.findIndex((section) => section.id === saved);
-      if (!root.hidden && !tabTouched && position >= 0) tabs.children[position].click();
+      const selected = readPluginTab("core-infinity-qq");
+      if (!root.hidden && !tabTouched && selected !== null && selected < tabs.children.length) tabs.children[selected].click();
     });
     routePane.append(routingCard);
     save.classList.add("qq-primary-action");
@@ -4918,7 +4590,7 @@ function infinityPage(shell2, pluginName = "") {
     voicePane.append(ttsCard, asrCard, voiceActions);
     snowPane.append(snowCard);
     terminalPane.append(terminalView.root);
-    voiceGrid.append(...sections.map(section => section.pane));
+    voiceGrid.append(snowPane, routePane, voicePane, terminalPane, environmentPane);
   }
   const configFields = document.createElement("fieldset");
   configFields.style.display = "contents";
@@ -5121,8 +4793,6 @@ function infinityPage(shell2, pluginName = "") {
     let guidance = "";
     if (installation?.ready === false) {
       guidance = "请从 Core 启动器完成 SnowLuma 运行环境自检。";
-    } else if (state.snowluma.webuiRunning && !connectionReady && !accountOnline && state.snowluma.waitingForDesktopExit === true) {
-      guidance = "当前 QQ 需要正常退出一次。Core 正在等待桌面 QQ 退出，连接状态会自动更新。";
     } else if (state.snowluma.webuiRunning && !state.snowluma.recovery?.targetUin) {
       guidance = "在 SnowLuma 管理页选择已登录的 QQ 并加载。识别成功后，Core 会保存目标 QQ。";
     } else if (state.snowluma.webuiRunning && !connectionReady) {
@@ -5132,10 +4802,6 @@ function infinityPage(shell2, pluginName = "") {
         guidance = "QQ 已在线，请先到会话路由保存允许名单，再刷新连接状态。";
       } else if (accountOnline && !state.plugin?.configured || protocol?.fresh && protocol.status === "auth_failed") {
         guidance = "请确认 SnowLuma 的 OneBot 地址和令牌，再点击「同步协议配置」。";
-      } else if (state.snowluma.localAccountOnline !== void 0 && state.plugin?.running && state.plugin.configured && !protocol?.pluginConnected && ["checking", "untrusted", "unavailable", "offline", "online"].includes(protocol?.status ?? "")) {
-        const waiting = "Core 正在等待 QQ 事件连接。已配置的 OneBot 服务就绪后会自动重连。";
-        const hookEvents = (state.snowluma.log ?? "").split("\n").filter((line) => line.includes("[Hook]"));
-        guidance = !accountOnline && hookEvents.at(-1)?.includes("[COMPONENT_LOAD_FAILED]") ? "最近一次组件加载失败。" + waiting : waiting;
       }
     }
     setupHint.hidden = !guidance;
@@ -6927,6 +6593,7 @@ function enginePage(shell2) {
   let modelEffortLevels = [];
   const specOverrides = /* @__PURE__ */ new Set();
   let rememberedEffort = "";
+  let modelSelectionEpoch = 0;
   let cellsVision = null;
   let visionHint = null;
   const cells = {};
@@ -7177,6 +6844,7 @@ function enginePage(shell2) {
       if (value !== null && value !== void 0 && String(value) !== "") specOverrides.add(field);
     }
     rememberedEffort = profile?.reasoning_effort ?? "";
+    modelSelectionEpoch++;
     let modelsEpoch = 0;
     const colLeft = el("div", "engine-col engine-connection");
     const colRight = el("div", "engine-col");
@@ -7333,6 +7001,7 @@ function enginePage(shell2) {
       rebindSecret();
       specOverrides.clear();
       rememberedEffort = "";
+      modelSelectionEpoch++;
       applySpecOf("");
       fillEfforts();
       applyAuth();
@@ -7425,25 +7094,28 @@ function enginePage(shell2) {
       }
       return true;
     };
-    const probeTarget = () => ({
-      name: nameIn.value.trim(),
-      kind: kindIn.value,
-      base_url: urlIn.value.trim(),
-      auth: isSubscription() ? "chatgpt" : "api_key",
-      api_key: isSubscription() ? "" : secretIn.value,
-      secret_name: isSubscription() ? "" : probeSecretName()
-    });
     onClick(tester, () => {
       if (!admitProbeTarget()) return;
       const epoch = editEpoch;
+      const model = modelValueOf().trim();
       probeOut.title = "";
-      coreSetUIText(probeOut, "textContent", corePhrase("正在测试连通性…"));
+      coreSetUIText(probeOut, "textContent", isSubscription() ? corePhrase("正在测试…（只发一次请求，请等待）") : corePhrase("正在测试…（最多等待45秒，只发一次请求）"));
       tester.disabled = true;
       probeOut.dataset.state = "";
-      void probeEngine({ mode: "connection", ...probeTarget() }).then((got) => {
+      void probeEngine({
+        mode: model ? "minimal" : "models",
+        name: nameIn.value.trim(),
+        kind: kindIn.value,
+        auth: isSubscription() ? "chatgpt" : "api_key",
+        model,
+        base_url: urlIn.value.trim(),
+        // 真供应商那一边没有钥匙一律 401 ⇒ 页上刚敲的 ／ 盘上存的那一个，都给它。
+        api_key: isSubscription() ? "" : secretIn.value,
+        secret_name: isSubscription() ? "" : probeSecretName()
+      }).then((got) => {
         if (epoch !== editEpoch || column.hidden) return;
         if (got.ok && got.data?.ok) {
-          coreSetUIText(probeOut, "textContent", corePhrase("测试成功"));
+          coreSetUIText(probeOut, "textContent", model ? corePhrase("模型测试成功") : corePhrase("服务已连通，可以获取模型列表。"));
           probeOut.dataset.state = "ok";
           return;
         }
@@ -7474,6 +7146,7 @@ function enginePage(shell2) {
         modelValue = profile?.model ?? "";
         modelIn.addEventListener("input", () => {
           modelValue = "";
+          modelSelectionEpoch++;
         });
         const modelBox = combo(
           modelIn,
@@ -7481,6 +7154,7 @@ function enginePage(shell2) {
           (picked2) => {
             const changed = modelValue !== picked2.value;
             modelValue = picked2.value;
+            modelSelectionEpoch++;
             if (changed) {
               specOverrides.clear();
               rememberedEffort = "";
@@ -7492,15 +7166,23 @@ function enginePage(shell2) {
         const grab = button("获取模型列表", "btn ghost");
         const loadModels = () => {
           if (!admitProbeTarget()) return;
-          if (grab.getAttribute("aria-busy") === "true") return;
-          const epoch = editEpoch, request = ++modelsEpoch;
-          grab.setAttribute("aria-busy", "true");
-          say("正在获取模型列表…");
-          void probeEngine({ mode: "models", ...probeTarget() }).then((got) => {
-            if (column.hidden || request !== modelsEpoch || epoch !== editEpoch || cells.model !== modelIn) return;
-            const names = got.ok && got.data?.ok ? got.data.models : null;
+          const identity = nameIn.value.trim(), address = urlIn.value.trim();
+          const subscription = isSubscription();
+          const request = ++modelsEpoch, selection = modelSelectionEpoch;
+          void probeEngine({
+            mode: "models",
+            base_url: urlIn.value.trim(),
+            kind: kindIn.value,
+            model: modelValueOf(),
+            name: nameIn.value.trim(),
+            auth: isSubscription() ? "chatgpt" : "api_key",
+            api_key: isSubscription() ? "" : secretIn.value,
+            secret_name: isSubscription() ? "" : probeSecretName()
+          }).then((got) => {
+            if (column.hidden || request !== modelsEpoch || selection !== modelSelectionEpoch || cells.model !== modelIn || nameIn.value.trim() !== identity || urlIn.value.trim() !== address || isSubscription() !== subscription) return;
+            const names = got.data?.models ?? null;
             if (!names || names.length === 0) {
-              const why = got.data?.error ?? (got.data?.ok ? "上游没有返回可选模型" : `HTTP ${got.status}`);
+              const why = got.data?.error ?? `HTTP ${got.status}`;
               const said = String(got.data?.detail ?? "");
               say(`取不到模型列表：${why}${said ? `（上游：${short(said)}）` : ""}`, true);
               notice.title = said;
@@ -7521,13 +7203,7 @@ function enginePage(shell2) {
             applySpecOf(modelValue);
             fillEfforts();
             captureDraft?.();
-            say(`上游 ${names.length} 个模型 · 当前 ${modelValue}`);
-            if (document.activeElement === grab || document.activeElement === modelIn) {
-              modelIn.focus();
-              modelIn.openAll();
-            }
-          }).finally(() => {
-            grab.removeAttribute("aria-busy");
+            say(`上游 ${names.length} 个模型 · 选了 ${modelValue}`);
           });
         };
         onClick(grab, loadModels);

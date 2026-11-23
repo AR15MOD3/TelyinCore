@@ -67,6 +67,8 @@ def test_control_download_baseline_check_restart_and_conflict(tmp_path,monkeypat
     p.write_bytes(b'old')
     assert install.apply_pending(tmp_path,'linux')
     assert p.read_bytes()==b'new' and not install.pending(tmp_path)
+    audit = json.loads((install.folder(tmp_path)/'last-install.json').read_bytes())
+    assert (audit['base'], audit['version'], audit['source'], audit['route']) == (base, latest, 'official', 'direct')
     assert json.loads((tmp_path/'candidate.json').read_bytes())['version']==latest
 
 

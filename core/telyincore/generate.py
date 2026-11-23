@@ -155,8 +155,6 @@ def build_body(cfg: Config, messages: Sequence[Mapping]) -> dict:
     tools = getattr(cfg, "tools", ())
     if tools:
         body["tools"] = [dict(one) for one in tools]
-        from .qq_tool_menu import clarify_qq_text
-        clarify_qq_text(body["tools"])
     return body
 
 

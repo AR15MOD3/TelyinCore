@@ -13,20 +13,14 @@ start_profile() {
     cd -- "$core_dir"
     exec 9>"$core_dir/.linux-acceptance-launch.lock"
     flock -n 9 || { echo '此部署的 Core 已在运行或正在维护。' >&2; exit 1; }
-    case "${1:-}" in
-        ''|--port|--no-browser|--qq|--qq-setup)
-            if ! "$python_path" "$core_dir/scripts/linux_sl_companion.py" --with-parent "$$"; then
-                if [[ "${1:-}" == --qq-setup ]]; then exit 1; fi
-                echo '[SL] 自动启动失败，Core 将继续启动；再次选择「唤醒」可重试。' >&2
-            fi
-            ;;
-    esac
     local entry=linux_acceptance.py
     case "${1:-}" in
-        --qq-setup) shift; exec "$python_path" "$core_dir/scripts/linux_qq.py" --setup "$@" ;;
-        --qq) shift; entry=linux_qq.py ;;
+        --qq-setup)
+            "$python_path" "$core_dir/scripts/linux_sl_companion.py" --with-parent "$$"
+            shift; exec "$python_path" "$core_dir/scripts/linux_profile_start.py" --setup "$@" ;;
+        --qq) shift; entry=linux_profile_start.py ;;
         ''|--port|--no-browser)
-            entry=linux_qq.py
+            entry=linux_profile_start.py
             ;;
     esac
     exec "$python_path" "$core_dir/scripts/$entry" "$@"
@@ -90,7 +84,10 @@ if [[ "${1:-}" != --qq-setup ]]; then
     "$python_path" "$core_dir/scripts/setup_semantic.py" "${semantic_args[@]}"
 fi
 if [[ "$(uname -m)" == x86_64 && ( -d "$core_dir/linux-components" || -f "$core_dir/../candidate.json" ) ]]; then
-    "$python_path" "$core_dir/scripts/linux_snowluma.py" "${check_args[@]}"
+    if ! "$python_path" "$core_dir/scripts/linux_snowluma.py" "${check_args[@]}"; then
+        case "${1:-}" in --check|--qq-setup|--qq) exit 1 ;; esac
+        echo '[QQ] 可选组件准备未完成，可在插件页排查。Core 继续启动。' >&2
+    fi
 fi
 exec 8>&-
 case "${1:-}" in

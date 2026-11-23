@@ -53,8 +53,11 @@ def _seen(event):
 
 
 class GroupEncounters:
-    def __init__(self, home):
+    def __init__(self, home, *, readonly=False):
         self.path = home / "qq-group-encounters.sqlite3"
+        self.readonly = readonly
+        if readonly:
+            return
         with closing(self._open()) as db, db:
             db.executescript("""
                 CREATE TABLE IF NOT EXISTS rooms (
@@ -68,6 +71,8 @@ class GroupEncounters:
             """)
 
     def _open(self):
+        if self.readonly:
+            return sqlite3.connect(self.path.resolve().as_uri() + "?mode=ro", uri=True, timeout=5)
         return sqlite3.connect(self.path, timeout=5)
 
     @staticmethod
@@ -102,7 +107,7 @@ class GroupEncounters:
                 # The event is already committed. Replay it from the checkpoint on reopen.
                 _LOG.exception("QQ 群相遇记录暂未写入")
 
-    def attach(self, store):
+    def attach(self, store, *, subscribe=True):
         # Called before plugin admission. The journal also covers downtime and upgrades.
         upper = store.latest_cursor()
         with closing(self._open()) as db, db:
@@ -120,7 +125,8 @@ class GroupEncounters:
                 if anchor:
                     db.execute("INSERT OR REPLACE INTO checkpoint VALUES (1,?,?)",
                                (str(upper), hashlib.sha256(anchor.to_line().encode()).hexdigest()))
-        store.on_append(self.observe)
+        if subscribe:
+            store.on_append(self.observe)
 
     def hint(self, batch):
         scope = batch_scope(batch or ())

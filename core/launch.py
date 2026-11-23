@@ -3107,8 +3107,8 @@ _RETRIEVAL_REFERENCE_GUIDANCE = (
 _CONSOLE_IDENTITY_GUIDANCE = (
     "〔控制台画像使用规则〕仅在本轮明确标记‘本机控制台来话’且尚未确认跨平台身份时适用："
     "同一控制台用户的自我介绍和画像可正常用于称呼、承接对话，没有建立管理身份不等于不认识此人。"
-    "画像未在本轮提供时可用 profile_read 省略 who 读取。尚未对应 QQ 账号只表示跨平台对应未知，"
-    "不否定当前控制台已有的认识，也不自动关联任何 QQ 或其他账号。记录当前操作者时可省略 who；"
+    "画像未在本轮提供时可用 profile_read 省略 who 读取。尚未关联其他渠道的账号时，跨平台身份仍待确认，"
+    "不否定当前控制台已有的认识，也仅使用已确认的账号关联。记录当前操作者时可省略 who；"
     "仅记有依据的人物信息，区分长期信息、近期事实和计划；没有可记内容就不写。"
 )
 
@@ -3184,8 +3184,8 @@ def _identity_hint_for_batch(book: IdentityBook, batch: Sequence[Any], *, compac
             return ("〔本机控制台来话〕当前入口 console:local-owner 的独立画像键是 "
                     "Console-local-owner；同一控制台用户的自我介绍和画像可正常用于称呼、承接对话，"
                     "没有建立管理身份不等于不认识此人。画像未在本轮提供时可用 profile_read 省略 who 读取。"
-                    "尚未对应 QQ 账号只表示跨平台对应未知，不否定当前控制台已有的认识，"
-                    "也不自动关联任何 QQ 或其他账号。记录当前操作者时可省略 who；"
+                    "尚未关联其他渠道的账号时，跨平台身份仍待确认，不否定当前控制台已有的认识，"
+                    "也仅使用已确认的账号关联。记录当前操作者时可省略 who；"
                     "仅记有依据的人物信息，区分长期信息、近期事实和计划；没有可记内容就不写。")
         return ""
     from telyincore.identity import person_display_name
@@ -5037,7 +5037,12 @@ def _main_impl(argv: list[str] | None = None, *, sharing_bridge_factory=None, pr
         return group_owner_sender(running._active_batch, lambda sender: sender in _linked_accounts(
             _request_identity_book(identity_book, running), "console:local-owner"), require_words=require_words)
 
+    def qq_running():
+        return any(n == "core-infinity-qq" for n, _ in plugins._active_items())
+
     def current_sticker_hint(running):
+        if not qq_running():
+            return ""
         from qq_sticker_context import sticker_reference_hint
         return sticker_reference_hint(running._active_batch, shared_events.get_by_dedup_key,
                                       lambda: dict(plugins._active_items()).get("core-infinity-qq"))
@@ -5063,9 +5068,8 @@ def _main_impl(argv: list[str] | None = None, *, sharing_bridge_factory=None, pr
         return not bool(getattr(loop, "sealed", False))
 
     shared_events = EventStore(Path(args.root) / "events", is_open=_events_open)
-    from qq_encounters import GroupEncounters
-    encounters = GroupEncounters(home)
-    encounters.attach(shared_events)
+    from qq_host_runtime import EncounterIndex, QQPanel
+    encounters = EncounterIndex(home, shared_events)
     from telyincore.portrait_eligibility.context import capture as capture_portrait_turn
     remember_handlers.update(_experience_review.handlers(
         lambda: shared_events,
@@ -5486,13 +5490,22 @@ def _main_impl(argv: list[str] | None = None, *, sharing_bridge_factory=None, pr
     # Installed extensions are currently shared by all Bot processes. Until
     # per-Bot plugin directories exist, only the explicitly selected owner may
     # attach the same QQ account; otherwise every Bot answers one QQ message.
+    qq_context = {}
+    plugin_host['_plugin_contexts'] = {'core-infinity-qq': qq_context}
     if linux_qq_release:
         _sharing_lifecycle['linux_qq_root'] = core_root
-        from scripts.linux_qq import require_connection, verify_ws
-        plugin_host['linux_qq_check'] = lambda data: require_connection(core_root.parent.parent, data)
-        plugin_host['linux_qq_ws'] = verify_ws
+        def check_qq_connection(data):
+            from scripts.linux_qq import require_connection
+            return require_connection(core_root.parent.parent, data)
+
+        async def check_qq_socket(*args, **kwargs):
+            from scripts.linux_qq import verify_ws
+            return await verify_ws(*args, **kwargs)
+
+        qq_context['linux_qq_check'] = check_qq_connection
+        qq_context['linux_qq_ws'] = check_qq_socket
     plugin_host["bot_id"] = args.bot
-    plugin_host["owner_qq_route"] = identity_book.owner_qq_route
+    qq_context["owner_qq_route"] = identity_book.owner_qq_route
     plugin_host["runtime_root"] = str(args.root)
     plugin_host["engine_root"] = str(engine.root)
     plugin_host["baseline_bot"] = baseline_bot
@@ -5539,13 +5552,17 @@ def _main_impl(argv: list[str] | None = None, *, sharing_bridge_factory=None, pr
     plugin_host['prepare_waves_login_notification']=_prepare_login_notice
     qq_bot_scope = (None if args.bot == baseline_bot else
                     Path(home).parent / "infinity")
-    from snowluma_instance import load_instance
-    qq_snow_instance = load_instance(core_root, args.bot)
-    if (instance_lifecycle is not None and getattr(instance_lifecycle, "companion_supported", False)
-            and qq_snow_instance is None):
-        raise ValueError("当前Bot未完成独立SnowLuma初始化；不回退共享服务")
+    def qq_instance():
+        from snowluma_instance import load_instance
+        if os.name == 'nt' and instance_lifecycle is not None and not instance_lifecycle.companion_supported:
+            raise ValueError('本次启动没有 QQ 托管权限，请核对启动器的 QQ 自检记录')
+        instance = load_instance(core_root, args.bot)
+        if (getattr(instance_lifecycle, "companion_supported", False) and instance is None):
+            raise ValueError("当前 Bot 未完成独立 SnowLuma 初始化；请到 QQ 插件页检查")
+        return instance
+
     if qq_bot_scope is not None:
-        plugin_host["qq_config_path"] = str(qq_bot_scope / "qq" / "config.json")
+        qq_context["qq_config_path"] = str(qq_bot_scope / "qq" / "config.json")
     plugin_host["active_events"] = lambda: tuple(
         getattr(attached_console[0], "_active_batch", ()) or ())
     from infinity_vision import inspect as inspect_with_profile
@@ -5564,7 +5581,7 @@ def _main_impl(argv: list[str] | None = None, *, sharing_bridge_factory=None, pr
         if running is None or not _notice_current():
             raise ValueError("当前 Bot 尚未就绪")
         return await observe(running, image, question, default_generate or _generate, frames=frames)
-    plugin_host['look_qq_image'] = look_qq_image
+    qq_context['look_qq_image'] = look_qq_image
     plugin_host['prepare_media_resolutions'] = lambda refs, **kw: plugins.prepare_media_resolutions(
         refs, root_key=vision_root_key, **kw)
     console._prepare_plugin_media = plugin_host['prepare_media_resolutions']
@@ -5585,11 +5602,15 @@ def _main_impl(argv: list[str] | None = None, *, sharing_bridge_factory=None, pr
             initial_choices=initial_plugin_choices(core_root, args.bot, baseline_bot))
     if _sharing_lifecycle.get('scope') is not None:
         _sharing_preview_mount = _sharing_lifecycle['scope'].acquire(bot=args.bot, plugin_host=plugin_host)
-    if confined_plugins is None:
+    def prepare_qq_entry():
+        qq_instance()
         from qq_voice_services import upgrade_qq_voice_entry
         upgrade_qq_voice_entry(p_root, Path(__file__).parent / "builtin/infinity/core-infinity-qq/index.py")
+
+    plugin_host['_plugin_start_checks'] = {'core-infinity-qq': prepare_qq_entry}
     woke = ({'up': [], 'down': []} if confined_plugins is not None else
             plugins.wake(p_root, host=plugin_host, scope=plugin_scope))
+    encounters.switch("core-infinity-qq" in woke["up"])
     if confined_plugins is not None:
         print('[plugins] parent runtime unavailable; autoload blocked', file=sys.stderr, flush=True)
     if woke["up"] or woke["down"]:
@@ -5755,6 +5776,8 @@ def _main_impl(argv: list[str] | None = None, *, sharing_bridge_factory=None, pr
 
     from functools import wraps
 
+    update_qq_wake = None
+
     def _with_plugin_tables(action: Any) -> Any:
         @wraps(action)
         def mutate(*given: Any, **named: Any) -> Any:
@@ -5774,6 +5797,10 @@ def _main_impl(argv: list[str] | None = None, *, sharing_bridge_factory=None, pr
                     for note in getattr(primary, "__notes__", ()):
                         print(f"[plugins] {note}", file=sys.stderr)
                     raise
+                finally:
+                    encounters.switch(qq_running())
+                    if update_qq_wake is not None:
+                        update_qq_wake()
                 a_new_table()
                 return result
         return mutate
@@ -5807,20 +5834,23 @@ def _main_impl(argv: list[str] | None = None, *, sharing_bridge_factory=None, pr
         return any(row.get("name") == "core-infinity-qq" and row.get("enabled") is True
                    for row in read_plugins().get("plugins", []))
 
-    from infinity_control import QQControl
-    from qq_protocol_health import plugin_connected
-    if linux_qq_release:
-        from scripts.linux_qq import LinuxQQControl as QQControl
-    qq_control = QQControl(p_root, proxy_root=engine.root, bot_scope=qq_bot_scope, snow_instance=qq_snow_instance,
-        process_lifecycle=process_lifecycle, recovery_store=process_lifecycle is not None,
-        companion_lifecycle=(instance_lifecycle if instance_lifecycle is not None
-            and getattr(instance_lifecycle,'companion_supported',False) else None),
-        protocol_health=process_lifecycle is None,
-        plugin_enabled=qq_plugin_enabled,
-        plugin_connection=lambda data: plugin_connected(plugins._active_items(), data),
-        plugin_running=lambda: any(
-        row.get("name") == "core-infinity-qq" and row.get("loaded")
-        for row in read_plugins().get("plugins", [])))
+    def create_qq_control():
+        from infinity_control import QQControl
+        from qq_protocol_health import plugin_connected
+        if linux_qq_release:
+            from scripts.linux_qq import LinuxQQControl as QQControl
+        return QQControl(p_root, proxy_root=engine.root, bot_scope=qq_bot_scope, snow_instance=qq_instance(),
+            process_lifecycle=process_lifecycle, recovery_store=process_lifecycle is not None,
+            companion_lifecycle=(instance_lifecycle if instance_lifecycle is not None
+                and getattr(instance_lifecycle,'companion_supported',False) else None),
+            protocol_health=process_lifecycle is None,
+            plugin_enabled=qq_plugin_enabled,
+            plugin_connection=lambda data: plugin_connected(plugins._active_items(), data),
+            plugin_running=lambda: any(
+            row.get("name") == "core-infinity-qq" and row.get("loaded")
+            for row in read_plugins().get("plugins", [])))
+
+    qq_panel = QQPanel(create_qq_control)
 
     @_with_plugin_tables
     def _reload_infinity(name: str) -> None:
@@ -5849,16 +5879,6 @@ def _main_impl(argv: list[str] | None = None, *, sharing_bridge_factory=None, pr
     plugin_page_admin = PluginPageAdmin(plugin_config, plugin_scope,
         plugins.lifecycle_transaction, plugins._require_unconfined_lifecycle, open_private_new)
 
-    def save_infinity_qq(values: dict) -> dict:
-        with plugins.lifecycle_transaction():
-            qq_control.save(values, reload=lambda: _reload_infinity("core-infinity-qq"))
-            qq_control.sync_voice_services(enabled=qq_plugin_enabled())
-            return qq_control.read()
-
-    def save_infinity_routes(values: dict) -> dict:
-        return qq_control.save_routes(
-            values, reload=lambda: _reload_infinity("core-infinity-qq"))
-
     from waves_account_admin import WavesAccounts, service_port_busy
     waves_accounts = WavesAccounts(core_root, args.bot, read_plugins, service_port_busy)
 
@@ -5876,11 +5896,28 @@ def _main_impl(argv: list[str] | None = None, *, sharing_bridge_factory=None, pr
         if route == "/infinity/bots":
             return {**bot_registry.read(), "coreRoot": str(core_root), "pid": os.getpid(),
                     "port": args.port, "runtimeSwitching": False}
+        if route in (infinity_path, infinity_path + "/management-session"):
+            require_qq_installation()
         if route == infinity_path + "/management-session":
-            return {"active": args.bot, **qq_control.snowluma_session_status()}
+            return {"active": args.bot, **qq_panel.get().snowluma_session_status()}
         if route != infinity_path:
             raise ValueError("扩展页面不存在")
-        return qq_control.read()
+        return qq_panel.get().read()
+
+    def require_qq_installation():
+        if not any(row.get("name") == "core-infinity-qq" and row.get("installed")
+                   for row in read_plugins().get("plugins", [])):
+            raise ValueError("请先在插件市场安装 QQ 插件")
+
+    def describe_qq_upload(prepared):
+        async def describe():
+            from qq_visual_request import observe
+            if not _notice_current():
+                raise ValueError("请先唤醒 Bot，再识别并添加表情包")
+            pin = await engine.live().fork_round()
+            return await observe(attached_console[0], prepared.image, prepared.prompt,
+                                 default_generate or _generate, pinned=pin)
+        return plugin_ingress._on_console_loop(lambda: plugin_ingress.spawn_system_background(describe)).result()
 
     def act_infinity(route: str, values: dict) -> dict:
         if confined_plugins is not None:
@@ -5906,102 +5943,39 @@ def _main_impl(argv: list[str] | None = None, *, sharing_bridge_factory=None, pr
             return bot_registry.rename(values.get("displayName"))
         if route.startswith("/infinity/bots/"):
             raise ValueError("Bot 只能在启动前选择；请关闭本实例后从 Start.bat 重新选择")
-        if route == infinity_path + "/settings":
-            return save_infinity_qq(values)
-        if route == infinity_path + "/routes":
-            return save_infinity_routes(values)
-        if route == infinity_path + "/voice-setup-check":
-            return qq_control.voice_setup_check(values)
-        if route == infinity_path + "/tts-install":
-            if "action" in values:
-                return qq_control.tts_installer.control(values["action"], values.get("source"))
-            return qq_control.tts_installer.start(values.get("source", "mirror"))
-        if route == infinity_path + "/asr-install":
-            if "action" in values:
-                return qq_control.asr_installer.control(values["action"], values.get("source"))
-            return qq_control.asr_installer.start(values.get("source", "mirror"))
-        if route == infinity_path + "/check":
-            return qq_control.check_connection(verify_websocket=True)
-        if route == infinity_path + "/import-connection":
-            return qq_control.import_connection(
-                reload=lambda: _reload_infinity("core-infinity-qq"))
-        if route == infinity_path + "/process":
-            action = str(values.get("action") or "")
-            if action.startswith(("tts_", "asr_")):
-                with plugins.lifecycle_transaction():
-                    return qq_control.action(action)
-            return qq_control.action(action)
-        if route == infinity_path + "/initial-password":
-            if values:
-                raise ValueError("请求格式无效")
-            return qq_control.initial_snowluma_password()
-        if route == infinity_path + "/clear-management-session":
-            if values != {"active": args.bot}:
-                raise ValueError("当前 Bot 已变化，请刷新后重试")
-            return qq_control.clear_snowluma_session()
-        if route == infinity_path + "/recovery":
-            return qq_control.save_recovery(values)
-        if route == infinity_path + "/snowluma-folder":
-            return qq_control.open_snowluma_folder()
-        if route == infinity_path + "/voice-folder":
-            return qq_control.open_voice_folder()
-        if route == infinity_path + "/model-folder":
-            return qq_control.open_model_folder(values.get("kind"), values.get("model"))
-        if route == infinity_path + "/stickers":
-            with plugins.lifecycle_transaction():
-                instance = dict(plugins._active_items()).get("core-infinity-qq")
-                if instance is None or not callable(getattr(instance, 'sticker_panel', None)):
-                    raise ValueError("请启用新版 QQ 插件并连接当前账号")
-                prepared = instance.sticker_panel(values, args.bot)
-            from qq_sticker_panel import UploadPreview
-            if not isinstance(prepared, UploadPreview):
-                return prepared
-
-            async def describe_upload():
-                from qq_visual_request import observe
-                if not _notice_current():
-                    raise ValueError("请先唤醒 Bot，再识别并添加表情包")
-                pin = await engine.live().fork_round()
-                return await observe(attached_console[0], prepared.image, prepared.prompt,
-                                     default_generate or _generate, pinned=pin)
-
-            # The model uses the console's event loop and wire. Never hold the
-            # plugin lifecycle lock while waiting for a task on that loop.
-            job = plugin_ingress._on_console_loop(lambda: plugin_ingress.spawn_system_background(describe_upload))
-            try:
-                answer = job.result()
-            except (ValueError, RuntimeError) as error:
-                raise ValueError(f"表情识别未完成：{error}") from None
-            with plugins.lifecycle_transaction():
-                if dict(plugins._active_items()).get("core-infinity-qq") is not instance:
-                    raise ValueError("识别期间 QQ 插件已切换，请重新添加")
-                return instance.sticker_panel(values, args.bot, generated=answer)
-        if route == infinity_path + "/voice-corpus":
-            return qq_control.voice_corpus(values)
-        if route == infinity_path + "/tts-preview":
-            if "text" in values:
-                return qq_control.preview_voice(values.get("model"), values.get("voice"),
-                                                values["text"])
-            return qq_control.preview_voice(values.get("model"), values.get("voice"))
+        if route.startswith(infinity_path + "/"):
+            require_qq_installation()
+            return qq_panel.action(route[len(infinity_path):], values, bot=args.bot,
+                                   enabled=qq_plugin_enabled, reload_adapter=lambda: _reload_infinity("core-infinity-qq"),
+                                   describe_upload=describe_qq_upload)
         raise ValueError("扩展操作不存在")
 
     @_with_plugin_tables
     def switch_plugin(name: str, on: bool) -> dict:
         result = _flip(name, on)
         if name == "core-infinity-qq":
+            if not on and result.get("ok"):
+                try:
+                    qq_panel.disable()
+                except Exception as error:
+                    return {**result, "ok": False, "said": f"QQ 停用收尾未完成：{error}"}
+                return result
+            if not result.get("ok"):
+                return result
+        if name == "core-infinity-qq" and qq_running():
             try:
-                qq_control.sync_voice_services(enabled=qq_plugin_enabled(), wake=True)
-            except (ValueError, OSError, RuntimeError) as error:
+                qq_panel.get().sync_voice_services(enabled=True, wake=True)
+            except Exception as error:
                 result = {**result, "ok": False, "said": "TTS 状态更新失败：" + str(error)}
         if name == 'core-infinity-qq' and on and any(
             row.get('name') == name and row.get('enabled')
             for row in result.get('plugins', [])
         ):
             try:
-                qq_control.start_snowluma_with_bot(enabled=True)
+                qq_panel.get().start_snowluma_with_bot(enabled=True)
                 if result.get("setup_required"):
                     result = {**result, "said": "QQ 插件已启用。请到 QQ 插件页完成接入配置。"}
-            except (ValueError, OSError, RuntimeError) as error:
+            except Exception as error:
                 result = {**result, 'ok': False,
                           'said': result.get('said', '') + ' SnowLuma 启动未完成：' + str(error)}
         return result
@@ -6338,18 +6312,31 @@ def _main_impl(argv: list[str] | None = None, *, sharing_bridge_factory=None, pr
         evidence_options['reply_review'] = 'host'
         if _local_model is not None:
             _local_model.bind_loop()
+        nonlocal update_qq_wake
+        loop = asyncio.get_running_loop()
+        voice_enabled = asyncio.Event()
+        def sync_voice_watch():
+            if qq_running():
+                voice_enabled.set()
+            else:
+                voice_enabled.clear()
+        update_qq_wake = lambda: loop.call_soon_threadsafe(sync_voice_watch)
+        sync_voice_watch()
+
         async def watch_voice_wake():
             closed = bool(_THE_GATE["closed"])
             previous_round = _THE_GATE.get("round")
             while True:
+                await voice_enabled.wait()
                 await asyncio.sleep(0.4)
                 next_closed = bool(_THE_GATE["closed"])
                 next_round = _THE_GATE.get("round")
                 if not next_closed and (closed or previous_round != next_round):
                     try:
                         with plugins.lifecycle_transaction():
-                            qq_control.sync_voice_services(enabled=qq_plugin_enabled(), wake=True)
-                    except (ValueError, RuntimeError, OSError) as error:
+                            if qq_running():
+                                qq_panel.get().sync_voice_services(enabled=True, wake=True)
+                    except Exception as error:
                         print(" [QQ] 语音启动未完成：" + str(error), file=sys.stderr, flush=True)
                 closed, previous_round = next_closed, next_round
 
@@ -6359,16 +6346,16 @@ def _main_impl(argv: list[str] | None = None, *, sharing_bridge_factory=None, pr
             print(" [tick] 滴答起了（每 20 秒一次 ）", file=sys.stderr, flush=True)
         try:
             try:
-                qq_control.start_snowluma_with_bot(enabled=any(
-                    row.get('name') == 'core-infinity-qq' and row.get('enabled')
-                    for row in read_plugins().get('plugins', [])
-                ))
-            except (ValueError, OSError, RuntimeError) as error:
+                if ("core-infinity-qq" in woke["up"] or any(
+                        name == "core-infinity-qq" for name, _ in woke.get("waiting", []))):
+                    qq_panel.get().start_snowluma_with_bot(enabled=True)
+            except Exception as error:
                 print(' [QQ] SnowLuma 启动未完成：' + str(error), file=sys.stderr, flush=True)
             try:
                 with plugins.lifecycle_transaction():
-                    qq_control.sync_voice_services(enabled=qq_plugin_enabled(), wake=True)
-            except (ValueError, OSError, RuntimeError) as error:
+                    if "core-infinity-qq" in woke["up"]:
+                        qq_panel.get().sync_voice_services(enabled=True, wake=True)
+            except Exception as error:
                 print(" [QQ] TTS 状态更新失败：" + str(error), file=sys.stderr, flush=True)
             if _sharing_preview_mount is not None:
                 _sharing_preview_mount.attach(dispatcher=dispatcher, body=config_for_body, current=_the_current_declarations, handlers=remember_handlers, rewrite=rewrite_the_tables, transaction=plugins.lifecycle_transaction)
@@ -6522,12 +6509,13 @@ def _main_impl(argv: list[str] | None = None, *, sharing_bridge_factory=None, pr
             )
         finally:
             # ⚠️ 主服务一停，滴答就跟着停（ 不许留一个**没人看的**任务在后台烧 ）。
+            update_qq_wake = None
             if voice_wake is not None:
                 voice_wake.cancel()
                 await asyncio.gather(voice_wake, return_exceptions=True)
             from bot_plugin_shutdown import close_runtime
             await close_runtime(
-                p_root, plugins, qq_control, tick,
+                p_root, plugins, qq_panel, tick,
                 drain_plugins=(linux_qq_release or (instance_lifecycle is not None and shutdown_receiver is not None)),
                 primary=sys.exception(), tool_work=_tool_work, model_work=_model_work, local_model=_local_model,
                 ingress_owner=ingress_shutdown,

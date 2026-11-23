@@ -2799,7 +2799,7 @@ def create(ctx):
                 handler=self._owned_handler("qq_read_group_history", self.read_group_history),
             ), ToolDef(
                 name="qq_send_text",
-                description="向当前 QQ 会话发送文字。群消息填写本轮 trigger_message_id；本轮只有戳一戳且有人戳你时，省略编号发普通文字。",
+                description="向当前 QQ 会话发送普通文字。私聊填 scope、target、text。群聊还需填写本轮新消息的 trigger_message_id；仅收到戳向你的通知时省略编号。如需引用，请使用当前可用的引用回复工具。",
                 parameters={
                     "type": "object",
                     "properties": {

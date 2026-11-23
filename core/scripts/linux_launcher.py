@@ -39,7 +39,7 @@ def service_port(core, pid):
         if proc.stat().st_uid != os.getuid():
             return None
         argv = (proc / 'cmdline').read_bytes().rstrip(b'\0').split(b'\0')
-        entries = [os.fsencode(core / 'scripts' / name) for name in ('linux_acceptance.py', 'linux_qq.py')]
+        entries = [os.fsencode(core / 'scripts' / name) for name in ('linux_acceptance.py', 'linux_qq.py', 'linux_profile_start.py')]
         if len(argv) < 2 or argv[1] not in entries or argv[0] != os.fsencode(core / '.venv-linux/bin/python'):
             return None
         if not (proc / 'fd/9').samefile(core / '.linux-acceptance-launch.lock'):
@@ -171,19 +171,8 @@ def wake(core):
         return 0
     with instance(core) as target:
         if target:
-            pid, port, owner_fd = target
+            pid, port, _ = target
             if listening(pid, port):
-                from scripts.linux_sl_companion import ensure
-                try:
-                    ensure(core, owner_fd)
-                    if (core/'linux-components').is_dir():
-                        from scripts.linux_qq_wake import intent, wake as wake_qq
-                        if intent(core):
-                            message = wake_qq(core, owner_fd)
-                            if message:
-                                menu_notice('QQ', message)
-                except (OSError, ValueError, subprocess.SubprocessError) as error:
-                    menu_notice('SL', str(error), level='WARN')
                 running(name, port, reused=True)
                 open_page(port)
             else:

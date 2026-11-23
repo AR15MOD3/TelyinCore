@@ -502,7 +502,7 @@ DECLARED_TOOLS: tuple[ToolDef, ...] = (
     # 而它**真能做的**是查： `EventStore.range(RangeQuery)` ／ `grep(GrepQuery)`
     # （ 而库里今天**真有东西**：87 条，含它自己的思考 ）。
     ToolDef(name="read_events",
-            description="读当前授权范围的事件；私聊中不含其他人的私聊或群聊。若提供 qq_read_group_history，回查群聊时使用它。查不到不等于没发生。"
+            description="读当前授权范围的事件；私聊中不含其他人的私聊或群聊。可用的会话历史工具能补查当前会话。查不到不等于没发生。"
                         "事件引用 event:N 用 read_events(cursor=N)；会话记录用 record_ref 精确读取。offset 可续读；since/until 必须带时区；给 since 就只看那之后的；grep 给一个词就按词翻。"
                         " 两个都不给时 events 默认最近 50 条、records 默认最近 20 条。回查旧对话或工具原始回执用 store=records，支持时间、翻页及原文续读，不按新近程度降低旧记录的相关性。"
                         " 核对约定先查 user；只有需要核对旧回复或执行结果时才扩展 assistant/tools，all 还会命中本轮检索回执中的重复引用。"

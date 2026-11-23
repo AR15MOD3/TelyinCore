@@ -737,8 +737,8 @@ def _a_place_to_stand(root: Any, name: str, one: Path, host: Any = None) -> dict
     }
     if host is not None:
         box.update(host)
-        if name != "core-infinity-qq":
-            box.pop("owner_qq_route", None)
+        box.update(box.pop('_plugin_contexts', {}).get(name, {}))
+        box.pop('_plugin_start_checks', None)
         box.pop("_channel_context_host", None)
         ingress=box.pop('_native_task_ingress',None)
         if ingress is not None:
@@ -929,6 +929,11 @@ def carry(root: Any, name: str, *, host: Any = None, scope=None) -> dict[str, An
     _lifecycle_roots[box] = (reservation, root_key)
     _lifecycle_states[box] = (reservation, "starting", "")
     try:
+        if host and '_plugin_start_checks' in host:
+            host = dict(host)
+            prepare = host.pop('_plugin_start_checks').get(box)
+            if prepare is not None:
+                prepare()
         from .plugin_package_lock import PackageLock
         package_lease = PackageLock(root, box).__enter__()
         _package_leases[(root_key, box)] = package_lease

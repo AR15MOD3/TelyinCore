@@ -1,7 +1,6 @@
 """Linux QQ host for the release's private Mybot workspace."""
 from __future__ import annotations
 
-import argparse
 import asyncio
 import getpass
 import json
@@ -9,8 +8,6 @@ import os
 import re
 from pathlib import Path
 import sys
-import tempfile
-import threading
 from urllib.parse import urlsplit
 from uuid import uuid4
 
@@ -23,24 +20,9 @@ from qq_protocol_health import eligible, probe
 from infinity_control import QQControl, _tail
 from snowluma_connection import connection_settings
 
+from scripts.linux_profile_start import main, save_json
+
 PLUGIN = 'core-infinity-qq'
-
-
-def save_json(path, data):
-    path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-    with tempfile.NamedTemporaryFile(mode='w', encoding='utf-8', dir=path.parent, delete=False) as stream:
-        pending = Path(stream.name)
-        try:
-            json.dump(data, stream, ensure_ascii=False, indent=2)
-            stream.flush()
-            os.fsync(stream.fileno())
-        except BaseException:
-            pending.unlink(missing_ok=True)
-            raise
-    try:
-        os.replace(pending, path)
-    finally:
-        pending.unlink(missing_ok=True)
 
 
 def trusted(core, config):
@@ -144,8 +126,14 @@ class LinuxQQControl(QQControl):
             super().close()
 
     def start_snowluma_with_bot(self, *, enabled=False):
-        if not enabled or listener_pid(self.release_core, {self.management_port}) is None:
+        if not enabled:
             return
+        if listener_pid(self.release_core, {self.management_port}) is None:
+            if not (self.release_core/'linux-components').is_dir():
+                return
+            self.action("snowluma_start_service")
+            if listener_pid(self.release_core, {self.management_port}) is None:
+                return
         from scripts.linux_qq_wake import wake
         fd = os.pidfd_open(os.getpid())
         try:
@@ -228,9 +216,22 @@ class LinuxQQControl(QQControl):
             lines.append(line.partition(' params=')[0])
         return '\n'.join(lines)
 
+    def stop_owned_bridge(self, *, required=False):
+        import select
+        import signal
+        from scripts.linux_sl_companion import managed_watcher
+        with managed_watcher(self.release_core, self.management_port) as fd:
+            if fd is None:
+                if required:
+                    raise ValueError('此 SL 由独立终端启动，请在原窗口休止')
+                return
+            self.recovery.cancel()
+            signal.pidfd_send_signal(fd, signal.SIGTERM)
+            if not select.select([fd], [], [], 12)[0]:
+                raise ValueError('SL 正在收尾，请稍后刷新')
+
     def action(self, action):
-        from scripts.linux_sl_companion import ensure, managed_watcher
-        import select, signal
+        from scripts.linux_sl_companion import ensure
         self._require_open()
         if action in ('snowluma_start', 'snowluma_start_service', 'snowluma_recover'):
             fd = os.pidfd_open(os.getpid())
@@ -241,13 +242,7 @@ class LinuxQQControl(QQControl):
             if action != 'snowluma_start_service':
                 self.recovery.start()
         elif action == 'snowluma_stop':
-            with managed_watcher(self.release_core, self.management_port) as fd:
-                if fd is None:
-                    raise ValueError('此 SL 由独立终端启动，请在原窗口休止')
-                self.recovery.cancel()
-                signal.pidfd_send_signal(fd, signal.SIGTERM)
-                if not select.select([fd], [], [], 12)[0]:
-                    raise ValueError('SL 正在收尾，请稍后刷新')
+            self.stop_owned_bridge(required=True)
         elif action == 'snowluma_stop_installation':
             raise ValueError('独立启动的 SL 请在原窗口休止')
         else:
@@ -318,57 +313,5 @@ def configure(core, config_path):
     print('HTTP 和 WebSocket 账号核对通过，已保存会话名单。')
 
 
-def main(argv=None):
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--setup', action='store_true')
-    parser.add_argument('--port', type=int, default=7810)
-    parser.add_argument('--no-browser', action='store_true')
-    args = parser.parse_args(argv)
-    if not 1024 <= args.port <= 65535:
-        parser.error('端口范围 1024–65535')
-    from scripts.linux_acceptance import prepare_workspace, BASELINE
-    os.umask(0o077)
-    data = prepare_workspace(CORE, configure_qq=True)
-    root = data.parent
-    workspace = root.parent
-    bot = json.loads((workspace / 'acceptance.json').read_bytes())['bot']
-    from runtime_identity import safe_path
-    config_path = safe_path(workspace, workspace / 'bots' / bot / 'infinity/qq/config.json')
-    marker = workspace / 'linux-qq-enabled'
-    from telyincore.market import install_from
-    seed = root / 'plugin-scope-bootstrap.json'
-    if not (root / 'extensions' / PLUGIN).exists() and (args.setup or not seed.exists()):
-        result = install_from(root, CORE / 'builtin/infinity' / PLUGIN)
-        if not result['ok']:
-            raise ValueError(result['said'])
-    if not config_path.exists():
-        legacy = safe_path(workspace, workspace / 'plugin-host/extensions' / PLUGIN / 'config.json')
-        config_path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-        if legacy.is_file():
-            save_json(config_path, json.loads(legacy.read_bytes()))
-    if not seed.exists():
-        save_json(seed, {'schema': 1, 'baseline_bot': BASELINE, 'bots': {bot: {PLUGIN: True}}})
-    if args.setup:
-        configure(CORE, config_path)
-        save_json(marker, {'enabled': True})
-        return 0
-    from scripts.linux_dev import _open_when_ready, clean_model_environment
-    clean_model_environment()
-    stop = threading.Event()
-    if not args.no_browser:
-        threading.Thread(target=_open_when_ready, args=(args.port, stop), daemon=True).start()
-    try:
-        from launch import main as launch_main
-        return launch_main(['--acceptance-isolated', '--profile-acceptance', '--linux-qq-profile',
-                            '--acceptance-root', str(data), '--acceptance-bot', bot,
-                            '--port', str(args.port), '--start-paused'])
-    finally:
-        stop.set()
-
-
 if __name__ == '__main__':
-    try:
-        raise SystemExit(main())
-    except (ValueError, RuntimeError, OSError, TimeoutError) as error:
-        print('Linux QQ：' + str(error), file=sys.stderr)
-        raise SystemExit(1)
+    raise SystemExit(main())

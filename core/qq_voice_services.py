@@ -92,6 +92,7 @@ class ASRSession:
 
 
 _OLD_QQ_ENTRIES = frozenset({
+    "32c9c69b0ee7e3a3d00ccb6a3a0a12d8b0e22b2e7e4d89156f31b84b516beadc",  # stock entry before moving tool wording into the adapter
     "9543e35b5e09bd1604ebe015fc67a753c4ccd59fe3f71e105a73f81877130359",  # distributed Windows sticker/poke adapter
     "6657f66364341d7d8e5394d2f94cb260fdbb28bc3dbef9850a2b6d5b10c80dbd",  # Linux before typed media IDs
     "c882d08f6e0035f59591dac73b7a3967fe60d26369bf188982143576a7d44c23",  # shared plugin before typed media IDs
@@ -127,7 +128,10 @@ def upgrade_qq_voice_entry(root, bundled):
     before = _stock_entry(root, installed)
     if before is None:
         return
-    replacement = bundled.read_bytes()
+    try:
+        replacement = bundled.read_bytes()
+    except FileNotFoundError:
+        return
     if replacement == before:
         return
     with ExitStack() as stack:

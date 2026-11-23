@@ -1989,6 +1989,12 @@ class QQControl:
                 raise ValueError('installer owner cannot be replaced')
             self._installation_owners[name] = owner
 
+    def stop_owned_bridge(self):
+        with self._lock:
+            owned = self._owned.get("snowluma")
+        if owned is not None:
+            self.action("snowluma_stop")
+
     def close(self) -> None:
         self._closed.set()
         if not self._closing.acquire(blocking=False):

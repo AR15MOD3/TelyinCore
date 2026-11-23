@@ -7,14 +7,14 @@ import zipfile
 
 from publish import ROOT, inventory, version_key
 
-PROGRAM = """deployment_relocation.py bot_companion_custody.py telyincore/download_sources.py launch.py infinity_control.py bot_launcher_companion.py qq_voice_services.py
+PROGRAM = """qq_host_runtime.py qq_encounters.py startup.py scripts/windows_acceptance.py bot_launcher_lifecycle.py deployment_relocation.py bot_companion_custody.py telyincore/download_sources.py launch.py infinity_control.py bot_launcher_companion.py qq_voice_services.py
 qq_conversation_privacy.py qq_poke.py qq_stickers.py qq_sticker_view.py qq_visual_request.py
 qq_sticker_panel.py snowluma_status_policy.py qq_sticker_context.py qq_status_command.py
 pyproject.toml requirements-windows-acceptance.txt
 builtin/infinity/core-infinity-qq/index.py builtin/infinity/core-infinity-qq/README.md
 telyincore/identity.py telyincore/vision_owned.py telyincore/batch_snapshot.py
 telyincore/sharing_native.py telyincore/plugins.py telyincore/events.py telyincore/engine.py
-telyincore/console.py telyincore/qq_tool_menu.py telyincore/tools.py telyincore/web.py
+telyincore/console.py telyincore/dispatch.py telyincore/generate.py telyincore/tools.py telyincore/web.py
 telyincore/market.py telyincore/online_install.py telyincore/package_updates.py
 telyincore/release_preview.py""".split()
 WHEEL = "pillow-12.2.0-cp311-cp311-win_amd64.whl"

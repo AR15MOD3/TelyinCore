@@ -341,14 +341,17 @@ def _main_owned(argv=None, *, host_registry=None, launch_options=None,
             if args.console and not 0<args.port<=65535:raise ValueError('bounded console port placeholder required')
             port = args.port if args.console else available_port(args.port)
             companion_preflight = None
+            companion_available = True
             if instance_only:
-                from bot_companion_custody import check_previous_companion
-                from snowluma_instance import initialize_instance
-                # Validate local port ownership before inspecting any native
-                # custody record packaged with a profile from another host.
-                initialize_instance(core, name, baseline=name == host_registry.baseline, exclude_ports=(port,))
-                if os.name == 'nt':
-                    companion_preflight = check_previous_companion(core, name)
+                try:
+                    from bot_companion_custody import check_previous_companion
+                    from snowluma_instance import initialize_instance
+                    initialize_instance(core, name, baseline=name == host_registry.baseline, exclude_ports=(port,))
+                    if os.name == 'nt':
+                        companion_preflight = check_previous_companion(core, name)
+                except (ImportError, OSError, ValueError, RuntimeError) as error:
+                    companion_available = False
+                    companion_preflight = f'本次启动已关闭 QQ 托管权限，Core 继续运行：{error}'
             header('正在启动…')
             print('  Bot    ' + paint(name, '97'), flush=True)
             if endpoint_recovered:
@@ -360,7 +363,7 @@ def _main_owned(argv=None, *, host_registry=None, launch_options=None,
                   host_registry.start_window(name)) as birth:
                 label,options = None,{}
                 if host_registry is not None:
-                    parent_channel=(ParentLauncherChannel(host_registry,name,instance_only=True,**(dict(launch_options=launch_options) if launch_options else {})) if instance_only else
+                    parent_channel=(ParentLauncherChannel(host_registry,name,instance_only=True,companion_available=companion_available,**(dict(launch_options=launch_options) if launch_options else {})) if instance_only else
                                     ParentLauncherChannel(host_registry,name))
                     label,options=parent_channel.spawn_options()
                 command=[sys.executable,'-u',str(core/'bot_launcher_child.py')]

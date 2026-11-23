@@ -73,7 +73,7 @@ def receive(fd,handle,timeout=5):
 
 
 class ParentLauncherChannel:
-    def __init__(self,registry,bot,*,instance_only=False,launch_options=None):
+    def __init__(self,registry,bot,*,instance_only=False,launch_options=None,companion_available=True):
         from bot_host_registry import HostEvidenceRegistry
         if type(instance_only) is not bool or type(registry) is not HostEvidenceRegistry or bot not in registry.bots or os.name!='nt':
             raise ValueError('explicit Windows launcher host required')
@@ -82,6 +82,7 @@ class ParentLauncherChannel:
         from bot_launcher_options import normalize_options
         self.launch_options=normalize_options(launch_options)
         if self.launch_options and not instance_only:raise ValueError('web options require instance-only parent')
+        self.companion_available=companion_available is True
         self.instance_only=instance_only
         self.companion_host=None
         self.parent,self.child,self.key,self.session=private_channel(get_context('spawn'))
@@ -112,9 +113,13 @@ class ParentLauncherChannel:
                 or process.poll() is not None or stream is None or stream.closed):
             raise ValueError("registered owned launcher required before private handoff")
         from bot_birth_process import BirthPopen
-        if self.instance_only and type(process) is BirthPopen:
-            from bot_launcher_companion import LauncherCompanionHost
-            self.companion_host=LauncherCompanionHost(self.registry.core,process,account_bot=self.bot,account_baseline=self.bot==self.registry.baseline)
+        if self.instance_only and self.companion_available and type(process) is BirthPopen:
+            try:
+                from bot_launcher_companion import LauncherCompanionHost
+                self.companion_host=LauncherCompanionHost(self.registry.core,process,account_bot=self.bot,account_baseline=self.bot==self.registry.baseline)
+            except (ImportError, OSError, ValueError, RuntimeError) as error:
+                import logging
+                logging.getLogger(__name__).warning('QQ 托管组件未就绪，Core 继续运行：%s', error)
         self.broker=LifecycleBroker(self.registry,self.bot,controller,self.parent,self.key,self.session,{},timeout=2,fixed_only=True,instance_markers=True,instance_only=self.instance_only,launch_options=self.launch_options,companion_host=self.companion_host)
         raw=json.dumps({'key':self.key.hex(),'session':self.session,'bot':self.bot},separators=(',',':')).encode()
         frame=struct.pack('!I',len(raw))+raw

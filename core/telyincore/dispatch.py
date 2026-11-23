@@ -527,8 +527,6 @@ class Dispatcher:
                 'parameters': deepcopy(tool.parameters), 'usage': tool.usage,
                 'tags': [str(tag) for tag in tool.tags], 'effect': tool.effect,
                 'barrier_after': tool.barrier_after, 'ends_turn': tool.ends_turn})
-        from .qq_tool_menu import clarify_qq_text
-        clarify_qq_text(rows)
         return rows
 
     def receipt_coverage(self, calls):

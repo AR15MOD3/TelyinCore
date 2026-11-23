@@ -258,11 +258,15 @@ def main(argv=None) -> int:
             return code
         qq_command = [str(python), str(CORE / 'scripts/setup_qq_runtime.py')]
         if args.check: qq_command.append('--check')
-        if run(qq_command): return 1
+        qq_failed = run(qq_command)
+        if qq_failed:
+            notice('setup', 'QQ 可选组件准备未完成，详见自检日志。Core 可继续运行。', level='WARN')
+            if args.check or args.install:
+                return qq_failed
         if args.check or args.install:
             notice('check', '环境检查通过。')
             return 0
-        notice('startup', '4 / 4  运行组件准备完成，请选择要唤醒的 Bot。')
+        notice('startup', '4 / 4  Core 已就绪，请选择要唤醒的 Bot。')
         command = [str(python), "-u", str(Path(__file__).resolve()), "--run", "--port", str(args.port)]
         if args.bot:
             command.extend(["--bot", args.bot])

@@ -2,6 +2,7 @@
 import json
 from pathlib import Path
 import shutil
+import sys
 import tempfile
 import unittest
 from unittest.mock import Mock, patch
@@ -14,6 +15,77 @@ QQ = "core-infinity-qq"
 
 
 class OptionalQQTests(unittest.TestCase):
+    def test_first_install_is_off_and_preserves_operator_choice(self):
+        from types import SimpleNamespace
+        from scripts.linux_profile_start import prepare_qq
+        from scripts.linux_acceptance import BASELINE, BOT
+        from plugin_scope_bootstrap import initial_plugin_choices
+        from plugin_scope_host import make_plugin_scope
+        from plugin_scope_migration import initialize_plugin_scope
+
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp).resolve()
+            root = workspace / "core"
+            def prepare():
+                prepare_qq(CORE, root, workspace, BOT, SimpleNamespace(setup=False))
+                scope = make_plugin_scope(root, BOT, BASELINE)
+                initialize_plugin_scope(scope, root, BASELINE,
+                                        initial_choices=initial_plugin_choices(root, BOT, BASELINE))
+                return scope
+            scope = prepare()
+            self.assertTrue((root / "extensions" / QQ / "package.json").is_file())
+            self.assertIs(scope.read_state()["enabled"][QQ], False)
+            for expected in (True, False):
+                scope.update({QQ: expected})
+                self.assertIs(prepare().read_state()["enabled"][QQ], expected)
+
+    @unittest.skipUnless(sys.platform == "linux", "Linux service adapter")
+    def test_linux_wake_reuses_or_starts_the_service(self):
+        from types import SimpleNamespace
+        from scripts import linux_qq
+        with tempfile.TemporaryDirectory() as tmp:
+            core = Path(tmp) / "core"
+            (core / "linux-components").mkdir(parents=True)
+            control = SimpleNamespace(release_core=core, management_port=5099, action=Mock())
+            ensure = linux_qq.LinuxQQControl.ensure_snowluma_on_wake
+            with patch.object(linux_qq, "listener_pid", side_effect=[12, None, 24, None, None]):
+                self.assertTrue(ensure(control))
+                control.action.assert_not_called()
+                self.assertTrue(ensure(control))
+                control.action.assert_called_once_with("snowluma_start_service")
+                with self.assertRaisesRegex(ValueError, "尚未确认"):
+                    ensure(control)
+
+    def test_windows_wake_reuses_running_service_and_honors_disable(self):
+        from threading import RLock
+        from types import SimpleNamespace
+        from infinity_control import QQControl
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp).resolve()
+            (root / "index.mjs").touch()
+            control = object.__new__(QQControl)
+            control.root = control.snowluma_root = root
+            control.snow_instance = SimpleNamespace(root=root)
+            control._process_lifecycle = None
+            control._companion_lifecycle = Mock()
+            control._snow_lifecycle = control._lock = RLock()
+            control._owned = {}
+            control._snow_stopping = False
+            control._snow_rejected_pins = []
+            control._require_open = control._remember_snowluma = Mock()
+            start = control._companion_lifecycle.start_companion
+            with patch("service_layout.node_executable", return_value="node"):
+                control.start_snowluma_with_bot(enabled=True)
+                handle = start.return_value
+                handle.poll.return_value = None
+                control.ensure_snowluma_on_wake()
+                start.assert_called_once()
+                handle.poll.return_value = 0
+                control.start_snowluma_with_bot(enabled=False)
+                start.assert_called_once()
+                control.ensure_snowluma_on_wake()
+                self.assertEqual(start.call_count, 2)
+
     def test_switch_and_fault_isolation(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp) / "core"

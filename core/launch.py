@@ -5828,7 +5828,15 @@ def _main_impl(argv: list[str] | None = None, *, sharing_bridge_factory=None, pr
         except ProxySettingsError:
             pass  # The market read endpoint reports the invalid setting.
     # 启停开关与实例生命周期分别记录。宿主负责加载，并在操作后重算工具表，使变更当场生效。
-    _flip = plugins.switcher(core_root, host=plugin_host, scope=plugin_scope)
+    apply_plugin_switch = plugins.switcher(core_root, host=plugin_host, scope=plugin_scope)
+    qq_waiting_for_setup = any(name == "core-infinity-qq" for name, _ in woke.get("waiting", ()))
+
+    def _flip(name, on):
+        nonlocal qq_waiting_for_setup
+        result = apply_plugin_switch(name, on)
+        if name == "core-infinity-qq":
+            qq_waiting_for_setup = bool(on and result.get("setup_required"))
+        return result
 
     def qq_plugin_enabled() -> bool:
         return any(row.get("name") == "core-infinity-qq" and row.get("enabled") is True
@@ -6314,33 +6322,48 @@ def _main_impl(argv: list[str] | None = None, *, sharing_bridge_factory=None, pr
             _local_model.bind_loop()
         nonlocal update_qq_wake
         loop = asyncio.get_running_loop()
-        voice_enabled = asyncio.Event()
-        def sync_voice_watch():
-            if qq_running():
-                voice_enabled.set()
+        qq_enabled = asyncio.Event()
+        def sync_qq_watch():
+            if qq_running() or qq_waiting_for_setup:
+                qq_enabled.set()
             else:
-                voice_enabled.clear()
-        update_qq_wake = lambda: loop.call_soon_threadsafe(sync_voice_watch)
-        sync_voice_watch()
+                qq_enabled.clear()
+        update_qq_wake = lambda: loop.call_soon_threadsafe(sync_qq_watch)
+        sync_qq_watch()
 
-        async def watch_voice_wake():
+        def on_qq_wake(epoch):
+            with plugins.lifecycle_transaction():
+                if (_THE_GATE["closed"] or _THE_GATE.get("round") != epoch
+                        or not (qq_running() or qq_waiting_for_setup)):
+                    return
+                try:
+                    qq_panel.get().ensure_snowluma_on_wake()
+                except Exception as error:
+                    print(" [QQ] SnowLuma 启动未完成：" + str(error), file=sys.stderr, flush=True)
+                if qq_running():
+                    try:
+                        qq_panel.get().sync_voice_services(enabled=True, wake=True)
+                    except Exception as error:
+                        print(" [QQ] 语音启动未完成：" + str(error), file=sys.stderr, flush=True)
+
+        async def watch_qq_wake():
             closed = bool(_THE_GATE["closed"])
             previous_round = _THE_GATE.get("round")
             while True:
-                await voice_enabled.wait()
+                await qq_enabled.wait()
                 await asyncio.sleep(0.4)
                 next_closed = bool(_THE_GATE["closed"])
                 next_round = _THE_GATE.get("round")
                 if not next_closed and (closed or previous_round != next_round):
+                    work = loop.run_in_executor(None, on_qq_wake, next_round)
                     try:
-                        with plugins.lifecycle_transaction():
-                            if qq_running():
-                                qq_panel.get().sync_voice_services(enabled=True, wake=True)
-                    except Exception as error:
-                        print(" [QQ] 语音启动未完成：" + str(error), file=sys.stderr, flush=True)
+                        await asyncio.shield(work)
+                    except asyncio.CancelledError:
+                        await work
+                        raise
                 closed, previous_round = next_closed, next_round
 
-        voice_wake = None if process_lifecycle is not None else asyncio.create_task(watch_voice_wake())
+        qq_wake = None if process_lifecycle is not None else asyncio.create_task(watch_qq_wake())
         tick = None if process_lifecycle is not None else asyncio.create_task(_the_tick())
         if tick is not None:
             print(" [tick] 滴答起了（每 20 秒一次 ）", file=sys.stderr, flush=True)
@@ -6510,9 +6533,9 @@ def _main_impl(argv: list[str] | None = None, *, sharing_bridge_factory=None, pr
         finally:
             # ⚠️ 主服务一停，滴答就跟着停（ 不许留一个**没人看的**任务在后台烧 ）。
             update_qq_wake = None
-            if voice_wake is not None:
-                voice_wake.cancel()
-                await asyncio.gather(voice_wake, return_exceptions=True)
+            if qq_wake is not None:
+                qq_wake.cancel()
+                await asyncio.gather(qq_wake, return_exceptions=True)
             from bot_plugin_shutdown import close_runtime
             await close_runtime(
                 p_root, plugins, qq_panel, tick,

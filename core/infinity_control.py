@@ -1682,6 +1682,8 @@ class QQControl:
 
     def start_snowluma_with_bot(self, *, enabled: bool = False) -> None:
         """Remember first enablement and start this Bot's managed bridge."""
+        if not enabled:
+            return
         instance = self.snow_instance
         publisher = self._companion_lifecycle
         if instance is None or publisher is None or self._process_lifecycle is not None:
@@ -1691,7 +1693,7 @@ class QQControl:
         with self._snow_lifecycle:
             self._require_open()
             marker = safe_path(self.root.parent, instance.root / 'start-with-bot')
-            if enabled and not marker.exists():
+            if not marker.exists():
                 marker.touch(exist_ok=True)
             if not marker.is_file():
                 return
@@ -1708,6 +1710,9 @@ class QQControl:
                 except BaseException:
                     self._snow_stopping = True
                     raise
+
+    def ensure_snowluma_on_wake(self):
+        self.start_snowluma_with_bot(enabled=True)
 
     def action(self, name: str) -> dict[str, Any]:
         self._require_open()

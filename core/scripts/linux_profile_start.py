@@ -49,7 +49,7 @@ def prepare_qq(core, root, workspace, bot, args):
         if legacy.is_file():
             save_json(config_path, json.loads(legacy.read_bytes()))
     if not seed.exists():
-        save_json(seed, {'schema': 1, 'baseline_bot': BASELINE, 'bots': {bot: {PLUGIN: True}}})
+        save_json(seed, {'schema': 1, 'baseline_bot': BASELINE, 'bots': {bot: {PLUGIN: False}}})
     if args.setup:
         from scripts.linux_qq import configure
         configure(core, config_path)

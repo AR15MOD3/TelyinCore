@@ -125,15 +125,21 @@ class LinuxQQControl(QQControl):
         finally:
             super().close()
 
-    def start_snowluma_with_bot(self, *, enabled=False):
-        if not enabled:
-            return
+    def ensure_snowluma_on_wake(self):
+        if listener_pid(self.release_core, {self.management_port}) is not None:
+            return True
+        if not (self.release_core / 'linux-components').is_dir():
+            if (self.release_core.parent / 'candidate.json').is_file():
+                raise ValueError('缺少随包 SnowLuma 组件，请检查 Linux 部署包')
+            return False
+        self.action("snowluma_start_service")
         if listener_pid(self.release_core, {self.management_port}) is None:
-            if not (self.release_core/'linux-components').is_dir():
-                return
-            self.action("snowluma_start_service")
-            if listener_pid(self.release_core, {self.management_port}) is None:
-                return
+            raise ValueError('SnowLuma 启动后尚未确认管理服务就绪，请查看 QQ 插件日志')
+        return True
+
+    def start_snowluma_with_bot(self, *, enabled=False):
+        if not enabled or not self.ensure_snowluma_on_wake():
+            return
         from scripts.linux_qq_wake import wake
         fd = os.pidfd_open(os.getpid())
         try:

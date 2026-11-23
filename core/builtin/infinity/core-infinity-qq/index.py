@@ -130,6 +130,8 @@ def _config(path: Path, *, model_root: Path | None = None, snapshot: dict | None
     asr_model_dir = got.get("asrModelDir", "")
     if not isinstance(asr_model_dir, str):
         raise ValueError("asrModelDir 必须是本机模型目录")
+    from deployment_relocation import effective_asr_directory
+    asr_model_dir = effective_asr_directory(asr_model_dir, model_root)
     if not asr_model_dir and model_root is not None:
         preferred = model_root / "voice" / "asr" / "SenseVoiceSmall-onnx"
         if (preferred / "model.int8.onnx").is_file() and (preferred / "tokens.txt").is_file():
@@ -138,7 +140,10 @@ def _config(path: Path, *, model_root: Path | None = None, snapshot: dict | None
         (Path(asr_model_dir) / name).is_file()
         for name in ("model.int8.onnx", "tokens.txt")
     ):
-        raise ValueError("asrModelDir 缺少 SenseVoice 模型或词表")
+        # An unavailable explicitly selected local model disables only transcription.
+        # Do not fall back to sending the audio to another provider.
+        transcribe_voice = False
+        asr_model_dir = ""
     backfill_minutes = got.get("historyBackfillMinutes", 0)
     if (type(backfill_minutes) is not int or not 0 <= backfill_minutes <= 30):
         raise ValueError("historyBackfillMinutes 必须是 0 到 30 的整数")

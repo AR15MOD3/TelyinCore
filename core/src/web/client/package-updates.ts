@@ -7,6 +7,7 @@ interface PackageStatus {
   downloadUrl?: string;
   installable?: boolean;
   localPreview?: boolean;
+  checkRoute?: string;
   required?: boolean;
   pendingVersion?: string;
   installProgress?: string;
@@ -72,6 +73,7 @@ function paint(card: HTMLElement, state: PackageStatus) {
   } else {
     notice.textContent = state.message || '暂时无法检查更新。';
   }
+  if (state.checkRoute) notice.append('　版本检查 · ' + state.checkRoute);
 }
 
 async function check(force = false) {

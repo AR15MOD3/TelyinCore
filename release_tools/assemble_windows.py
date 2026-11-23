@@ -7,7 +7,7 @@ import zipfile
 
 from publish import ROOT, inventory, version_key
 
-PROGRAM = """launch.py infinity_control.py bot_launcher_companion.py qq_voice_services.py
+PROGRAM = """deployment_relocation.py bot_companion_custody.py telyincore/download_sources.py launch.py infinity_control.py bot_launcher_companion.py qq_voice_services.py
 qq_conversation_privacy.py qq_poke.py qq_stickers.py qq_sticker_view.py qq_visual_request.py
 qq_sticker_panel.py snowluma_status_policy.py qq_sticker_context.py qq_status_command.py
 pyproject.toml requirements-windows-acceptance.txt

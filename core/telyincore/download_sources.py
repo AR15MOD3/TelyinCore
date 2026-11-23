@@ -99,8 +99,35 @@ def github_routes(url, proxy=None):
     return ((mirror + url, None), (url, proxy))
 
 
+def github_route_text(target, official, proxy, error=None):
+    import socket
+    from urllib.error import HTTPError, URLError
+    label = ("镜像直连" if target != official else "GitHub 官方直连" if not proxy
+             else "GitHub 官方经下载代理 " + urlsplit(proxy).netloc)
+    if error is None:
+        return label + "成功"
+    cause = error.reason if isinstance(error, URLError) and not isinstance(error, HTTPError) else error
+    if isinstance(error, HTTPError):
+        reason = f"HTTP {error.code}"
+        if error.code == 429 or (error.code == 403 and error.headers and error.headers.get("X-RateLimit-Remaining") == "0"):
+            reason += "（限流）"
+    elif isinstance(cause, (TimeoutError, socket.timeout)):
+        reason = "超时"
+    elif isinstance(cause, ConnectionRefusedError) or getattr(cause, "winerror", None) == 10061:
+        reason = "连接被拒绝"
+    elif isinstance(cause, socket.gaierror):
+        reason = "域名解析失败"
+    elif isinstance(cause, ssl.SSLError):
+        reason = "TLS 验证或握手失败"
+    elif isinstance(cause, ValueError):
+        reason = "返回内容未通过校验"
+    else:
+        reason = "连接失败"
+    return label + "：" + reason
+
+
 def github_json(url, headers, proxy=None, *, limit=4_000_000, timeout=8, expected=None,
-                official_only=False):
+                official_only=False, report=None):
     routes = github_routes(url, proxy)
     for target, via in (routes[-1:] if official_only else routes):
         try:
@@ -111,7 +138,11 @@ def github_json(url, headers, proxy=None, *, limit=4_000_000, timeout=8, expecte
             value = json.loads(raw)
             if expected is not None and not expected(value):
                 raise ValueError("GitHub 响应格式无效")
+            if report:
+                report(github_route_text(target, url, via))
             return value
-        except TRANSFER_ERRORS:
+        except TRANSFER_ERRORS as error:
+            if report:
+                report(github_route_text(target, url, via, error))
             if target == url:
                 raise

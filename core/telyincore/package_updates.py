@@ -56,19 +56,28 @@ def installed_channel(root):
 
 def github_latest(repository: str, platform: str, *, channel="stable", proxy_root=None) -> dict:
     from urllib.parse import quote
+    from http.client import HTTPException
     from .download_sources import github_json, selected_proxy
 
     if not re.fullmatch(r"[A-Za-z0-9-]+/[A-Za-z0-9_.-]+", repository):
         raise ValueError("发行仓库名称无效")
     latest = None
     deadline = time.monotonic() + 12
+    attempts = []
+    def fetch(url, *args, **kwargs):
+        try:
+            return github_json(url, *args, report=attempts.append, **kwargs)
+        except (OSError, ValueError, HTTPException) as error:
+            detail = " → ".join(dict.fromkeys(attempts[-6:]))
+            raise ValueError("检查版本失败。" + detail) from error
+
     bucket = int(time.time() // 60)
     for page in range(1, 11):
         url = f"https://api.github.com/repos/{repository}/releases?per_page={_PAGE_SIZE}&page={page}&check={bucket}"
         remaining = deadline - time.monotonic()
         if remaining <= 0:
             raise TimeoutError("GitHub 检查超时")
-        releases = github_json(url, {"Accept": "application/vnd.github+json", "User-Agent": "TelyinCore-release-check"},
+        releases = fetch(url, {"Accept": "application/vnd.github+json", "User-Agent": "TelyinCore-release-check"},
                                selected_proxy("official", proxy_root), timeout=min(4, remaining / 2),
                                expected=lambda rows: isinstance(rows, list) and all(isinstance(row, dict) for row in rows))
         for release in releases:
@@ -89,7 +98,7 @@ def github_latest(repository: str, platform: str, *, channel="stable", proxy_roo
                 # A mirror may announce a version, but only an official release can
                 # declare a breaking compatibility floor for an ordinary deployment.
                 if "TelyinCore-Minimum:" in (release.get("body") or ""):
-                    official = github_json(
+                    official = fetch(
                         f"https://api.github.com/repos/{repository}/releases/tags/{quote(tag)}",
                         {"User-Agent": "TelyinCore-release-check"}, selected_proxy("official", proxy_root),
                         official_only=True, timeout=4)
@@ -106,6 +115,7 @@ def github_latest(repository: str, platform: str, *, channel="stable", proxy_roo
         if len(releases) < _PAGE_SIZE:
             if latest is None:
                 raise ValueError("仓库中还没有此平台的公开发布记录。")
+            latest["checkRoute"] = " → ".join(dict.fromkeys(attempts[-6:]))
             return latest
     raise ValueError("发布历史过长，本次未能核对完整。")
 
@@ -235,7 +245,8 @@ class PackageUpdates:
                 with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=path.parent,
                                                  delete=False) as f:
                     temporary = Path(f.name)
-                    json.dump([time.time(), self.repository, self.platform, result["current"], result.get("latest"), bool(result.get("downloadUrl")), bool(result.get("installable")), result.get("minimum")], f)
+                    json.dump([time.time(), self.repository, self.platform, result["current"], result.get("latest"), bool(result.get("downloadUrl")), bool(result.get("installable")), result.get("minimum"),
+                               result.get("checkRoute", ""), result.get("message", "")], f)
                 temporary.replace(path)
             except OSError:
                 pass  # Read-only installations still report the check.
@@ -252,20 +263,22 @@ class PackageUpdates:
         path = self.root / "runtime" / ("launcher-release-check.json" if self.channel == "stable" else "launcher-release-check-acceptance.json")
         try:
             with path.open("rb") as f:
-                stamp, repository, platform, current, latest, *asset = json.loads(f.read(513))
+                stamp, repository, platform, current, latest, *asset = json.loads(f.read(4097))
             age = time.time() - stamp
             if not (0 <= age < (CHECK_INTERVAL if self._cache is not None else 120) and repository == self.repository and platform == self.platform
                     and current == installed_package(self.root, self.platform)):
                 return
             result = {"current": current, "platform": platform, "channel": self.channel}
             if latest is None:
-                result.update(status="unavailable", message="启动自检暂未取得公开版本，可手动重试。")
+                result.update(status="unavailable", message=(asset[4] if len(asset) == 5 and isinstance(asset[4], str) and asset[4] else "启动自检暂未取得公开版本，可手动重试。"))
             else:
                 local, remote = version_key(current), version_key(latest)
                 result.update(latest=latest,
                               status="available" if remote > local else "ahead" if local > remote else "current",
                               releaseUrl=f"https://github.com/{repository}/releases/tag/{release_tag(platform, latest, self.channel)}")
-                if len(asset) == 3 and asset[2] and local < version_key(asset[2]) <= remote:
+                if len(asset) == 5 and isinstance(asset[3], str):
+                    result["checkRoute"] = asset[3][:512]
+                if len(asset) >= 3 and asset[2] and local < version_key(asset[2]) <= remote:
                     result.update(required=True, minimum=asset[2])
                 if result["status"] == "available":
                     if not asset:
@@ -285,12 +298,13 @@ class PackageUpdates:
     @staticmethod
     def describe(result):
         status = result["status"]
+        route = (" · " + result["checkRoute"]) if result.get("checkRoute") else ""
         if status == "available":
-            return f"版本自检 · 发现新版 {result['latest']}（本机 {result['current']}）"
+            return f"版本自检 · 发现新版 {result['latest']}（本机 {result['current']}）{route}"
         if status == "current":
-            return f"版本自检 · {result['current']} 已是最新公开版本"
+            return f"版本自检 · {result['current']} 已是最新公开版本{route}"
         if status == "ahead":
-            return f"版本自检 · 本机 {result['current']}，公开版本 {result['latest']}"
+            return f"版本自检 · 本机 {result['current']}，公开版本 {result['latest']}{route}"
         return "版本自检 · " + result["message"]
 
     def wake(self):

@@ -92,6 +92,7 @@ class ASRSession:
 
 
 _OLD_QQ_ENTRIES = frozenset({
+    "9543e35b5e09bd1604ebe015fc67a753c4ccd59fe3f71e105a73f81877130359",  # distributed Windows sticker/poke adapter
     "6657f66364341d7d8e5394d2f94cb260fdbb28bc3dbef9850a2b6d5b10c80dbd",  # Linux before typed media IDs
     "c882d08f6e0035f59591dac73b7a3967fe60d26369bf188982143576a7d44c23",  # shared plugin before typed media IDs
     "ef4355ddf7d4c6e0e2f11c9da677daec4855d0aad2125342177326aa97fde842",  # stock beta.0.5.4, Windows and Linux

@@ -100,7 +100,22 @@ def check_previous_companion(core, bot):
             row = _json(snapshot[0])
             if row.get('version') == 1:
                 return '当前 Bot 有旧版 SnowLuma 托管登记，缺少进程身份；请先核对旧登记。'
-            _recover_private_marker(core, path, _installation(core), stop_orphan=True)
+            installation = _installation(core)
+            if row.get('installation') != installation:
+                from deployment_relocation import previous_installation, verify_bot
+                verify_bot(core, bot)
+                previous = previous_installation(core)
+                if previous is None:
+                    return 'SnowLuma 托管登记的安装路径已变化；请核对原安装目录。原登记已保留。'
+                old_ids = {hashlib.sha256(os.path.normcase(str(previous / layout)).encode()).hexdigest()
+                           for layout in ('SnowLuma', 'services/SnowLuma')}
+                if row.get('installation') not in old_ids:
+                    return 'SnowLuma 托管登记与原安装路径不匹配，已保留登记。'
+                # A relocated installation has no authority to stop an old Job.
+                # Archive only after the original HOST and the named Job are gone.
+                _recover_private_marker(core, path, row['installation'], stop_orphan=False)
+                return '已核验原安装的 SnowLuma 托管进程和进程组均已退出，旧登记已归档。'
+            _recover_private_marker(core, path, installation, stop_orphan=True)
         except (OSError, ValueError) as error:
             exit_event('snowluma_preflight_retained', bot=bot, error=error)
             return '当前 Bot 的旧 SnowLuma 尚未确认退出；若原启动器还在，请先正常休止。'

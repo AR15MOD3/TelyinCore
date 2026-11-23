@@ -28,6 +28,7 @@ from qq_environment import read_qq_environment
 from asr_install import ASRInstaller
 from tts_install import TTSInstaller
 from qq_voice_services import ASRSession, tts_port, external_unit
+from deployment_relocation import effective_asr_directory
 from voice_setup import ASR_DEFAULT_THREADS, ASR_FILES, check_asr
 from snowluma_recovery import Recovery, NeedsAction
 from bot_private_file import open_private_new
@@ -1057,8 +1058,9 @@ class QQControl:
             loaded = bool(self.plugin_running())
             voice_enabled = self._plugin_enabled is None or self._plugin_enabled()
             asr_configured = bool(asr_selected)
-            asr_ready = (asr_configured and bool(data.get("asrModelDir"))
-                              and all((Path(str(data["asrModelDir"])) / name).is_file()
+            asr_path = effective_asr_directory(data.get("asrModelDir"), self.models.parent)
+            asr_ready = (asr_configured and bool(asr_path)
+                              and all((Path(asr_path) / name).is_file()
                                       for name in ("model.int8.onnx", "tokens.txt")))
             tts_configured = bool(tts_selected)
             recovery_state = self.recovery.state()
@@ -1086,7 +1088,9 @@ class QQControl:
                             "historyBackfillMinutes": data.get("historyBackfillMinutes", 0),
                             "reactionWindowSeconds": data.get("reactionWindowSeconds", 3)},
                 "asr": {"autoStart": data.get("asrAutoStart", data.get("transcribeVoice", False)),
-                        "startError": self._asr_error, "install": self.asr_installer.read(), "enabled": data.get("transcribeVoice", False) is True,
+                        "startError": self._asr_error or (
+                            "保存的本地 ASR 模型缺少权重或词表，请重新选择模型。"
+                            if data.get("transcribeVoice") and asr_path and not asr_ready else ""), "install": self.asr_installer.read(), "enabled": data.get("transcribeVoice", False) is True,
                         "configured": asr_configured, "runtimeIssue": self._asr_runtime_issue(),
                         "setupReady": (asr_ready and data.get("transcribeVoice", False) is True
                                        or ("asr", asr_selected, "") in self._voice_setup_passed
@@ -1576,7 +1580,7 @@ class QQControl:
     def _start_asr(self):
         self._require_voice_enabled()
         data = self._config()
-        model = Path(data.get("asrModelDir") or "")
+        model = Path(effective_asr_directory(data.get("asrModelDir"), self.models.parent) or "")
         if not data.get("transcribeVoice") or model.parent.resolve() != (self.models / "asr").resolve():
             raise ValueError("请先启用 ASR 并保存识别模型")
         if not all((model / name).is_file() for name in ASR_FILES):

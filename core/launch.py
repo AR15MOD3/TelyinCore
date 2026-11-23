@@ -5139,6 +5139,10 @@ def _main_impl(argv: list[str] | None = None, *, sharing_bridge_factory=None, pr
         home, attention_scope, attention=attention_store, available=navigation_tools)
     from telyincore.receipt_incidents import ReceiptFailureJournal
     receipt_failure_journal = ReceiptFailureJournal(home / 'receipt-failures')
+    from deployment_relocation import relocate_deliveries
+    migrated = relocate_deliveries(core_root, args.bot, home, shared_events)
+    if migrated:
+        print("[startup] 已核验并迁移收件记录：" + "、".join(migrated), file=sys.stderr, flush=True)
     plugin_ingress = PluginIngress(shared_events, recovery_root=home / "ingress-delivery")
     if _sharing_lifecycle.get('runtime_evidence_owner') is not None:
         plugin_ingress.bind_runtime_evidence(_sharing_lifecycle['runtime_evidence_owner'])

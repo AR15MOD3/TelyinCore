@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import hashlib
+import http.client
 import json
 import os
 import re
@@ -159,7 +160,7 @@ def fetch_asset(url, proxy, path, size, expected, user_agent):
 def release_asset(api, tag, url, name, headers, proxy):
     from http.client import HTTPException
     from urllib.error import HTTPError
-    from .download_sources import github_json, open_public
+    from .download_sources import github_json, github_route_text, open_public
 
     proof = None
     try:
@@ -170,15 +171,23 @@ def release_asset(api, tag, url, name, headers, proxy):
         # The API may be rate-limited while the release website is reachable.
         # Anchor the checksum on GitHub itself before using mirrored metadata.
         request = Request(url[:-4] + '.sha256', headers={'User-Agent': headers['User-Agent']})
-        with open_public(request, 8, proxy) as response:
-            raw = response.read(513)
+        try:
+            with open_public(request, 8, proxy) as response:
+                raw = response.read(513)
+        except (OSError, HTTPException) as checksum_error:
+            raise ValueError("核验官方摘要失败。发行 API " + github_route_text(api, api, proxy, exc)
+                             + "；校验文件 " + github_route_text(url, url, proxy, checksum_error)) from checksum_error
         if len(raw) > 512:
             raise ValueError('官方校验文件过大')
         parts = raw.decode('ascii').split()
         if len(parts) != 2 or not SUM.fullmatch(parts[0]) or parts[1] != name:
             raise ValueError('官方校验文件与目标更新包不符')
         proof = parts[0]
-        release = github_json(api, headers, proxy)
+        attempts = []
+        try:
+            release = github_json(api, headers, proxy, report=attempts.append)
+        except (OSError, ValueError, HTTPException) as error:
+            raise ValueError("已取得官方摘要，读取附件元数据失败。" + " → ".join(attempts)) from error
     if not isinstance(release, dict) or release.get('draft') is not False or release.get('tag_name') != tag:
         raise ValueError('未取得该平台的公开发布记录')
     matches = [asset for asset in release.get('assets', []) if isinstance(asset, dict)
@@ -199,6 +208,8 @@ def release_asset(api, tag, url, name, headers, proxy):
 def stage(checker):
     root=checker.root.resolve()
     state=checker.check(force=True)
+    if state['status']=='unavailable':
+        raise ValueError(state['message'])
     if state['status']!='available':
         raise ValueError('当前没有可安装的新版')
     base,version,platform=state['current'],state['latest'],state['platform']
@@ -208,7 +219,7 @@ def stage(checker):
     repo=checker.repository
     api=f'https://api.github.com/repos/{repo}/releases/tags/{tag}'
     headers={'User-Agent':'TelyinCore-online-update','Accept':'application/vnd.github+json'}
-    from .download_sources import github_routes, selected_proxy, TRANSFER_ERRORS
+    from .download_sources import github_routes, selected_proxy, github_route_text, TRANSFER_ERRORS
     proxy = selected_proxy("official", checker.proxy_root)
     checker.install_progress = "正在向发布方核对附件 SHA-256"
     url = f'https://github.com/{repo}/releases/download/{tag}/{name}'
@@ -216,7 +227,11 @@ def stage(checker):
     if preview:
         size, expected = preview.metadata(platform, version, name, MAX_BYTES)
     else:
-        size, expected = release_asset(api, tag, url, name, headers, proxy)
+        checker.install_progress = "向 GitHub 官方核验附件摘要" + (" · 下载代理" if proxy else " · 直连")
+        try:
+            size, expected = release_asset(api, tag, url, name, headers, proxy)
+        except (OSError, http.client.HTTPException) as error:
+            raise ValueError("核验官方附件摘要失败。" + github_route_text(url, url, proxy, error)) from error
     cache=folder(root);cache.mkdir(parents=True,exist_ok=True)
     with tempfile.NamedTemporaryFile(dir=cache,delete=False) as out:
         temp=Path(out.name)
@@ -238,6 +253,7 @@ def stage(checker):
             temp.write_bytes(data)
             source, route = "preview", "direct"
         else:
+            failures = []
             for target, via in github_routes(url, proxy):
                 is_origin = target == url
                 label = '官方源' if is_origin else 'GitHub 镜像'
@@ -247,9 +263,10 @@ def stage(checker):
                     source = 'official' if is_origin else 'mirror'
                     route = 'proxy' if via else 'direct'
                     break
-                except TRANSFER_ERRORS:
+                except TRANSFER_ERRORS as error:
+                    failures.append(github_route_text(target, url, via, error))
                     if is_origin:
-                        raise
+                        raise ValueError('下载更新包失败。' + ' → '.join(failures)) from error
         checker.install_progress = '正在核对更新包和本机版本'
         with zipfile.ZipFile(cached if reusable else temp) as z:
             files = inspect_zip(root,z,platform,base,version)
@@ -282,9 +299,20 @@ def apply_pending(root, platform, manual_package=None):
             core=root/'core'
             lock=HostAdmissionLock(core,exclusive=True).acquire()
             stack.callback(lock.close)
-            owners=core/'data/host-start-owners'
-            if (core/'data/host-maintenance.json').exists() or (owners.exists() and any(owners.iterdir())):
-                raise ValueError('请先正常休止此部署的其他 Bot 并结束档案维护')
+            from scripts.maintenance_prepare import check_owner_history, running_services
+            if safe_file(core, 'data/host-maintenance.json').exists():
+                raise ValueError('此部署有未结束的档案维护，请完成或恢复原维护操作后再更新。')
+            try:
+                check_owner_history(core, lock)
+            except ValueError as error:
+                if str(error).startswith('本次开机内仍有启动记录'):
+                    raise ValueError('本次开机的启动记录尚未确认收尾。请正常休止 Bot 并退出原启动窗口。'
+                                     '若启动器已无服务且重试仍提示这一条，请保存工作并重新启动 Windows，'
+                                     '然后在唤醒 Bot 前重试更新。') from error
+                raise ValueError(f'无法核实启动登记，已保留原记录。详情：{error}') from error
+            active = running_services(core)
+            if active:
+                raise ValueError('请先在启动器休止仍在运行的 Bot：' + '、'.join(active))
         else:
             raise ValueError('不支持的平台')
         if manual_package is not None:

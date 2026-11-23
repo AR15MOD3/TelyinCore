@@ -17,4 +17,10 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except (ValueError, OSError) as error:
+        reason = str(error)
+        if reason == "another startup/maintenance admission owns this core":
+            reason = "此部署仍有启动或档案维护操作正在进行，请退出原操作窗口后重试。"
+        sys.exit("更新未完成：" + reason)

@@ -53,6 +53,7 @@ function paint(card, state) {
   } else {
     notice.textContent = state.message || "暂时无法检查更新。";
   }
+  if (state.checkRoute) notice.append("　版本检查 · " + state.checkRoute);
 }
 async function check(force = false) {
   if (pending) {

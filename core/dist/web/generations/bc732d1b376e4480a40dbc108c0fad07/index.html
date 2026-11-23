@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>telyincore 控制台</title>
+<meta name="theme-color" content="#f3f5f8">
+<script data-core-theme-bootstrap>(()=>{const presets=[{"file":"default.json","values":{"__name":"霜白映微蓝","__order":0,"__scheme":"light","--color-mint":"#52749e","--color-mint-text":"#3e6089","--color-mint-wash":"rgb(82 116 158 / 8%)","--radius-chip":"7px","--radius-row":"10px","--radius-card":"17px","--radius-pill":"999px","--radius-dot":"2px","--radius-bubble":"4px 15px 15px","--color-white":"#fcfdff","--color-canvas":"#f3f5f8","--color-rail":"#e9edf2","--color-card":"#edf0f5","--color-bubble":"#e5eaf1","--color-focus":"#f7f9fc","--color-line":"#d5dce6","--color-wash":"rgb(41 52 67 / 4%)","--color-scrim":"rgb(30 39 52 / 32%)","--color-ink":"#293443","--color-dim":"#535f70","--color-faint":"#5c6878","--color-soft-red":"#bd3f50","--color-console":"#19212b","--color-console-line":"#354252","--color-console-ink":"#d5dee9","--color-console-error":"#f29a9f","--color-console-warn":"#dfbd80","--color-console-ok":"#52749e","--color-status-warn":"#b2863e","--color-status-warn-text":"#8c6525","--color-status-off":"#98a4b3","--icon":"18px","--color-flag-neutral":"rgb(41 52 67 / 6%)","--color-mint-pick":"#e2e9f2","--color-mint-select":"rgb(82 116 158 / 25%)","--color-nav-veil":"rgb(243 245 248 / 76%)","--nav-veil-blur":"10px","--avatar-msg":"34px","--avatar-rail":"34px","--font-sans":"-apple-system, \"Segoe UI\", \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans CJK SC\", sans-serif","--font-mono":"ui-monospace, \"Cascadia Mono\", \"Sarasa Mono SC\", Consolas, monospace","--color-flag-mint":"var(--color-mint)","--color-flag-ink":"#ffffff","--color-service-on":"#52749e","--color-service-warn":"#c99642"}},{"file":"orange.json","values":{"__name":"暖橙照初晴","__order":1,"__scheme":"light","--color-mint":"#a75d38","--color-mint-text":"#895032","--color-mint-wash":"rgb(167 93 56 / 8%)","--radius-chip":"7px","--radius-row":"10px","--radius-card":"17px","--radius-pill":"999px","--radius-dot":"2px","--radius-bubble":"4px 15px 15px","--color-white":"#fdfbf8","--color-canvas":"#f7f4ef","--color-rail":"#ede8e0","--color-card":"#f1ece5","--color-bubble":"#eae2d8","--color-focus":"#faf7f2","--color-line":"#ded4c8","--color-wash":"rgb(57 51 45 / 4%)","--color-scrim":"rgb(43 35 28 / 32%)","--color-ink":"#39332d","--color-dim":"#665a4f","--color-faint":"#6e6053","--color-soft-red":"#b84b45","--color-console":"#211d19","--color-console-line":"#473c32","--color-console-ink":"#e1d6c9","--color-console-error":"#f1a097","--color-console-warn":"#e1bc80","--color-console-ok":"#9bc5a6","--color-status-warn":"#b78c49","--color-status-warn-text":"#916522","--color-status-off":"#a59786","--icon":"18px","--color-flag-neutral":"rgb(57 51 45 / 6%)","--color-mint-pick":"#e9ddd0","--color-mint-select":"rgb(167 93 56 / 25%)","--color-nav-veil":"rgb(247 244 239 / 76%)","--nav-veil-blur":"10px","--avatar-msg":"34px","--avatar-rail":"34px","--font-sans":"-apple-system, \"Segoe UI\", \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans CJK SC\", sans-serif","--font-mono":"ui-monospace, \"Cascadia Mono\", \"Sarasa Mono SC\", Consolas, monospace","--color-flag-mint":"var(--color-mint)","--color-flag-ink":"#ffffff","--color-service-on":"#a75d38","--color-service-warn":"#c58c3d"}},{"file":"purple.json","values":{"__name":"烟紫栖墨夜","__order":2,"__scheme":"dark","--color-mint":"#b6a0d2","--color-mint-text":"#cfbfdf","--color-mint-wash":"rgb(182 160 210 / 12%)","--radius-chip":"7px","--radius-row":"10px","--radius-card":"17px","--radius-pill":"999px","--radius-dot":"2px","--radius-bubble":"4px 15px 15px","--color-white":"#292430","--color-canvas":"#191720","--color-rail":"#15131b","--color-card":"#231f2b","--color-bubble":"#2d2735","--color-focus":"#302936","--color-line":"#44384e","--color-wash":"rgb(233 228 235 / 5%)","--color-scrim":"rgb(14 12 19 / 64%)","--color-ink":"#e9e4eb","--color-dim":"#bdb2c5","--color-faint":"#aa9fb3","--color-soft-red":"#e397a8","--color-console":"#18141e","--color-console-line":"#44384e","--color-console-ink":"#d9cfdf","--color-console-error":"#e8a2b1","--color-console-warn":"#d8be8e","--color-console-ok":"#96c5b4","--color-status-warn":"#c8a76d","--color-status-warn-text":"#dfc48e","--color-status-off":"#a397ac","--icon":"18px","--color-flag-neutral":"rgb(233 228 235 / 7%)","--color-mint-pick":"#44334f","--color-mint-select":"rgb(182 160 210 / 26%)","--color-nav-veil":"rgb(25 23 32 / 76%)","--nav-veil-blur":"10px","--avatar-msg":"34px","--avatar-rail":"34px","--font-sans":"-apple-system, \"Segoe UI\", \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans CJK SC\", sans-serif","--font-mono":"ui-monospace, \"Cascadia Mono\", \"Sarasa Mono SC\", Consolas, monospace","--color-flag-mint":"var(--color-mint)","--color-flag-ink":"#211b29","--color-service-on":"#b6a0d2","--color-service-warn":"#d8be8e"}},{"file":"blue.json","values":{"__name":"雾蓝泊深海","__order":3,"__scheme":"dark","--color-mint":"#94b5d4","--color-mint-text":"#b9cfe3","--color-mint-wash":"rgb(148 181 212 / 12%)","--radius-chip":"7px","--radius-row":"10px","--radius-card":"17px","--radius-pill":"999px","--radius-dot":"2px","--radius-bubble":"4px 15px 15px","--color-white":"#242c36","--color-canvas":"#151a21","--color-rail":"#11161c","--color-card":"#1d252e","--color-bubble":"#26313d","--color-focus":"#293540","--color-line":"#394958","--color-wash":"rgb(227 233 238 / 5%)","--color-scrim":"rgb(9 13 18 / 64%)","--color-ink":"#e3e9ee","--color-dim":"#b0bfcc","--color-faint":"#9eafbe","--color-soft-red":"#dfa0a5","--color-console":"#121820","--color-console-line":"#344452","--color-console-ink":"#ccdbe7","--color-console-error":"#e6a3a6","--color-console-warn":"#d6bd8c","--color-console-ok":"#9ac6b5","--color-status-warn":"#c2a36e","--color-status-warn-text":"#dfc594","--color-status-off":"#98a6b4","--icon":"18px","--color-flag-neutral":"rgb(227 233 238 / 7%)","--color-mint-pick":"#2c4053","--color-mint-select":"rgb(148 181 212 / 26%)","--color-nav-veil":"rgb(21 26 33 / 76%)","--nav-veil-blur":"10px","--avatar-msg":"34px","--avatar-rail":"34px","--font-sans":"-apple-system, \"Segoe UI\", \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans CJK SC\", sans-serif","--font-mono":"ui-monospace, \"Cascadia Mono\", \"Sarasa Mono SC\", Consolas, monospace","--color-flag-mint":"var(--color-mint)","--color-flag-ink":"#17232e","--color-service-on":"#94b5d4","--color-service-warn":"#d6bd8c"}},{"file":"amber.json","values":{"__name":"星夜映鎏金","__order":4,"__scheme":"dark","--color-mint":"#c9b180","--color-mint-text":"#dfcba5","--color-mint-wash":"rgb(201 177 128 / 11%)","--radius-chip":"7px","--radius-row":"10px","--radius-card":"17px","--radius-pill":"999px","--radius-dot":"2px","--radius-bubble":"4px 15px 15px","--color-white":"#292620","--color-canvas":"#191815","--color-rail":"#141310","--color-card":"#23211c","--color-bubble":"#2e2a23","--color-focus":"#302c25","--color-line":"#474033","--color-wash":"rgb(234 229 219 / 5%)","--color-scrim":"rgb(12 11 8 / 64%)","--color-ink":"#eae5db","--color-dim":"#bfb6a6","--color-faint":"#b1a58f","--color-soft-red":"#e19789","--color-console":"#181611","--color-console-line":"#443b2c","--color-console-ink":"#dcd3c1","--color-console-error":"#e6a093","--color-console-warn":"#dec18a","--color-console-ok":"#a9c4a0","--color-status-warn":"#c4a36b","--color-status-warn-text":"#e2c792","--color-status-off":"#a99e8e","--icon":"18px","--color-flag-neutral":"rgb(234 229 219 / 7%)","--color-mint-pick":"#443b2a","--color-mint-select":"rgb(201 177 128 / 26%)","--color-nav-veil":"rgb(25 24 21 / 76%)","--nav-veil-blur":"10px","--avatar-msg":"34px","--avatar-rail":"34px","--font-sans":"-apple-system, \"Segoe UI\", \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans CJK SC\", sans-serif","--font-mono":"ui-monospace, \"Cascadia Mono\", \"Sarasa Mono SC\", Consolas, monospace","--color-flag-mint":"var(--color-mint)","--color-flag-ink":"#241f16","--color-service-on":"#c9b180","--color-service-warn":"#dfb96d"}},{"file":"green.json","values":{"__name":"烟玫映炭夜","__order":5,"__scheme":"dark","--color-mint":"#cdabb7","--color-mint-text":"#dfc4cd","--color-mint-wash":"rgb(205 171 183 / 10%)","--radius-chip":"7px","--radius-row":"10px","--radius-card":"17px","--radius-pill":"999px","--radius-dot":"2px","--radius-bubble":"4px 15px 15px","--color-white":"#292429","--color-canvas":"#1c191c","--color-rail":"#161416","--color-card":"#231f23","--color-bubble":"#30292e","--color-focus":"#332c31","--color-line":"#483e44","--color-wash":"rgb(235 229 232 / 5%)","--color-scrim":"rgb(15 12 14 / 64%)","--color-ink":"#ebe5e8","--color-dim":"#c5b8bf","--color-faint":"#b1a1aa","--color-soft-red":"#e4a19b","--color-console":"#191518","--color-console-line":"#43373e","--color-console-ink":"#dfd2d8","--color-console-error":"#e6a3a0","--color-console-warn":"#d9bf94","--color-console-ok":"#a5c3b3","--color-status-warn":"#c2a579","--color-status-warn-text":"#dfc79f","--color-status-off":"#ab9da4","--icon":"18px","--color-flag-neutral":"rgb(235 229 232 / 7%)","--color-mint-pick":"#48353e","--color-mint-select":"rgb(205 171 183 / 26%)","--color-nav-veil":"rgb(28 25 28 / 76%)","--nav-veil-blur":"10px","--avatar-msg":"34px","--avatar-rail":"34px","--font-sans":"-apple-system, \"Segoe UI\", \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans CJK SC\", sans-serif","--font-mono":"ui-monospace, \"Cascadia Mono\", \"Sarasa Mono SC\", Consolas, monospace","--color-flag-mint":"var(--color-mint)","--color-flag-ink":"#2b2026","--color-service-on":"#cdabb7","--color-service-warn":"#d9bf94"}}];const boot=function bootTheme(presets, namespace = null, restoreRail = true) {
+  const root = document.documentElement;
+  // Before Bot identity is known, paint public defaults only.
+  const read = key => namespace === null ? null : localStorage.getItem(namespace + key);
+  let mode = 'auto'; let pick = ''; let cache = null;
+  try {
+    mode = read('telyincore-look-mode') || 'auto';
+    pick = read('telyincore-look-preset') || '';
+    cache = JSON.parse(read('telyincore-look-resolved-v1') || 'null');
+  } catch { /* Disabled or corrupt storage must not delay first paint. */ }
+  const dark = typeof matchMedia === 'function'
+    && matchMedia('(prefers-color-scheme: dark)').matches;
+  const scheme = mode === 'dark' || (mode !== 'light' && dark) ? 'dark' : 'light';
+  const base = (mode !== 'auto' && presets.find(one => one.file === pick))
+    || presets.find(one => one.values.__scheme === scheme) || presets[0];
+  const values = { ...base.values };
+  const allowed = new Set(Object.keys(presets[0].values).filter(key => key.startsWith('--')));
+  if (cache?.version === 1 && cache.mode === mode && cache.pick === pick && cache.dark === dark
+      && cache.base === JSON.stringify(base.values)
+      && cache.values && typeof cache.values === 'object') {
+    for (const [key, value] of Object.entries(cache.values)) {
+      if (allowed.has(key) && typeof value === 'string' && value.length < 500
+          && !/[;{}<>]|url\s*\(|@import/i.test(value)) values[key] = value;
+    }
+  }
+  for (const [key, value] of Object.entries(values)) {
+    if (key.startsWith('--') && typeof value === 'string') root.style.setProperty(key, value);
+  }
+  root.style.colorScheme = base.values.__scheme === 'dark' ? 'dark' : 'light';
+  root.style.backgroundColor = 'var(--color-canvas)';
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.setAttribute('content', values['--color-canvas']);
+  if (!restoreRail) return;
+  // Restore layout only for an identified Bot; initial paint uses public defaults.
+  let railWidth = innerWidth <= 900 ? 68 : 280;
+  try {
+    const stored = read('telyincore.rail-width');
+    if (stored !== null && stored.trim() !== '' && Number.isFinite(Number(stored))) {
+      railWidth = Number(stored);
+    }
+  } catch { /* The default layout still works without storage. */ }
+  railWidth = Math.max(68, Math.min(Math.max(200, Math.min(480, innerWidth - 360)), railWidth));
+  if (railWidth < 200) railWidth = 68;
+  root.style.setProperty('--rail-w', `${Math.round(railWidth)}px`);
+  root.setAttribute('data-core-rail-compact', String(railWidth === 68));
+};globalThis.__coreApplyScopedTheme=namespace=>boot(presets,namespace,false);boot(presets);})();</script>
+<link rel="stylesheet" href="/__web/bc732d1b376e4480a40dbc108c0fad07/style.css">
+</head>
+<body>
+<!-- ★★ 壳那四块的**落点**：左栏 ／ 顶栏 ／ 正文那一列 ／ 底部那一行。
+     ⚠️ 这里**一个页标都没有**（只有落点）：页表是唯一登记处（见 `pages.ts` 抬头）——
+        加一页 = 一个文件 ＋ `pages.ts` 里一行，而这份壳**不必动**。
+     ⚠️ 真填进去的东西由 `shell.ts` 建（`document.createElement` ＋ `textContent`）。 -->
+<div id="rail"></div>
+<main id="content"></main>
+<header id="topbar"></header>
+<footer id="bottom"></footer>
+<noscript>这是那一页 —— 而它要 JavaScript 才转得起来。</noscript>
+<script type="module" src="/__web/bc732d1b376e4480a40dbc108c0fad07/app.js"></script>
+</body>
+</html>

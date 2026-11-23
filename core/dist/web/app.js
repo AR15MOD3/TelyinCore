@@ -11457,7 +11457,7 @@ function memoryPage(shell2) {
 }
 
 // src/web/client/plugin-guide-version.ts
-var PLUGIN_GUIDE_VERSION = true ? "v1.16" : "";
+var PLUGIN_GUIDE_VERSION = true ? "v1.17" : "";
 
 // src/web/client/plugins-page.ts
 var NONE_YET = "还没有装任何插件。";

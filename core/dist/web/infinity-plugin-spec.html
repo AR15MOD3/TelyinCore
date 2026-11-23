@@ -1,7 +1,7 @@
 <!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'">
-<title>TelyinCore Infinity 插件开发手册 v1.16</title><style>
+<title>TelyinCore Infinity 插件开发手册 v1.17</title><style>
 :root{--color-dim:#535f70;--color-mint-text:#3e6089;--radius-pill:999px}
 /* Shared by the Core application and the standalone plugin manual. */
 @layer base {
@@ -85,7 +85,7 @@ h2,h3{break-after:avoid}.code{break-inside:avoid}a{color:inherit}}
 </style></head><body><div class="shell" id="top">
 <header class="top"><span class="brand">TelyinCore <span class="badge">INFINITY</span></span>
 <a href="/#/plugin">← 返回插件市场</a></header><div class="layout">
-<aside><div class="eyebrow">DEVELOPER REFERENCE · v1.16</div><nav aria-label="章节目录">
+<aside><div class="eyebrow">DEVELOPER REFERENCE · v1.17</div><nav aria-label="章节目录">
 <a href="#section-1">1. 范围与信任边界</a>
 <a href="#section-2">2. 目录与清单</a>
 <a href="#section-6">3. 生命周期</a>
@@ -112,10 +112,11 @@ h2,h3{break-after:avoid}.code{break-inside:avoid}a{color:inherit}}
 <a href="#section-53">24. Windows、Linux 与档案名称</a>
 <a href="#section-54">25. 配置页、预览与状态提示</a>
 <a href="#section-58">26. 将页面显示缓存接入设置</a>
+<a href="#section-65">27. Windows 0.5.4.6 插件接入示例</a>
 </nav></aside><main><header class="hero"><div class="eyebrow">插件开发参考</div>
-<h1>Infinity 插件开发规范</h1><p class="subtitle">v1.16 · Python Infinity API 1
- · 本地与 GitHub 统一接入</p></header><p>适用于 Python Infinity API 1 · 更新日期：2026-11-13。</p>
-<p>本手册面向插件开发者，介绍插件目录、工具接口、配置页面、发布方法和常见问题。第一次开发建议先阅读第 2～5 节，完成一个本地插件，再阅读第 11 节发布到插件市场。涉及模型调用、长期记忆或独立模型依赖时，再阅读第 21～23 节；跨平台发布和配置页开发参见第 24～25 节；页面显示缓存接入参见第 26 节。</p>
+<h1>Infinity 插件开发规范</h1><p class="subtitle">v1.17 · Python Infinity API 1
+ · 本地与 GitHub 统一接入</p></header><p>适用于 Python Infinity API 1。本次按 Windows Core beta.0.5.4.6 核对，更新于 2026-11-23。</p>
+<p>本手册面向插件开发者，介绍插件目录、工具接口、配置页面、发布方法和常见问题。第一次开发建议先阅读第 2～5 节，完成一个本地插件，再阅读第 11 节发布到插件市场。涉及模型调用、长期记忆或独立模型依赖时，再阅读第 21～23 节；跨平台发布和配置页开发参见第 24～25 节；页面显示缓存接入参见第 26 节。开发 QQ 媒体、群聊交互或首次部署页面时，可直接查第 27 节的示例。</p>
 <p>文中的代码和命令是示例，请按自己的插件名称、路径和配置调整。可选接口应先检查宿主是否提供；文档版本与插件 API 版本分别管理。</p>
 <h2 id="section-1">1. 范围与信任边界</h2>
 <p>Infinity 承载可选世界适配器、工具实现和外部服务连接；事件库、总线、主循环、人格与记忆属于核心。 本地插件与 GitHub 插件使用相同清单、生命周期和配置页。GitHub 是发现/分发来源，不是运行权限门槛。 Python 插件在 TelyinCore 进程内运行，不是安全沙箱：启用前须信任源码。 配置页 iframe 的隔离不代表 Python 插件也被隔离。</p>
@@ -394,7 +395,9 @@ git push origin v0.1.0</code></pre></div>
 <p>先检查仓库是否公开、Topics 是否包含 <code>core-infinity-plugin</code>，再检查包内 keywords 是否包含 <code>core-infinity</code>。仓库话题决定是否被发现，包内关键字决定能否通过安装检查。</p>
 <p>市场会缓存列表。页面显示“上次缓存”时，说明这不是新查询的结果；后台刷新完成后再次点击刷新查看。网络故障、GitHub 限流和索引延迟都可能影响列表更新。当前查询最多展示 30 个近期更新仓库。</p>
 <h3 id="section-35">插件市场网络代理</h3>
-<p>在「设置 → 通用 → 网络代理 → 适用范围」可单独启用插件市场代理。该代理用于 GitHub 搜索和 GitHub 归档下载，与模型 API 和 TTS、ASR 官方源下载开关独立。未启用市场代理时，市场沿用系统或环境代理。TTS、ASR 镜像源始终直连。</p>
+<p>在「设置 → 通用 → 网络代理 → 适用范围」分别选择「插件市场」和「下载」。例如，用户只打开了下载代理，此时插件市场的 GitHub 官方回退仍走直连。</p>
+<div class="table-wrap"><table><thead><tr><th scope="col">用户操作</th><th scope="col">首选连接</th><th scope="col">回退与校验</th></tr></thead><tbody><tr><td>打开市场、刷新仓库或标签</td><td>GitHub API 镜像直连</td><td>镜像不可用时访问 GitHub 官方 API，使用「插件市场」的代理设置</td></tr><tr><td>安装市场所列分支或标签的标准 tar.gz 归档</td><td>镜像直连下载归档</td><td>另外向 GitHub 官方读取该引用的完整文件树，核对解包后的每个文件。核对不通过或镜像失败时，改从官方源下载</td></tr><tr><td>在 Core 顶栏检查版本、下载 Core 增量包</td><td>版本列表和更新 ZIP 均优先镜像直连</td><td>官方回退使用「下载」的代理设置。安装前另向 GitHub 官方核验附件摘要，并校验本机程序文件</td></tr></tbody></table></div>
+<p>GitHub 镜像请求显式直连。对应代理开关关闭时，上表中的 GitHub 官方请求也显式直连。自行填写的其他 HTTP(S) 归档地址使用原地址，不能据此推断也有镜像或同样的代理行为。排障时先确认失败发生在搜索、下载归档、官方核验，还是本地安装。例如，镜像返回 403 后又出现代理端口拒绝连接，应分别记录两次请求的结果。</p>
 <h3 id="section-36">证书校验失败</h3>
 <p>HTTPS 下载会保留系统信任并使用随运行环境安装的 CA 证书，并按上述代理设置连接。请检查系统时间、可信根证书，以及代理是否需要正确安装受信任的机构证书。不要通过关闭证书校验或下载来历不明的证书绕过错误。</p>
 <p>GitHub 源码地址可能跳转到 <code>codeload.github.com</code>，代理和网络规则需要允许整个下载链路。浏览器能打开网页，不代表 Python 下载环境的证书或代理配置相同。</p>
@@ -567,5 +570,17 @@ parent.postMessage({
 <p>需要账号、凭据或会话范围的插件必须考虑用户先点启用、再进配置页的流程。缺少必填配置时，保留当前 Bot 的启用意图，并明确提示下一步在哪里配置。配置就绪后，通过宿主正常的重载入口激活。</p>
 <p>插件可在 <code>create(ctx)</code> 启动任何后台任务、网络连接或注册运行能力前抛出 <code>telyincore.plugins.PluginSetupRequired</code>，并提供面向用户的说明。宿主返回 <code>ok=true</code> 和 <code>setup_required=true</code>，此时插件 <code>loaded=false</code>。首次唤醒时这类插件进入 <code>waiting</code> 列表。真实装载、启动或清理错误仍按失败返回。</p>
 <p>QQ、JingjingTown 等有前置配置的插件都应验收首次启用、配置完成后重载、配置损坏及不同 Bot 档案隔离。未配置时不可默认放开会话范围，也不可启动消息处理。独立桥接进程的就绪状态需单独显示。</p>
+<h2 id="section-65">27. Windows 0.5.4.6 插件接入示例</h2>
+<h3 id="section-66">消息里的三种身份</h3>
+<p>处理 QQ 事件时，分别取发起人、动作目标和当前 Bot 的账号。QQ 内置适配器用 <code>self_id</code> 确认当前账号。群戳一戳中，<code>user_id</code> 是发起人，<code>target_id</code> 是被戳者。适配器将被戳者写入事件的 <code>meta.poke_target</code>。目标缺失时显示“目标未确认”。私聊通知还核对 <code>sender_id</code>，以区分对方发来的动作和本账号发出的动作。</p>
+<p>验收时，让同一群友先戳 Bot，再戳另一位群友。两次事件中发起人相同，被戳者应不同。群 @ 同样需要按账号核对目标。引用、昵称、群名片和消息正文里的自称都不足以确认 owner。</p>
+<div class="table-wrap"><table><thead><tr><th scope="col">动作</th><th scope="col">QQ 内置适配器的处理</th></tr></thead><tbody><tr><td>群内纠正某张表情的角色或标签</td><td>已归并的 owner 可在群内明确纠正。写入前再次核对本轮身份和具体图片。其他群友仍可讨论图片</td></tr><tr><td>私聊查询 <code>#sl</code></td><td>已归并的 owner 从允许的私聊单独发送 <code>#sl</code>。群聊、其他账号和历史补收不触发查询</td></tr><tr><td>主动联系 owner</td><td>Core 决定是否联系及消息内容，QQ 适配器检查可用路由并负责投递。认识群里的 owner 也不授予群友读取控制台历史的权限</td></tr></tbody></table></div>
+<h3 id="section-67">表情、普通图片与附件</h3>
+<p>将媒体类型和本条消息的用途分别保存。普通照片可以供视觉模型观察。在已接入的私聊或群聊中，只有 QQ 明确标记为表情包的来图才可自主收藏。图片、图片文件和普通附件即使内容像表情包也保留原类型。自主收藏开关开启后，Bot 可自行决定是否调用 <code>qq_collect_sticker</code>。自动收藏、操作者上传和 QQ 已有收藏有各自的来源；只有收藏成功后才能记为已收藏。</p>
+<p>同一 Bot 的收藏按内容去重。静态图片使用尺寸和解码后的 RGBA 像素计算标识，动图使用原始动画字节。相同静态画面可复用客观描述；同一张图在两次对话里可能分别表示赞同和反讽，当前语境要单独判断。动图重新编码后可能得到新的标识。</p>
+<p>需要回看细节时，<code>qq_look_image</code> 可指定时间点或局部区域。需要纠正时，<code>qq_correct_sticker</code> 按当前会话的媒体编号或收藏编号定位。发送前可用 <code>qq_list_custom_faces</code> 按标签查找，再由 <code>qq_send_custom_face</code> 投递。上述名称属于内置 QQ 插件；其他适配器可按所接平台声明自己的工具。</p>
+<h3 id="section-68">首次部署页面</h3>
+<p>以 Windows 的 ComfyUI 生图插件 v0.2.0 为例，配置页可以分别提供环境检查、选择整合包、安装依赖和生成测试图。页面声明 <code>configPage</code>、<code>pageBackendApi: 1</code>、<code>pageBackend</code> 和 <code>pageActions</code>。只读检查可声明 <code>mutates: false</code>；安装、启动或实际生成测试图等有副作用的操作声明 <code>mutates: true</code>，由宿主页面向操作者确认。宿主会检查动作名与配置修订号。超时后先读取实际进度，再决定是否重试。</p>
+<p>验收至少区分三个结果：本机能生成图片、当前 Bot 已启用所需插件、目标会话确实收到图片。依赖外部服务的插件也应分别报告服务就绪、模型可用和消息投递结果。部署目录搬迁后，优先从宿主提供的路径找回已安装模型，并保留用户自行指定的目录和 Bot 配置。</p>
 <footer><span>TelyinCore · 以实际实现为准</span><a href="#top">返回顶部 ↑</a></footer>
 </main></div></div></body></html>

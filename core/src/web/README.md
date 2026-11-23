@@ -129,7 +129,7 @@ pnpm install && pnpm run build:web    # 想一行写完也行（同两条）
   本轮文档同步不会代为重启服务。
 
 详细数据与交互契约见[经历页规格 §四](../../docs/handoff/世界三页-规格.md)；
-插件声明见[Infinity 开发规范第 6 节](../../../docs/Infinity插件开发规范-v1.13.md)。
+插件声明见[Infinity 开发规范第 6 节](../../docs/Infinity插件开发规范-v1.17.md)。
 开发规范的 HTML 由 `scripts/render-plugin-spec.mjs` 从同一份 Markdown 生成，
 构建产物为 `dist/web/infinity-plugin-spec.html`，不应独立手改生成页正文。
 

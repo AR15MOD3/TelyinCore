@@ -70,7 +70,7 @@ def test_control_download_baseline_check_restart_and_conflict(tmp_path,monkeypat
     audit = json.loads((install.folder(tmp_path)/'last-install.json').read_bytes())
     assert (audit['base'], audit['version'], audit['source'], audit['route']) == (base, latest, 'official', 'direct')
     assert json.loads((tmp_path/'candidate.json').read_bytes())['version']==latest
-    assert checker.installation()['lastInstall'] == {'version': latest, 'source': 'official', 'route': 'direct'}
+    assert checker.installation()['lastInstall'] == {'base': base, 'version': latest, 'source': 'official', 'route': 'direct'}
 
 
 def test_web_checksum_can_authenticate_mirrored_metadata(monkeypatch):

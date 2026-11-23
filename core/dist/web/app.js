@@ -14,7 +14,8 @@ function paint(card, state) {
   if (receipt) {
     const source = { mirror: "GitHub 镜像", official: "GitHub 官方源", cache: "本地缓存", offline: "离线更新包", preview: "本机验收源" }[receipt.source];
     const route2 = receipt.route === "proxy" ? " · 代理" : receipt.route === "direct" ? " · 直连" : "";
-    history.textContent = "上次安装来源　" + source + route2;
+    const previous = receipt.base ? receipt.base.replace(/^beta\./, "") + " → " + receipt.version.replace(/^beta\./, "") + "　" : "";
+    history.textContent = previous + "上次安装来源　" + source + route2;
   }
   const install = card.querySelector("[data-install]");
   install.hidden = !(state.pendingVersion || state.installable && state.status === "available");

@@ -151,6 +151,9 @@ class PackageUpdates:
                     and record.get("source") in ("mirror", "official", "cache", "offline", "preview")
                     and record.get("route") in ("direct", "proxy", "local")):
                 status["lastInstall"] = {k: record[k] for k in ("version", "source", "route")}
+                base = record.get("base")
+                if isinstance(base, str) and _VERSION.fullmatch(base):
+                    status["lastInstall"]["base"] = base
         except (OSError, ValueError):
             pass
         if self.install_lock.locked() and self.install_progress:

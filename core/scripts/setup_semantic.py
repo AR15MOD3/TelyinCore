@@ -21,9 +21,8 @@ if str(CORE) not in sys.path:
 from telyincore.embeddings import DEFAULT_MODEL
 from telyincore.source_guard import lease
 
-from telyincore.download_sources import HF, TORCH, TRANSFER_ERRORS, open_public, pip_install, selected_proxy, settings_root
+from telyincore.download_sources import HF, TORCH, TRANSFER_ERRORS, open_public, pip_install, download_routes, settings_root
 
-MODEL_ENDPOINTS = tuple(HF.values())
 
 DEPENDENCIES = {'torch': '2.15.0+cpu', 'sentence-transformers': '5.2.3', 'transformers': '4.57.6'}
 
@@ -136,10 +135,11 @@ def prepare_model(model, source=None):
         if local is not None and valid_file(local, expected):
             shutil.copyfile(local, partial)
         else:
-            for endpoint in MODEL_ENDPOINTS:
+            routes = download_routes(settings_root(CORE))
+            for index, (choice, proxy) in enumerate(routes):
+                endpoint = HF[choice]
                 url = f"{endpoint}/{spec['repo']}/resolve/{spec['revision']}/{name}"
                 try:
-                    proxy = selected_proxy('official' if endpoint == HF['official'] else 'mirror', settings_root(CORE))
                     print('下载源：' + endpoint + (' · 代理' if proxy else ' · 直连'), flush=True)
                     had_prefix = partial.is_file()
                     for attempt in range(2):
@@ -150,13 +150,13 @@ def prepare_model(model, source=None):
                         if valid_file(partial, expected):
                             break
                         partial.unlink(missing_ok=True)
-                        if endpoint != MODEL_ENDPOINTS[-1] or not had_prefix or attempt:
+                        if index != len(routes) - 1 or not had_prefix or attempt:
                             raise OSError('模型文件校验失败')
                     break
                 except TRANSFER_ERRORS:
-                    if endpoint == MODEL_ENDPOINTS[-1]:
+                    if index == len(routes) - 1:
                         raise
-                    print('国内镜像暂不可用，回退官方源。', flush=True)
+                    print('当前下载路径未成功，尝试下一条已配置路径。', flush=True)
         if not valid_file(partial, expected):
             raise RuntimeError('模型校验失败：' + name)
         os.replace(partial, target)

@@ -1,4 +1,5 @@
 """Routes for public downloads. Usable before any third-party dependencies exist."""
+from dataclasses import dataclass
 import http.client
 import json
 import os
@@ -40,10 +41,46 @@ def selected_proxy(source, root, purpose="downloads"):
     return auxiliary_proxy(root, purpose)
 
 
-def pip_environment(source, root):
+@dataclass(frozen=True)
+class PublicNetwork:
+    """One request's source and transport choices; never used for model API calls."""
+    source: str = 'mirror'
+    proxy: str | None = None
+    fallback: bool = False
+
+
+def public_network(root, purpose='downloads'):
+    from .model_proxy import _read
+    if purpose not in ('market', 'downloads'):
+        raise ValueError('未知公共网络用途')
+    value = _read(root)[0] if root is not None else {}
+    return PublicNetwork(value.get(purpose + '_source', 'mirror'),
+                         value.get('proxy_url') if value.get(purpose + '_enabled') else None,
+                         value.get(purpose + '_fallback', False))
+
+
+def network_policy(value=None):
+    # Legacy callers supplying only a proxy URI retain strict proxy semantics.
+    return value if isinstance(value, PublicNetwork) else PublicNetwork(proxy=value)
+
+
+def official_transports(network=None):
+    policy = network_policy(network)
+    return (policy.proxy, None) if policy.proxy and policy.fallback else (policy.proxy,)
+
+
+def download_routes(root=None, *, preferred=None, network=None, purpose='downloads'):
+    policy = public_network(root, purpose) if network is None else network_policy(network)
+    sources = source_order(preferred) if preferred is not None else (
+        ('mirror', 'official') if policy.source == 'mirror' else ('official', 'mirror'))
+    return tuple((source, proxy) for source in sources
+                 for proxy in ((None,) if source == 'mirror' else official_transports(policy)))
+
+
+def pip_environment(source, root, *, proxy_choice=...):
     env = {k: v for k, v in os.environ.items()
            if not k.upper().endswith("_PROXY") and not k.upper().startswith(("PIP_", "UV_"))}
-    proxy = selected_proxy(source, root)
+    proxy = selected_proxy(source, root) if proxy_choice is ... else proxy_choice
     env.update(PIP_CONFIG_FILE=os.devnull, PIP_DISABLE_PIP_VERSION_CHECK="1",
                PYTHONUTF8="1", PYTHONUNBUFFERED="1", NO_PROXY="" if proxy else "*")
     if proxy:
@@ -51,9 +88,9 @@ def pip_environment(source, root):
     return env
 
 
-def pip_install(command, run, root, *, preferred="mirror", indexes=PYPI):
-    for source in source_order(preferred):
-        env = pip_environment(source, root)
+def pip_install(command, run, root, *, preferred=None, indexes=PYPI):
+    for source, proxy in download_routes(root, preferred=preferred):
+        env = pip_environment(source, root, proxy_choice=proxy)
         index = indexes[source]
         route = "代理" if "HTTPS_PROXY" in env else "直连"
         print(f"依赖下载 · {index} · {route}", flush=True)
@@ -90,13 +127,16 @@ def open_public(request, timeout, proxy=None):
     return build_opener(handler, _PublicRedirect(), HTTPSHandler(context=context)).open(request, timeout=timeout)
 
 
-def github_routes(url, proxy=None):
+def github_routes(url, proxy=None, *, official_only=False):
+    """proxy may be a legacy URI or an explicit PublicNetwork snapshot."""
     parts = urlsplit(url)
     if (parts.scheme != "https" or parts.netloc not in {"github.com", "api.github.com", "codeload.github.com"}
             or parts.fragment):
         raise ValueError("不是公开 GitHub 下载地址")
     mirror = GITHUB_API_MIRROR if parts.netloc == "api.github.com" else GITHUB_MIRROR
-    return ((mirror + url, None), (url, proxy))
+    routes = download_routes(network=network_policy(proxy))
+    return tuple((mirror + url if source == 'mirror' else url, via)
+                 for source, via in routes if not official_only or source == 'official')
 
 
 def github_route_text(target, official, proxy, error=None):
@@ -132,8 +172,8 @@ def github_route_text(target, official, proxy, error=None):
 
 def github_json(url, headers, proxy=None, *, limit=4_000_000, timeout=8, expected=None,
                 official_only=False, report=None):
-    routes = github_routes(url, proxy)
-    for target, via in (routes[-1:] if official_only else routes):
+    routes = github_routes(url, proxy, official_only=official_only)
+    for index, (target, via) in enumerate(routes):
         try:
             with open_public(Request(target, headers=headers), timeout, via) as response:
                 raw = response.read(limit + 1)
@@ -148,5 +188,5 @@ def github_json(url, headers, proxy=None, *, limit=4_000_000, timeout=8, expecte
         except TRANSFER_ERRORS as error:
             if report:
                 report(github_route_text(target, url, via, error))
-            if target == url:
+            if index == len(routes) - 1:
                 raise

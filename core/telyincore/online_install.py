@@ -85,6 +85,10 @@ def check_manifest(root, archive, platform, base, version):
         if not program_path(name) or name.casefold() in seen:
             raise ValueError('更新包含重复路径或用户数据路径')
         seen.add(name.casefold())
+        alternatives = f.get('old_sha256_alternatives', [])
+        if (not isinstance(alternatives, list) or len(alternatives) > 8
+                or any(not isinstance(v, str) or not SUM.fullmatch(v) for v in alternatives)):
+            raise ValueError('补丁基线校验值无效')
         old,new=f['old_sha256'],f['new_sha256']
         if (old is None and new is None) or any(v is not None and not SUM.fullmatch(v) for v in (old,new)):
             raise ValueError('文件校验值无效')
@@ -96,6 +100,12 @@ def check_manifest(root, archive, platform, base, version):
     if candidate_platform(candidate)!=platform or candidate.get('version')!=version:
         raise ValueError('包内版本登记不符')
     return files
+
+
+def matches_existing(item, actual):
+    """Only exact publisher-reviewed patch variants may join a released base."""
+    return actual in (item['old_sha256'], item['new_sha256'],
+                      *item.get('old_sha256_alternatives', []))
 
 
 def candidate_platform(record):
@@ -160,23 +170,27 @@ def fetch_asset(url, proxy, path, size, expected, user_agent):
 def release_asset(api, tag, url, name, headers, proxy):
     from http.client import HTTPException
     from urllib.error import HTTPError
-    from .download_sources import github_json, github_route_text, open_public
+    from .download_sources import github_json, github_route_text, open_public, official_transports
 
     proof = None
+    attempts = []
     try:
-        release = github_json(api, headers, proxy, official_only=True)
+        release = github_json(api, headers, proxy, official_only=True, report=attempts.append)
     except (OSError, HTTPException) as exc:
         if isinstance(exc, HTTPError) and exc.code in (401, 404, 410):
             raise
         # The API may be rate-limited while the release website is reachable.
         # Anchor the checksum on GitHub itself before using mirrored metadata.
         request = Request(url[:-4] + '.sha256', headers={'User-Agent': headers['User-Agent']})
-        try:
-            with open_public(request, 8, proxy) as response:
-                raw = response.read(513)
-        except (OSError, HTTPException) as checksum_error:
-            raise ValueError("核验官方摘要失败。发行 API " + github_route_text(api, api, proxy, exc)
-                             + "；校验文件 " + github_route_text(url, url, proxy, checksum_error)) from checksum_error
+        for via in official_transports(proxy):
+            try:
+                with open_public(request, 8, via) as response:
+                    raw = response.read(513)
+                break
+            except (OSError, HTTPException) as checksum_error:
+                attempts.append('校验文件 ' + github_route_text(url, url, via, checksum_error))
+        else:
+            raise ValueError('核验官方摘要失败。' + ' → '.join(attempts)) from exc
         if len(raw) > 512:
             raise ValueError('官方校验文件过大')
         parts = raw.decode('ascii').split()
@@ -219,19 +233,19 @@ def stage(checker):
     repo=checker.repository
     api=f'https://api.github.com/repos/{repo}/releases/tags/{tag}'
     headers={'User-Agent':'TelyinCore-online-update','Accept':'application/vnd.github+json'}
-    from .download_sources import github_routes, selected_proxy, github_route_text, TRANSFER_ERRORS
-    proxy = selected_proxy("official", checker.proxy_root)
+    from .download_sources import github_routes, public_network, github_route_text, TRANSFER_ERRORS
+    proxy = public_network(checker.proxy_root)
     checker.install_progress = "正在向发布方核对附件 SHA-256"
     url = f'https://github.com/{repo}/releases/download/{tag}/{name}'
     preview = getattr(checker, "preview", None)
     if preview:
         size, expected = preview.metadata(platform, version, name, MAX_BYTES)
     else:
-        checker.install_progress = "向 GitHub 官方核验附件摘要" + (" · 下载代理" if proxy else " · 直连")
+        checker.install_progress = "向 GitHub 官方核验附件摘要" + (" · 代理失败后直连" if proxy.fallback else " · 下载代理" if proxy.proxy else " · 直连")
         try:
             size, expected = release_asset(api, tag, url, name, headers, proxy)
         except (OSError, http.client.HTTPException) as error:
-            raise ValueError("核验官方附件摘要失败。" + github_route_text(url, url, proxy, error)) from error
+            raise ValueError("核验官方附件摘要失败。" + github_route_text(url, url, proxy.proxy, error)) from error
     cache=folder(root);cache.mkdir(parents=True,exist_ok=True)
     with tempfile.NamedTemporaryFile(dir=cache,delete=False) as out:
         temp=Path(out.name)
@@ -254,7 +268,8 @@ def stage(checker):
             source, route = "preview", "direct"
         else:
             failures = []
-            for target, via in github_routes(url, proxy):
+            routes = github_routes(url, proxy)
+            for index, (target, via) in enumerate(routes):
                 is_origin = target == url
                 label = '官方源' if is_origin else 'GitHub 镜像'
                 checker.install_progress = label + (' · 代理' if via else ' · 直连')
@@ -265,7 +280,7 @@ def stage(checker):
                     break
                 except TRANSFER_ERRORS as error:
                     failures.append(github_route_text(target, url, via, error))
-                    if is_origin:
+                    if index == len(routes) - 1:
                         raise ValueError('下载更新包失败。' + ' → '.join(failures)) from error
         checker.install_progress = '正在核对更新包和本机版本'
         with zipfile.ZipFile(cached if reusable else temp) as z:
@@ -273,7 +288,7 @@ def stage(checker):
             for item in files:
                 path = safe_file(root, item['path'])
                 actual = sha(path.read_bytes()) if path.exists() else None
-                if actual not in (item['old_sha256'], item['new_sha256']):
+                if not matches_existing(item, actual):
                     raise ValueError('本机程序文件与更新包不匹配，已保留：' + item['path'])
         if not reusable:
             temp.replace(cached)
@@ -334,7 +349,7 @@ def apply_pending(root, platform, manual_package=None):
                     for item in files:
                         path = safe_file(root, item["path"])
                         actual = sha(path.read_bytes()) if path.exists() else None
-                        if actual not in (item["old_sha256"], item["new_sha256"]):
+                        if not matches_existing(item, actual):
                             raise ValueError("本机程序文件已变更，已保留：" + item["path"])
                 if not previous:
                     source.seek(0)
@@ -359,7 +374,7 @@ def apply_pending(root, platform, manual_package=None):
                     name=f['path'];target=safe_file(root,name)
                     current=sha(target.read_bytes()) if target.exists() else None
                     if current==f['new_sha256']:continue
-                    if current!=f['old_sha256']:
+                    if not matches_existing(f, current):
                         raise ValueError(f'本机程序文件已变更，已保留：{name}')
                     changes.append(f)
                 # The same verified receipt resumes interrupted writes before any service starts.

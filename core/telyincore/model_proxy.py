@@ -69,7 +69,16 @@ def _validated(value):
         raise ProxySettingsError('启用代理时必须填写地址')
     if value['enabled'] and (not url or not providers):
         raise ProxySettingsError('启用代理时必须填写地址并选择至少一家供应商')
-    return {'enabled': value['enabled'], 'proxy_url': url, 'providers': providers, **extras}
+    routes = {}
+    for purpose in ('market', 'downloads'):
+        source = value.get(purpose + '_source', 'mirror')
+        fallback = value.get(purpose + '_fallback', False)
+        if source not in ('mirror', 'official') or type(fallback) is not bool:
+            raise ProxySettingsError('公共下载路由设置无效')
+        if fallback and not extras[purpose + '_enabled']:
+            raise ProxySettingsError('代理回退须先启用该用途的代理')
+        routes.update({purpose + '_source': source, purpose + '_fallback': fallback})
+    return {'enabled': value['enabled'], 'proxy_url': url, 'providers': providers, **extras, **routes}
 
 def _read(root):
     path = Path(root) / 'model-proxy.json'
@@ -77,7 +86,7 @@ def _read(root):
         with path.open('rb') as f:
             raw = f.read(16385)
     except FileNotFoundError:
-        return {'enabled': False, 'proxy_url': '', 'providers': list(PROVIDERS), 'market_enabled': False, 'downloads_enabled': False}, 'missing'
+        return _validated({'enabled': False, 'proxy_url': '', 'providers': list(PROVIDERS)}), 'missing'
     if len(raw) > 16384:
         raise ProxySettingsError('模型代理配置过大，未使用该配置')
     try:
@@ -97,9 +106,16 @@ def save_settings(root, asked):
         raise ProxySettingsConflict('请先重新读取代理设置再保存')
     root = Path(root); root.mkdir(parents=True, exist_ok=True)
     with _config_lock(root / 'model-proxy.lock'):
-        _, revision = _read(root)
+        previous, revision = _read(root)
         if asked['revision'] != revision:
             raise ProxySettingsConflict('代理设置已在别处改变，请重新读取后再保存')
+        for purpose in ('market', 'downloads'):
+            for suffix in ('source', 'fallback'):
+                key = purpose + '_' + suffix
+                if key not in asked:
+                    value[key] = previous[key]
+            if not value[purpose + '_enabled']:
+                value[purpose + '_fallback'] = False
         raw = (json.dumps(value, ensure_ascii=False, indent=2) + '\n').encode('utf-8')
         fd, tmp = tempfile.mkstemp(prefix='.model-proxy-', suffix='.tmp', dir=root)
         try:

@@ -9,7 +9,7 @@ from time import monotonic
 
 import httpx
 from runtime_identity import safe_path
-from telyincore.download_sources import selected_proxy, source_order
+from telyincore.download_sources import download_routes
 from telyincore.owned_blocking import InstallationOwner
 
 
@@ -187,9 +187,9 @@ class VoiceDownload(InstallationOwner):
         base = 0
         for name, remote, size, digest in self.files:
             self._checkpoint()
-            for choice in source_order(source):
+            routes = download_routes(self.proxy_root, preferred=source)
+            for index, (choice, proxy) in enumerate(routes):
                 self._checkpoint()
-                proxy = selected_proxy(choice, self.proxy_root)
                 with self.lock:
                     self.state.update(source=choice, route='proxy' if proxy else 'direct')
                 try:
@@ -207,7 +207,7 @@ class VoiceDownload(InstallationOwner):
                     break
                 except (httpx.HTTPError, InvalidTransfer):
                     self._checkpoint()
-                    if choice == 'official':
+                    if index == len(routes) - 1:
                         raise
             base += size
         with self.lock:

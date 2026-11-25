@@ -58,10 +58,11 @@ def installed_channel(root):
 def github_latest(repository: str, platform: str, *, channel="stable", proxy_root=None) -> dict:
     from urllib.parse import quote
     from http.client import HTTPException
-    from .download_sources import github_json, selected_proxy
+    from .download_sources import github_json, public_network
 
     if not re.fullmatch(r"[A-Za-z0-9-]+/[A-Za-z0-9_.-]+", repository):
         raise ValueError("发行仓库名称无效")
+    network = public_network(proxy_root)
     latest = None
     deadline = time.monotonic() + 12
     attempts = []
@@ -79,7 +80,7 @@ def github_latest(repository: str, platform: str, *, channel="stable", proxy_roo
         if remaining <= 0:
             raise TimeoutError("GitHub 检查超时")
         releases = fetch(url, {"Accept": "application/vnd.github+json", "User-Agent": "TelyinCore-release-check"},
-                               selected_proxy("official", proxy_root), timeout=min(4, remaining / 2),
+                               network, timeout=min(4, remaining / 2),
                                expected=lambda rows: isinstance(rows, list) and all(isinstance(row, dict) for row in rows))
         for release in releases:
             if not isinstance(release, dict) or release.get("draft") is not False:
@@ -101,7 +102,7 @@ def github_latest(repository: str, platform: str, *, channel="stable", proxy_roo
                 if "TelyinCore-Minimum:" in (release.get("body") or ""):
                     official = fetch(
                         f"https://api.github.com/repos/{repository}/releases/tags/{quote(tag)}",
-                        {"User-Agent": "TelyinCore-release-check"}, selected_proxy("official", proxy_root),
+                        {"User-Agent": "TelyinCore-release-check"}, network,
                         official_only=True, timeout=4)
                     if official.get("tag_name") == tag and official.get("draft") is False:
                         floor = re.search(r"(?m)^TelyinCore-Minimum: (beta\.[0-9.]+)\s*$", official.get("body") or "")

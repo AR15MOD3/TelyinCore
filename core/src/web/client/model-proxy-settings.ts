@@ -6,6 +6,10 @@ interface ProxySettings {
   enabled: boolean;
   market_enabled?: boolean;
   downloads_enabled?: boolean;
+  downloads_source?: 'mirror' | 'official';
+  market_source?: 'mirror' | 'official';
+  downloads_fallback?: boolean;
+  market_fallback?: boolean;
   proxy_url: string;
   providers: string[];
   revision: string;
@@ -24,11 +28,11 @@ export function modelProxySettings(): HTMLElement {
   root.className = 'settings-card model-proxy-settings';
   configPresentation(root, 'loading');
   const h = document.createElement('h3');
-  coreSetUIText(h, 'textContent', corePhrase('网络代理'));
+  coreSetUIText(h, 'textContent', corePhrase('网络与下载'));
   const note = document.createElement('p');
   note.className = 'set-note';
   coreSetUIText(note, 'textContent',
-    corePhrase('国内镜像始终直连。切换到官方源时，按下方用途使用代理。'));
+    corePhrase('先选择下载源，再决定官方连接方式。镜像始终直连，模型 API 单独控制。'));
   const enabledLabel = document.createElement('label');
   enabledLabel.className = 'model-proxy-toggle';
   const enabled = document.createElement('input');
@@ -41,7 +45,7 @@ export function modelProxySettings(): HTMLElement {
   const address = document.createElement('input');
   address.type = 'url';
   address.className = 'engine-input engine-input-wide';
-  coreSetUIAttribute(address, 'aria-label', corePhrase('模型代理地址'));
+  coreSetUIAttribute(address, 'aria-label', corePhrase('共用代理地址'));
   address.placeholder = 'http://127.0.0.1:7891';
   address.autocomplete = 'off';
   address.spellcheck = false;
@@ -65,24 +69,49 @@ export function modelProxySettings(): HTMLElement {
     targets.append(row);
     return { id, input };
   });
-  const uses = document.createElement('fieldset');
-  uses.className = 'model-proxy-targets';
-  const usesTitle = document.createElement('legend');
-  coreSetUIText(usesTitle, 'textContent', corePhrase('其他用途'));
-  uses.append(usesTitle);
-  const extraBoxes = ([
-    ['market_enabled', '插件市场（GitHub 搜索与下载）'],
-    ['downloads_enabled', '下载（模型、运行环境和 Core 更新）'],
-  ] as const).map(([id, name]) => {
-    const label = document.createElement('label');
-    label.className = 'model-proxy-provider';
-    const input = document.createElement('input');
-    input.type = 'checkbox';
-    label.append(input, coreUITextNode(corePhrase(name)));
-    uses.append(label);
-    return {id, input};
+  const uses = document.createElement('div');
+  uses.className = 'public-network-policies';
+  const select = (label: string, entries: [string, string][]) => {
+    const box = document.createElement('label');
+    box.className = 'public-network-field';
+    box.append(label);
+    const input = document.createElement('select');
+    input.setAttribute('aria-label', label);
+    for (const [value, text] of entries) input.add(new Option(text, value));
+    box.append(input);
+    return {box, input};
+  };
+  const policies = (['downloads', 'market'] as const).map(id => {
+    const row = document.createElement('section');
+    row.className = 'public-network-policy';
+    const title = document.createElement('h4');
+    title.textContent = id === 'downloads' ? '公共下载 · Core 更新、模型与运行环境' : '插件市场 · 搜索与安装';
+    const source = select(title.textContent + '：来源顺序', [['mirror', '镜像优先'], ['official', '官方优先']]);
+    const transport = select(title.textContent + '：官方连接', [
+      ['direct', '直接连接'], ['fallback', '代理优先，失败后直连'], ['required', '仅使用代理'],
+    ]);
+    // Visual field labels stay short; accessible names retain the purpose.
+    source.box.firstChild!.textContent = '来源顺序';
+    transport.box.firstChild!.textContent = '官方连接';
+    const flow = document.createElement('p');
+    flow.className = 'public-network-flow';
+    const paintFlow = () => {
+      const official = transport.input.value === 'direct' ? '官方直连'
+        : transport.input.value === 'fallback' ? '官方代理 → 官方直连' : '官方代理';
+      flow.textContent = source.input.value === 'mirror' ? '镜像直连 → ' + official : official + ' → 镜像直连';
+    };
+    source.input.addEventListener('change', paintFlow);
+    transport.input.addEventListener('change', paintFlow);
+    row.append(title, source.box, transport.box, flow);
+    uses.append(row);
+    return {id, source: source.input, transport: transport.input, paintFlow};
   });
-  const scopeInputs = [...boxes, ...extraBoxes].map(box => box.input);
+  const policyNote = document.createElement('p');
+  policyNote.className = 'set-note';
+  policyNote.textContent = '箭头表示失败后的下一条路径。更新摘要与插件文件清单只向官方核验，遵守上面的官方连接设置。下载页明确指定来源时，以该次选择为准。';
+  uses.append(policyNote);
+  const scopeInputs = boxes.map(box => box.input);
+  const policyInputs = policies.flatMap(p => [p.source, p.transport]);
   const hint = document.createElement('p');
   hint.className = 'set-note';
   coreSetUIText(
@@ -107,14 +136,15 @@ export function modelProxySettings(): HTMLElement {
   coreSetUIText(reload, 'textContent', corePhrase('重新读取'));
   const header = document.createElement('div');
   header.className = 'model-proxy-header';
-  header.append(h, enabledLabel);
+  header.append(h);
+  targets.insertBefore(enabledLabel, legend.nextSibling);
   const details = document.createElement('details');
   details.className = 'model-proxy-details';
   const summary = document.createElement('summary');
-  coreSetUIText(summary, 'textContent', corePhrase('适用范围'));
-  details.append(summary, targets, uses, help, hint, reload);
+  coreSetUIText(summary, 'textContent', corePhrase('模型 API 代理'));
+  details.append(summary, targets, help, hint, reload);
   actions.append(save, system);
-  root.append(header, label, details, actions, note, status);
+  root.append(header, note, label, uses, details, actions, status);
   let revision: string | null = null,
     systemProxy = '',
     busy = false;
@@ -122,7 +152,7 @@ export function modelProxySettings(): HTMLElement {
     saving = false,
     guarding = false;
   const draft = (): string =>
-    JSON.stringify([enabled.checked, address.value, scopeInputs.map(input => input.checked)]);
+    JSON.stringify([enabled.checked, address.value, scopeInputs.map(input => input.checked), policyInputs.map(input => input.value)]);
   const dirty = (): boolean => baseline !== null && draft() !== baseline;
   const beforeUnload = (event: BeforeUnloadEvent): void => {
     if (!saving && !dirty()) return;
@@ -136,13 +166,13 @@ export function modelProxySettings(): HTMLElement {
     if (needed) window.addEventListener('beforeunload', beforeUnload);
     else window.removeEventListener('beforeunload', beforeUnload);
   };
-  for (const input of [enabled, address, ...scopeInputs]) {
+  for (const input of [enabled, address, ...scopeInputs, ...policyInputs]) {
     input.addEventListener('input', guardDraft);
     input.addEventListener('change', guardDraft);
   }
   const lock = (pending: boolean): void => {
     busy = pending;
-    for (const control of [enabled, address, ...scopeInputs, save]) {
+    for (const control of [enabled, address, ...scopeInputs, ...policyInputs, save]) {
       control.disabled = pending || revision === null;
     }
     reload.disabled = pending;
@@ -154,7 +184,11 @@ export function modelProxySettings(): HTMLElement {
     enabled.checked = s.enabled;
     address.value = s.proxy_url;
     for (const box of boxes) box.input.checked = s.providers.includes(box.id);
-    for (const box of extraBoxes) box.input.checked = s[box.id] === true;
+    for (const p of policies) {
+      p.source.value = s[`${p.id}_source`] || 'mirror';
+      p.transport.value = !s[`${p.id}_enabled`] ? 'direct' : s[`${p.id}_fallback`] ? 'fallback' : 'required';
+      p.paintFlow();
+    }
     baseline = draft();
     guardDraft();
     configPresentation(root, 'ready');
@@ -170,8 +204,7 @@ export function modelProxySettings(): HTMLElement {
         throw new Error('代理设置响应不完整，未覆盖。');
       }
       apply(value.settings);
-      const active = enabled.checked || extraBoxes.some(box => box.input.checked);
-      coreSetUIText(status, 'textContent', corePhrase(active ? '已启用' : '未启用'));
+      status.textContent = '已读取 · 各用途独立生效';
     } catch (error) {
       revision = null;
       configPresentation(root, 'error');
@@ -191,7 +224,7 @@ export function modelProxySettings(): HTMLElement {
         coreSetUIText(status, 'textContent', corePhrase('启用前请填写代理地址并选择供应商。'));
         return;
       }
-      if (extraBoxes.some(box => box.input.checked) && !address.value.trim()) {
+      if (policies.some(p => p.transport.value !== 'direct') && !address.value.trim()) {
         coreSetUIText(status, 'textContent', corePhrase('启用代理前请填写代理地址。'));
         return;
       }
@@ -207,7 +240,11 @@ export function modelProxySettings(): HTMLElement {
             enabled: enabled.checked,
             proxy_url: address.value.trim(),
             providers: boxes.filter((x) => x.input.checked).map((x) => x.id),
-            ...Object.fromEntries(extraBoxes.map(box => [box.id, box.input.checked])),
+            ...Object.fromEntries(policies.flatMap(p => [
+              [`${p.id}_enabled`, p.transport.value !== 'direct'],
+              [`${p.id}_fallback`, p.transport.value === 'fallback'],
+              [`${p.id}_source`, p.source.value],
+            ])),
             revision,
           }),
         });

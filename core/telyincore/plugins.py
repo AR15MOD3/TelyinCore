@@ -1883,8 +1883,8 @@ def warm_market(root: Any, *, proxy_root=None) -> None:
     而页一打开时缓存已经是热的 。"""
     from . import github
 
-    from .model_proxy import auxiliary_proxy
-    proxy = auxiliary_proxy(proxy_root, 'market') if proxy_root is not None else None
+    from .download_sources import public_network
+    proxy = public_network(proxy_root, 'market') if proxy_root is not None else None
     github.warm(market_cache(root), proxy) if proxy else github.warm(market_cache(root))
 
 
@@ -1923,9 +1923,10 @@ def every_market_reader(root: Any = None, *, proxy_root=None) -> Any:
         if proxy_root is None:
             return every_market()
         from . import github
-        from .model_proxy import auxiliary_proxy, ProxySettingsError
+        from .model_proxy import ProxySettingsError
+        from .download_sources import public_network
         try:
-            proxy = auxiliary_proxy(proxy_root, 'market')
+            proxy = public_network(proxy_root, 'market')
         except ProxySettingsError as exc:
             return {"found": [], "wired": False, "said": str(exc)}
         return github.found(cache=market_cache(root), proxy=proxy)

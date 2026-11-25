@@ -21,7 +21,7 @@ from telyincore.package_updates import PackageUpdates
 def test_check_reports_actual_request_route(tmp_path, monkeypatch, mirror, proxy, origin, expected):
     (tmp_path/'candidate.json').write_text('{"schema":"windows-core-acceptance-v1","version":"beta.0.5.4.2"}')
     address = "http://127.0.0.1:18888" if proxy else None
-    monkeypatch.setattr(ds, "selected_proxy", lambda *args: address)
+    monkeypatch.setattr(ds, "public_network", lambda *args: ds.PublicNetwork(proxy=address))
     calls = []
     def request(req, timeout, via):
         calls.append(via)

@@ -94,3 +94,40 @@ def test_web_checksum_can_authenticate_mirrored_metadata(monkeypatch):
     asset['digest'] = 'sha256:' + 'b' * 64
     with pytest.raises(ValueError, match='校验文件不符'):
         install.release_asset(api, tag, url, name, {'User-Agent':'test'}, None)
+
+
+@pytest.mark.parametrize('local,allowed', [(b'reviewed patch', True), (b'other local edit', False)])
+def test_exact_reviewed_patch_can_upgrade_without_accepting_other_edits(tmp_path, local, allowed):
+    base, latest, data = pack(tmp_path)
+    with zipfile.ZipFile(io.BytesIO(data)) as z:
+        files = {n: z.read(n) for n in z.namelist()}
+    meta = json.loads(files['UPDATE.json'])
+    meta['files'][1]['old_sha256_alternatives'] = [install.sha(b'reviewed patch')]
+    files['UPDATE.json'] = json.dumps(meta).encode()
+    package = tmp_path/'patch.zip'
+    with zipfile.ZipFile(package, 'w') as z:
+        for n, raw in files.items(): z.writestr(n, raw)
+    (tmp_path/'core/main.py').write_bytes(local)
+    if allowed:
+        assert install.apply_pending(tmp_path, 'linux', manual_package=package)
+        assert (tmp_path/'core/main.py').read_bytes() == b'new'
+    else:
+        with pytest.raises(ValueError, match='本机程序文件'):
+            install.apply_pending(tmp_path, 'linux', manual_package=package)
+        assert (tmp_path/'core/main.py').read_bytes() == local
+
+
+@pytest.mark.parametrize('alternatives', ['any', [None], ['*'], ['a'*64]*9])
+def test_invalid_patch_baselines_rejected(tmp_path, alternatives):
+    base, latest, data = pack(tmp_path)
+    with zipfile.ZipFile(io.BytesIO(data)) as z:
+        files = {n: z.read(n) for n in z.namelist()}
+    meta = json.loads(files['UPDATE.json'])
+    meta['files'][1]['old_sha256_alternatives'] = alternatives
+    files['UPDATE.json'] = json.dumps(meta).encode()
+    buffer=io.BytesIO()
+    with zipfile.ZipFile(buffer,'w') as z:
+        for n,raw in files.items():z.writestr(n,raw)
+    with zipfile.ZipFile(buffer) as z:
+        with pytest.raises(ValueError,match='补丁基线'):
+            install.inspect_zip(tmp_path,z,'linux',base,latest)

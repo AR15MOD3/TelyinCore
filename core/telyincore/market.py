@@ -108,13 +108,14 @@ def _fetch(url: str, proxy=None) -> bytes:
         return raw
 
     match = re.fullmatch(r"https://github\.com/([\w.-]+/[\w.-]+)/archive/refs/(heads|tags)/([\w./-]+)\.tar\.gz", url, re.ASCII)
-    if match:
-        repo, kind, ref = match.groups()
-        mirror, _ = github_routes(url, proxy)[0]
+    routes = github_routes(url, proxy, official_only=not bool(match))
+    for index, (target, via) in enumerate(routes):
         try:
-            raw = read(mirror, None)
-            # The mirror supplies bytes. GitHub independently identifies every
-            # file we would install, including when a branch or tag has moved.
+            raw = read(target, via)
+            if target == url:
+                return raw
+            # Mirror bytes still require an independent official file inventory.
+            repo, kind, ref = match.groups()
             api = f"https://api.github.com/repos/{repo}/git/trees/refs/{kind}/{ref}?recursive=1"
             tree = github_json(api, headers, proxy, official_only=True)
             if not isinstance(tree, dict) or tree.get("truncated") is not False:
@@ -133,10 +134,10 @@ def _fetch(url: str, proxy=None) -> bytes:
                             b"blob " + str(len(blob)).encode() + b"\0" + blob).hexdigest()
             if actual and actual == expected:
                 return raw
+            raise ValueError("镜像插件文件与官方清单不符")
         except (*TRANSFER_ERRORS, tarfile.TarError, KeyError, TypeError):
-            pass
-    # Links without an independent file inventory are read from the publisher.
-    return read(url, proxy)
+            if index == len(routes) - 1:
+                raise
 
 
 def _unpack(raw: bytes, into: Path) -> None:
@@ -211,8 +212,8 @@ def install_url(root: Any, url: str, *, proxy_root=None) -> dict[str, Any]:
     place = home / folder
     try:
         from .plugin_network import github_destination
-        from .model_proxy import auxiliary_proxy
-        proxy = (auxiliary_proxy(proxy_root, 'market')
+        from .download_sources import public_network
+        proxy = (public_network(proxy_root, 'market')
                  if proxy_root is not None and github_destination(said) else None)
         raw = _fetch(said, proxy) if proxy else _fetch(said)
         # **先解到一个"临时那一格"** ⇒ 读它 `package.json` 的 `name` ⇒ 再挪到真名下

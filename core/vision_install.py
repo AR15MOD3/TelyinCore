@@ -9,7 +9,7 @@ from pathlib import Path
 from threading import Lock
 from telyincore.owned_blocking import InstallationOwner
 
-from telyincore.download_sources import HF, selected_proxy, settings_root, source_order
+from telyincore.download_sources import HF, download_routes, settings_root
 
 import httpx
 
@@ -76,8 +76,8 @@ class VisionInstaller(InstallationOwner):
             stage = Path(tempfile.mkdtemp(prefix=".vision-download-", dir=self.parent))
             completed = 0
             for name, size, digest in FILES:
-                for choice in source_order(source):
-                    proxy = selected_proxy(choice, self.proxy_root)
+                routes = download_routes(self.proxy_root, preferred=source)
+                for index, (choice, proxy) in enumerate(routes):
                     with self.lock:
                         self.state.update(file=name, phase="download", source=choice,
                                           route="proxy" if proxy else "direct", downloaded=completed)
@@ -104,7 +104,7 @@ class VisionInstaller(InstallationOwner):
                         completed += size
                         break
                     except (httpx.HTTPError, ValueError):
-                        if choice == "official":
+                        if index == len(routes) - 1:
                             raise
             (stage / "SOURCE.txt").write_text(
                 f"unsloth/{NAME} @ {REVISION}\nQ4_K_M + F16 mmproj; Apache-2.0\n",

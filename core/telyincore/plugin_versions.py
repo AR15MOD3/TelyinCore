@@ -27,8 +27,10 @@ def checked_repo(repo):
 
 def bundled(root, name):
     from runtime_identity import safe_path
-    for path in (Path(root)/'builtin/infinity').glob('*/package.json'):
-        if read_json(safe_path(Path(root), path)).get('name') == name:
+    from .plugin_paths import source_root
+    source=source_root(root)
+    for path in (source/'builtin/infinity').glob('*/package.json'):
+        if read_json(safe_path(source, path)).get('name') == name:
             return path.parent
     return None
 

@@ -85,6 +85,8 @@ def main(argv=None):
     if not args.no_browser:
         threading.Thread(target=_open_when_ready, args=(args.port, stop), daemon=True).start()
     try:
+        from telyincore import plugin_updates
+        plugin_updates.plugin_updates = plugin_updates.PluginUpdates(root)
         from launch import main as launch_main
         return launch_main(['--acceptance-isolated', '--profile-acceptance', '--linux-qq-profile',
                             '--acceptance-root', str(data), '--acceptance-bot', bot,

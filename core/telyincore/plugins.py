@@ -700,7 +700,8 @@ def the_place(root: Any) -> Path:
 
 def the_builtin(root: Any) -> Path:
     """ **内置那一批住在哪儿** —— `<root>/builtin/`（ 随这个项目发的，不是部署状态 ）。"""
-    return Path(root) / BUILTIN_DIR
+    from .plugin_paths import source_root
+    return source_root(root) / BUILTIN_DIR
 
 
 def _the_origins(place: Path) -> dict[str, dict[str, str]]:

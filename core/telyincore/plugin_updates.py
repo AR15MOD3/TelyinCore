@@ -117,8 +117,10 @@ class PluginUpdates:
         try: origins=read_json(safe_path(self.root,home/'.origins.json'))
         except (OSError,ValueError): origins={}
         builtins=set()
-        for file in (self.root/'builtin/infinity').glob('*/package.json'):
-            try: builtins.add(read_json(safe_path(self.root,file)).get('name'))
+        from .plugin_paths import source_root
+        source=source_root(self.root)
+        for file in (source/'builtin/infinity').glob('*/package.json'):
+            try: builtins.add(read_json(safe_path(source,file)).get('name'))
             except (OSError,ValueError): pass
         rows=[]
         for folder in sorted(home.iterdir()) if home.exists() else []:

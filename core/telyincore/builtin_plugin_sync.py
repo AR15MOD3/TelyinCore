@@ -9,10 +9,12 @@ from .plugin_versions import publish_version
 def sync_bundled(core):
     from runtime_identity import safe_path
     core=Path(core).resolve();results=[]
-    for manifest in (core/'builtin/infinity').glob('*/package.json'):
+    from .plugin_paths import source_root
+    dist=source_root(core)
+    for manifest in (dist/'builtin/infinity').glob('*/package.json'):
         stage=None
         try:
-            manifest=safe_path(core,manifest);spec=read_json(manifest);name=spec['name']
+            manifest=safe_path(dist,manifest);spec=read_json(manifest);name=spec['name']
             from .market import plugin_destination
             destination=plugin_destination(core/'extensions',name)
             if not destination.exists(): continue  # An uninstalled built-in stays uninstalled.
@@ -22,7 +24,7 @@ def sync_bundled(core):
             stage=Path(tempfile.mkdtemp(prefix='.builtin-update-',dir=core/'extensions'))
             for source in manifest.parent.rglob('*'):
                 if '__pycache__' in source.parts or source.suffix == '.pyc': continue
-                source=safe_path(core,source)
+                source=safe_path(dist,source)
                 target=stage/source.relative_to(manifest.parent)
                 if source.is_dir():target.mkdir(parents=True,exist_ok=True)
                 elif source.is_file():target.parent.mkdir(parents=True,exist_ok=True);shutil.copy2(source,target)

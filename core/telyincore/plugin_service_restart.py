@@ -74,7 +74,7 @@ class PluginServiceRestart:
         return {'bot': self.bot, 'restart_supported': bool(self.capability),
                 'restart_requested': self.requested,
                 'restart_reason': '' if self.capability else
-                '当前服务不支持页面内重启，请使用新版 Windows Core 启动器重新启动此 Bot。'}
+                '当前服务不支持页面内重启，请从 Core 启动器重新启动此 Bot。'}
 
     def request(self, name, action, port):
         from .plugin_scope_store import plugin_name

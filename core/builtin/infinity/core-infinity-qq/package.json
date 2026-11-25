@@ -1,6 +1,6 @@
 {
   "name": "core-infinity-qq",
-  "version": "0.9.2",
+  "version": "0.9.4",
   "author": "Telyin",
   "license": "LicenseRef-TelyinCore-NonCommercial-1.0",
   "description": "通过 OneBot v11 协议端收发 QQ 私聊、群聊文字、表情和语音。",
@@ -141,7 +141,6 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/AR15MOD3/TelyinCore.git",
-    "directory": "core/builtin/infinity/core-infinity-qq"
+    "url": "https://github.com/AR15MOD3/core-infinity-qq.git"
   }
 }

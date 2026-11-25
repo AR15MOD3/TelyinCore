@@ -1,4 +1,4 @@
-// maintenance/release-0549-20261125/build/core/src/web/client/status-json.ts
+// src/web/client/status-json.ts
 var StatusHttpError = class extends Error {
   constructor(url, status) {
     super(`${url} returned ${status}`);
@@ -93,7 +93,7 @@ async function getStatusJson(url, timeoutMs = 8e3) {
   return await response.json();
 }
 
-// maintenance/release-0549-20261125/build/core/src/web/client/plugin-restart.ts
+// src/web/client/plugin-restart.ts
 var pending = [];
 var request;
 var requested;
@@ -159,7 +159,7 @@ function startPluginRestart() {
   });
 }
 
-// maintenance/release-0549-20261125/build/core/src/web/client/plugin-updates.ts
+// src/web/client/plugin-updates.ts
 var state = { rows: [], checking: false };
 var pending2;
 var failure = "";
@@ -294,7 +294,7 @@ function startPluginUpdates() {
   });
 }
 
-// maintenance/release-0549-20261125/build/core/src/web/client/ui-phrases.ts
+// src/web/client/ui-phrases.ts
 var traditional = {
   "国内镜像始终直连。切换到官方源时，按下方用途使用代理。": "國內鏡像一律直連。切換到官方來源時，依下方用途使用代理。",
   "模型 API": "模型 API",
@@ -1609,7 +1609,7 @@ var traditional = {
   "页面未连接": "頁面未連接"
 };
 
-// maintenance/release-0549-20261125/build/core/src/web/client/display-storage.ts
+// src/web/client/display-storage.ts
 var localKeys = /* @__PURE__ */ new Set([
   "ui-language",
   "telyincore-look-mode",
@@ -1688,7 +1688,7 @@ function initializeDisplayScope() {
   return loading;
 }
 
-// maintenance/release-0549-20261125/build/core/src/web/client/ui-language.ts
+// src/web/client/ui-language.ts
 var bindings = /* @__PURE__ */ new Set();
 var owned = /* @__PURE__ */ new WeakMap();
 var listeners2 = /* @__PURE__ */ new Set();
@@ -1762,7 +1762,7 @@ function onUILanguage(listener) {
 }
 onDisplayScopeReady(() => setUILanguage(readDisplayLocal("ui-language") === "zh-Hant" ? "zh-Hant" : "zh-Hans", false));
 
-// maintenance/release-0549-20261125/build/core/src/web/client/text-detail.ts
+// src/web/client/text-detail.ts
 function showTextDetail(title, text2) {
   const opener = document.activeElement;
   const dialog = document.createElement("dialog");
@@ -1790,7 +1790,7 @@ function showTextDetail(title, text2) {
   close2.focus();
 }
 
-// maintenance/release-0549-20261125/build/core/src/web/client/package-updates.ts
+// src/web/client/package-updates.ts
 var last;
 var pending3;
 var installing = false;
@@ -2084,7 +2084,7 @@ function packageUpdateCard() {
   return card;
 }
 
-// maintenance/release-0549-20261125/build/core/src/web/client/quick-search.ts
+// src/web/client/quick-search.ts
 function installQuickSearch(rail) {
   const nav = rail.querySelector(".rail-nav");
   if (!nav) return;
@@ -2300,7 +2300,7 @@ function installQuickSearch(rail) {
   });
 }
 
-// maintenance/release-0549-20261125/build/core/src/web/client/rail-resize.ts
+// src/web/client/rail-resize.ts
 var WIDTH_KEY = "telyincore.rail-width";
 var DEFAULT_WIDTH = 280;
 function railWidthBounds(viewport) {
@@ -2501,7 +2501,7 @@ function installRailResize(root, rail) {
   window.requestAnimationFrame?.(() => root.classList.add("rail-motion-ready"));
 }
 
-// maintenance/release-0549-20261125/build/core/src/web/client/brand.ts
+// src/web/client/brand.ts
 var CORE_MARK_T = "M4 5H28L22 11H18V25L12 29V11H4Z";
 var CORE_MARK_CORE = "M24 17L29 22L24 27L19 22Z";
 function coreBrandMark() {
@@ -2521,7 +2521,7 @@ function coreBrandMark() {
   return svg;
 }
 
-// maintenance/release-0549-20261125/build/core/src/web/client/confirm-dialog.ts
+// src/web/client/confirm-dialog.ts
 var nextDialogId = 0;
 async function confirmAction(heading2, description, action, notice = false, options = {}) {
   const opener = document.activeElement;
@@ -2587,13 +2587,13 @@ async function notifyAction(heading2, description) {
   await confirmAction(heading2, description, "知道了", true);
 }
 
-// maintenance/release-0549-20261125/build/core/src/web/client/asset-url.ts
+// src/web/client/asset-url.ts
 function assetUrl(name) {
   if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(name)) throw new Error("Invalid asset name");
   return new URL(name, import.meta.url).href;
 }
 
-// maintenance/release-0549-20261125/build/core/src/web/client/look.ts
+// src/web/client/look.ts
 var THE_LOOK_ROWS = [
   ["--color-ink", "正文"],
   ["--color-dim", "次要文字"],
@@ -2794,7 +2794,7 @@ onDisplayScopeReady((prefix2) => {
   void loadLook();
 });
 
-// maintenance/release-0549-20261125/build/core/src/web/client/avatar-crop.ts
+// src/web/client/avatar-crop.ts
 function cropBounds(width, height, zoom, x, y) {
   const side = Math.min(width, height) / Math.max(1, zoom);
   return {
@@ -3013,7 +3013,7 @@ async function cropAvatar(file, save) {
   }
 }
 
-// maintenance/release-0549-20261125/build/core/src/web/client/speaker.ts
+// src/web/client/speaker.ts
 var NEUTRAL = "BOT";
 var NAME_LINE = /^[ \t]*-[ \t]*\*\*名字\*\*[ \t]*[：:][ \t]*([^。，,.;；!！?？\n（(]+)/m;
 function bodies_of(report) {
@@ -3121,7 +3121,7 @@ function loadUserLabel(force = false) {
   return labelRequest;
 }
 
-// maintenance/release-0549-20261125/build/core/src/web/client/bot-manager.ts
+// src/web/client/bot-manager.ts
 async function botDialog(shownName = speaker()) {
   const opener = document.activeElement;
   const response = await pageFetch("/infinity/bots", { cache: "no-store" });
@@ -3195,7 +3195,7 @@ async function botDialog(shownName = speaker()) {
   }
 }
 
-// maintenance/release-0549-20261125/build/core/src/web/client/shell.ts
+// src/web/client/shell.ts
 var STROKE = {
   fill: "none",
   stroke: "currentColor",
@@ -3757,7 +3757,7 @@ function createShell(root) {
   return { shell: shell2, topbar: shell2.bar };
 }
 
-// maintenance/release-0549-20261125/build/core/src/web/client/model-display.ts
+// src/web/client/model-display.ts
 function modelDisplayName(model) {
   const path = model.trim();
   const isFilePath = /^(?:[a-z]:[\\/]|\/|\\\\)/i.test(path);
@@ -3772,7 +3772,7 @@ function modelDisplayName(model) {
   return filename.replace(/\.gguf$/i, "");
 }
 
-// maintenance/release-0549-20261125/build/core/src/web/client/engine-events.ts
+// src/web/client/engine-events.ts
 var ENGINE_CHANGED = "engine-changed";
 function notifyEngineChanged() {
   if (typeof window !== "undefined" && typeof window.dispatchEvent === "function") {
@@ -3784,7 +3784,7 @@ function onEngineChanged(refresh2) {
   return () => window.removeEventListener(ENGINE_CHANGED, refresh2);
 }
 
-// maintenance/release-0549-20261125/build/core/src/web/client/qq-toolbox.ts
+// src/web/client/qq-toolbox.ts
 var QQ = "core-infinity-qq";
 var guide = [
   ["消息与语音", "qq_send_text", "发送文字"],
@@ -3897,7 +3897,7 @@ function qqToolbox() {
   return { root, refresh: refresh2 };
 }
 
-// maintenance/release-0549-20261125/build/core/src/web/client/qq-stickers.ts
+// src/web/client/qq-stickers.ts
 function qqStickers() {
   function element3(tag, text2 = "") {
     const e = document.createElement(tag);
@@ -4225,7 +4225,7 @@ function qqStickers() {
   } };
 }
 
-// maintenance/release-0549-20261125/build/core/src/web/client/qq-voice-setup.ts
+// src/web/client/qq-voice-setup.ts
 function voiceSetup(kind, selection) {
   const section = document.createElement("details");
   section.className = "qq-voice-setup compact-disclosure";
@@ -4371,7 +4371,7 @@ function voiceSetup(kind, selection) {
   };
 }
 
-// maintenance/release-0549-20261125/build/core/src/web/client/plugin-display-cache.ts
+// src/web/client/plugin-display-cache.ts
 var scope = null;
 onDisplayScopeReady((prefix2) => {
   scope = prefix2 + "plugin-page-display.v1:";
@@ -4511,7 +4511,134 @@ function fuzzyPluginMatch(name, id, query) {
   });
 }
 
-// maintenance/release-0549-20261125/build/core/src/web/client/qq-diagnostics.ts
+// builtin/infinity/core-infinity-qq/web/environment-editor.js
+function environmentEditor({ read: read4, write: write2, botName }) {
+  function element3(tag, className, text2 = "") {
+    const node6 = document.createElement(tag);
+    node6.className = className;
+    node6.textContent = text2;
+    return node6;
+  }
+  const root = element3("section", "qq-scene-card infinity-voice-card");
+  const body = element3("div", "qq-scene-body");
+  const heading2 = element3("header", "qq-scene-title");
+  const name = element3("span", "qq-scene-bot");
+  const title = element3("h3", "", "QQ 环境提示词");
+  heading2.append(title, name);
+  const editor = element3("textarea", "qq-scene-field");
+  editor.setAttribute("aria-label", "QQ 环境提示词");
+  editor.rows = 10;
+  const footer = element3("div", "qq-scene-footer");
+  const status = element3("span", "qq-scene-status");
+  status.setAttribute("role", "status");
+  const actions = element3("div", "qq-scene-actions");
+  const undo = element3("button", "btn ghost", "撤销修改");
+  const retry = element3("button", "btn ghost", "重新读取");
+  const save = element3("button", "btn qq-scene-save", "保存修改");
+  for (const button3 of [undo, retry, save]) button3.type = "button";
+  actions.append(undo, retry, save);
+  footer.append(status, actions);
+  body.append(heading2, editor, footer);
+  const details = element3("details", "qq-scene-declaration");
+  const summary2 = element3("summary", "", "查看 QQ 通道声明");
+  const documentText = element3("p", "qq-scene-declaration-text", "正在读取通道声明…");
+  const note = element3("small", "qq-scene-declaration-note");
+  details.append(summary2, documentText, note);
+  root.append(body, details);
+  let saved = "", revision = "", busy = false, needsRead = false, lastDeclaration = "";
+  function render2(message = "") {
+    const dirty = editor.value !== saved;
+    editor.disabled = busy || !revision;
+    editor.hidden = !revision;
+    undo.hidden = save.hidden = !dirty;
+    undo.disabled = save.disabled = busy;
+    retry.hidden = !needsRead;
+    retry.disabled = busy;
+    status.textContent = message || (dirty ? "有未保存的修改" : "");
+    status.dataset.dirty = String(dirty && !message);
+    footer.hidden = !dirty && !needsRead && !status.textContent;
+    const label = botName();
+    name.textContent = label || "";
+    name.hidden = !label;
+  }
+  async function load() {
+    if (busy) return;
+    busy = true;
+    render2("正在读取提示词…");
+    let message = "";
+    try {
+      const info = await read4();
+      if (typeof info?.text !== "string" || !info.revision) throw new Error("提示词或版本信息缺失");
+      revision = info.revision;
+      editor.value = saved = info.text;
+      needsRead = false;
+    } catch (error) {
+      needsRead = true;
+      message = "读取失败：" + error.message;
+    } finally {
+      busy = false;
+      render2(message);
+    }
+  }
+  async function persist() {
+    if (busy || !revision || editor.value === saved) return;
+    const text2 = editor.value;
+    busy = true;
+    render2("正在保存…");
+    let message = "";
+    try {
+      const info = await write2(text2, revision);
+      if (!info?.revision) throw new Error("未收到保存回执，请重新读取核对");
+      revision = info.revision;
+      saved = text2;
+      needsRead = false;
+      message = "已保存，下次 QQ 会话生效。";
+    } catch (error) {
+      message = error.message + "。草稿已保留。";
+      if (error.status === 409) needsRead = true;
+    } finally {
+      busy = false;
+      render2(message);
+    }
+  }
+  editor.addEventListener("input", () => render2());
+  editor.addEventListener("keydown", (event) => {
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
+      event.preventDefault();
+      void persist();
+    }
+  });
+  undo.onclick = () => {
+    editor.value = saved;
+    render2();
+    editor.focus();
+  };
+  retry.onclick = () => {
+    if (editor.value === saved || window.confirm("重新读取会放弃当前草稿，继续吗？")) void load();
+  };
+  save.onclick = () => void persist();
+  render2();
+  return {
+    root,
+    async open() {
+      if (!revision) await load();
+    },
+    update(declaration) {
+      const available2 = declaration?.status === "available";
+      lastDeclaration = available2 ? declaration.text : "";
+      documentText.textContent = lastDeclaration || "当前没有可显示的 QQ 通道声明。";
+      note.textContent = "";
+      name.textContent = botName() || "";
+      name.hidden = !name.textContent;
+    },
+    unavailable() {
+      if (!lastDeclaration) documentText.textContent = "暂时无法读取 QQ 通道声明。";
+      note.textContent = lastDeclaration ? "状态更新失败，显示上次读取的声明。" : "";
+    }
+  };
+}
+
+// src/web/client/qq-diagnostics.ts
 function element(tag, cls, text2) {
   const item = document.createElement(tag);
   item.className = cls;
@@ -4692,125 +4819,31 @@ function createQQTerminal(refresh2) {
   };
 }
 function createQQEnvironment() {
-  const root = element("section", "infinity-voice-card qq-diagnostic-card qq-environment-card");
-  const badge = element("span", "qq-diagnostic-badge", "只读声明");
-  const source = element("span", "qq-environment-source");
-  const sourceRow = element("div", "qq-environment-meta");
-  sourceRow.append(element("span", "qq-diagnostic-caption", "声明来源"), source);
-  const text2 = element("div", "qq-environment-document");
-  coreSetUIAttribute(text2, "aria-label", corePhrase("QQ 插件环境声明文本"));
-  const hint = element("p", "qq-diagnostic-note", "正在读取环境声明…");
-  const description = element("p", "qq-diagnostic-description", "插件声明 QQ 消息的来源和范围。工具能力随启用状态提供，运行状态和工具结果按轮追加。");
-  const header = heading("QQ 通道 · 插件声明", badge);
-  let previousText;
-  let editing = false;
-  let revision = "";
-  let busy = false;
-  const editor = element("textarea", "qq-environment-document");
-  coreSetUIAttribute(editor, "aria-label", corePhrase("当前 Bot 的 QQ 环境提示词"));
-  editor.rows = 8;
-  const save = element("button", "btn", "保存");
-  const reload = element("button", "btn ghost", "重新读取");
-  save.type = reload.type = "button";
-  const status = element("p", "qq-diagnostic-note");
-  const buttons = element("div", "qq-diagnostic-actions");
-  buttons.append(reload, save);
-  buttons.hidden = editor.hidden = true;
-  const sceneHeader = heading("当前 Bot · QQ 场景提示词", element("span", "qq-diagnostic-badge", "可编辑"));
-  sceneHeader.append(buttons);
-  sceneHeader.hidden = true;
-  status.setAttribute("role", "status");
-  root.append(header, description, sourceRow, text2, hint, sceneHeader, editor, status);
-  let lastSaved = "";
-  async function loadEditor() {
-    if (busy) return;
-    busy = save.disabled = reload.disabled = editor.disabled = true;
-    try {
-      const response = await fetch("/persona/qq-environment");
-      if (response.status === 404 && !editing) return;
-      if (!response.ok) throw new Error("HTTP " + response.status);
-      const info = await response.json();
-      editor.value = lastSaved = info.text;
-      revision = info.revision;
-      editing = true;
-      sceneHeader.hidden = buttons.hidden = editor.hidden = false;
-      status.textContent = "保存到当前 Bot 的 环境/QQ.md，下一轮匹配的 QQ 会话读取。";
-    } catch (error) {
-      coreSetUIText(status, "textContent", [corePhrase("读取失败："), error.message]);
-    } finally {
-      busy = save.disabled = reload.disabled = editor.disabled = false;
-    }
-  }
-  async function saveEditor() {
-    if (busy || !revision) return;
-    busy = save.disabled = reload.disabled = editor.disabled = true;
-    const submitted = editor.value;
-    try {
+  return environmentEditor({
+    botName: () => speaker() === NEUTRAL ? "" : speaker(),
+    async read() {
+      const response = await fetch("/persona/qq-environment", { cache: "no-store" });
+      if (!response.ok) throw new Error(response.status === 404 ? "当前 Bot 没有可编辑的 QQ 场景" : "HTTP " + response.status);
+      return response.json();
+    },
+    async write(text2, revision) {
       const response = await fetch("/persona", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: "环境/QQ.md",
-          text: submitted,
+          text: text2,
           expect: revision,
           stamp: (/* @__PURE__ */ new Date()).toISOString().slice(0, 19).replace(/[-:]/g, "").replace("T", "-")
         })
       });
-      if (response.status === 409) {
-        coreSetUIText(status, "textContent", corePhrase("文件版本冲突或格式校验失败，草稿已保留。"));
-        return;
-      }
-      if (!response.ok) throw new Error((await response.text()).trim() || "HTTP " + response.status);
-      revision = (await response.json()).revision;
-      lastSaved = submitted;
-      coreSetUIText(status, "textContent", corePhrase("已保存，下一轮匹配的 QQ 场景会读取新版。"));
-    } catch (error) {
-      coreSetUIText(status, "textContent", [corePhrase("保存失败："), error.message]);
-    } finally {
-      busy = save.disabled = reload.disabled = editor.disabled = false;
-    }
-  }
-  save.addEventListener("click", () => {
-    void saveEditor();
-  });
-  reload.addEventListener("click", () => {
-    if (editor.value === lastSaved || window.confirm("重新读取会丢弃未保存的修改，继续吗？")) {
-      void loadEditor();
+      if (!response.ok) throw Object.assign(new Error(response.status === 409 ? "版本冲突或格式校验失败" : "保存失败：HTTP " + response.status), { status: response.status });
+      return response.json();
     }
   });
-  editor.addEventListener("keydown", (event) => {
-    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
-      event.preventDefault();
-      void saveEditor();
-    }
-  });
-  return {
-    root,
-    async open() {
-      if (!editing) await loadEditor();
-    },
-    update(value) {
-      source.textContent = value?.source || "QQ 插件 · channel/qq.md";
-      const available2 = value?.status === "available";
-      coreSetUIText(badge, "textContent", available2 ? corePhrase("只读声明") : value?.status === "unconfigured" ? corePhrase("尚未声明") : value ? corePhrase("不可读取") : corePhrase("接口未提供"));
-      badge.dataset.state = available2 ? "neutral" : "warn";
-      const content = available2 ? value.text : value ? "当前没有可显示的 QQ 通道环境声明。" : "当前 Core 未提供环境声明读取接口。";
-      if (content !== previousText) {
-        text2.replaceChildren();
-        for (const paragraph of content.split(/\n\s*\n/)) text2.append(element("p", "", paragraph));
-        previousText = content;
-      }
-      hint.textContent = value?.message || "仅显示已安装 QQ 插件的声明；不会读取其他插件或终端环境作为替代。";
-    },
-    unavailable() {
-      coreSetUIText(badge, "textContent", corePhrase("读取暂不可用"));
-      badge.dataset.state = "warn";
-      coreSetUIText(hint, "textContent", corePhrase("状态更新失败；保留上次读取内容，不代表当前进程已经加载此声明。"));
-    }
-  };
 }
 
-// maintenance/release-0549-20261125/build/core/src/web/client/voice-corpus-panel.ts
+// src/web/client/voice-corpus-panel.ts
 function voiceCorpusPanel() {
   const root = document.createElement("section");
   root.className = "voice-corpus";
@@ -5017,13 +5050,13 @@ function voiceCorpusPanel() {
   });
 }
 
-// maintenance/release-0549-20261125/build/core/src/web/client/config-presentation.ts
+// src/web/client/config-presentation.ts
 function configPresentation(root, state3) {
   root.setAttribute("data-config-state", state3);
   root.setAttribute("aria-busy", String(state3 === "loading"));
 }
 
-// maintenance/release-0549-20261125/build/core/src/web/client/qq-signals.ts
+// src/web/client/qq-signals.ts
 function serviceSignal(name, configured, running) {
   return {
     state: !configured ? "warn" : running ? "on" : "off",
@@ -5070,7 +5103,7 @@ function qqSignals(value, loaded2 = false) {
   ];
 }
 
-// maintenance/release-0549-20261125/build/core/src/web/client/download-dialog.ts
+// src/web/client/download-dialog.ts
 async function chooseASRSource(kind = "ASR", preferredSource) {
   const opener = document.activeElement;
   const dialog = document.createElement("dialog");
@@ -5125,7 +5158,7 @@ async function chooseASRSource(kind = "ASR", preferredSource) {
   }
 }
 
-// maintenance/release-0549-20261125/build/core/src/web/client/infinity-controls.ts
+// src/web/client/infinity-controls.ts
 function infinityField(label, input2) {
   const box = document.createElement("label");
   box.className = "infinity-field";
@@ -5157,7 +5190,7 @@ function infinityVoiceHeading(title, download) {
   return row2;
 }
 
-// maintenance/release-0549-20261125/build/core/src/web/client/infinity-page.ts
+// src/web/client/infinity-page.ts
 function node2(tag, className, text2) {
   const element3 = document.createElement(tag);
   element3.className = className;
@@ -6692,7 +6725,7 @@ function infinityPage(shell2, pluginName = "") {
   };
 }
 
-// maintenance/release-0549-20261125/build/core/src/web/client/plugin-page-bridge.ts
+// src/web/client/plugin-page-bridge.ts
 function pluginPageBridge(options) {
   let busy = false;
   return (event) => {
@@ -6747,7 +6780,7 @@ function pluginPageBridge(options) {
   };
 }
 
-// maintenance/release-0549-20261125/build/core/src/web/client/page-load.ts
+// src/web/client/page-load.ts
 function pageLoad(root, label, retry) {
   const note = document.createElement("p");
   note.className = "infinity-hint page-load-status";
@@ -6782,7 +6815,7 @@ function pageLoad(root, label, retry) {
   };
 }
 
-// maintenance/release-0549-20261125/build/core/src/web/client/plugin-config-page.ts
+// src/web/client/plugin-config-page.ts
 function text(tag, className, value = "") {
   const node6 = document.createElement(tag);
   node6.className = className;
@@ -7102,7 +7135,7 @@ function pluginConfigPage(shell2, name) {
   } };
 }
 
-// maintenance/release-0549-20261125/build/core/src/web/client/plugin-ui-registry.ts
+// src/web/client/plugin-ui-registry.ts
 var adapters = /* @__PURE__ */ new Map();
 function registerPluginUI(name, adapter) {
   if (adapters.has(name)) throw new Error(`插件页面重复注册：${name}`);
@@ -7148,7 +7181,7 @@ function pluginSignals(plugin) {
   return provider && value ? provider.signals(value, plugin) : lifecycle(plugin);
 }
 
-// maintenance/release-0549-20261125/build/core/src/web/client/engine.ts
+// src/web/client/engine.ts
 async function ask(url, init) {
   try {
     const resp = await pageFetch(url, init);
@@ -7235,7 +7268,7 @@ async function saveEngineDraft(asked, typed) {
   return { profile, secret };
 }
 
-// maintenance/release-0549-20261125/build/core/src/web/client/engine-controls.ts
+// src/web/client/engine-controls.ts
 var selects = /* @__PURE__ */ new Map();
 var menus = /* @__PURE__ */ new Map();
 var serial = 0;
@@ -7449,7 +7482,7 @@ function selectControl(select2, label) {
   return box;
 }
 
-// maintenance/release-0549-20261125/build/core/src/web/client/chatgpt-auth.ts
+// src/web/client/chatgpt-auth.ts
 function chatgptAuth(readName, backendReady = true) {
   const root = document.createElement("div");
   root.className = "engine-chatgpt";
@@ -7629,7 +7662,7 @@ function chatgptAuth(readName, backendReady = true) {
   };
 }
 
-// maintenance/release-0549-20261125/build/core/src/web/client/engine-providers.ts
+// src/web/client/engine-providers.ts
 function isPlanProvider(preset) {
   return preset.auth === "chatgpt" || /\/api\/coding\/paas\/v4\/?$/.test(preset.base_url);
 }
@@ -7648,7 +7681,7 @@ function nextProviderName(base, names) {
   return name;
 }
 
-// maintenance/release-0549-20261125/build/core/src/web/client/engine-page.ts
+// src/web/client/engine-page.ts
 function readDrafts() {
   try {
     const stored = JSON.parse(readDisplaySession("engine-drafts") ?? "{}");
@@ -8775,7 +8808,7 @@ function handoffNote(windowTokens, outTokens) {
   return ` 输入硬阈 ${hard}；软提醒 ${Math.floor(hard * SOFT_RATIO)}，余下 15% 为后续增长预留。`;
 }
 
-// maintenance/release-0549-20261125/build/core/src/web/client/composer-popovers.ts
+// src/web/client/composer-popovers.ts
 function popoverPosition(anchor, height, view2) {
   const edge = 12;
   const gap = 10;
@@ -8924,7 +8957,7 @@ function wireComposerPopovers(entries, refresh2) {
   }
 }
 
-// maintenance/release-0549-20261125/build/core/src/web/client/cache-view.ts
+// src/web/client/cache-view.ts
 var object = (value) => typeof value === "object" && value !== null ? value : {};
 var number = (value) => typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : null;
 var count = (value) => {
@@ -9053,7 +9086,7 @@ function latestCacheRead(fetcher) {
   };
 }
 
-// maintenance/release-0549-20261125/build/core/src/web/client/console-introduction.ts
+// src/web/client/console-introduction.ts
 function mountConsoleIntroduction(root, composer2) {
   const guide2 = document.createElement("section");
   guide2.className = "console-introduction";
@@ -9152,7 +9185,7 @@ function mountConsoleIntroduction(root, composer2) {
   void load();
 }
 
-// maintenance/release-0549-20261125/build/core/src/web/client/tool-activity.ts
+// src/web/client/tool-activity.ts
 function toolReceiptFailed(name, text2) {
   return name !== "handoff_note" && /^\s*\[tool failed\]/.test(text2 || "");
 }
@@ -9206,7 +9239,7 @@ function rememberToolTitles(result, titles) {
   if (knowledge && !/^(记录时间|修订来历|第\s*\d)/.test(knowledge[2])) titles.set(knowledge[1], knowledge[2]);
 }
 
-// maintenance/release-0549-20261125/build/core/src/web/client/history-feed.ts
+// src/web/client/history-feed.ts
 function mergeHistory(history, live2) {
   const result = [];
   const known = /* @__PURE__ */ new Set();
@@ -9287,7 +9320,7 @@ var HistoryFeed = class {
   }
 };
 
-// maintenance/release-0549-20261125/build/core/src/web/client/chat.ts
+// src/web/client/chat.ts
 var ME = "user";
 var OTHER = "bot";
 var A_BATCH = "batch";
@@ -9821,7 +9854,7 @@ function mountChat(host) {
   return view2;
 }
 
-// maintenance/release-0549-20261125/build/core/src/web/client/live.ts
+// src/web/client/live.ts
 var EXPORT_LABEL = "导出诊断";
 var SEND_LABEL = "▶";
 var HANDOFF_LABEL = "交接";
@@ -10503,7 +10536,7 @@ function chatPage(shell2) {
   };
 }
 
-// maintenance/release-0549-20261125/build/core/src/web/client/persona-memory.ts
+// src/web/client/persona-memory.ts
 function personaMemoryTail() {
   const tail = document.createElement("footer");
   tail.className = "persona-memory-tail page-footer";
@@ -10511,7 +10544,7 @@ function personaMemoryTail() {
   return tail;
 }
 
-// maintenance/release-0549-20261125/build/core/src/web/client/persona-page.ts
+// src/web/client/persona-page.ts
 var BOUNDARY_LINE_SHORT = "修改会写入人设文件。仅限本机访问不等于账号鉴权。";
 var A_STAMP = /^\d{8}-\d{6}$/;
 var REPORT_ROUTE = "/persona";
@@ -11530,7 +11563,7 @@ function personaPage(shell2, options = {}) {
   };
 }
 
-// maintenance/release-0549-20261125/build/core/src/web/client/display-date.ts
+// src/web/client/display-date.ts
 function displayDate(value) {
   if (!value) return "";
   if (!/^\d{4}-\d{2}-\d{2}T/.test(value)) return value;
@@ -11538,7 +11571,7 @@ function displayDate(value) {
   return Number.isNaN(date.getTime()) ? "日期未知" : `${date.getMonth() + 1} 月 ${date.getDate()} 日`;
 }
 
-// maintenance/release-0549-20261125/build/core/src/web/client/record-refresh.ts
+// src/web/client/record-refresh.ts
 function recordRefresh(root, read4) {
   let active2 = false;
   let running = false;
@@ -11589,7 +11622,7 @@ function recordRefresh(root, read4) {
   };
 }
 
-// maintenance/release-0549-20261125/build/core/src/web/client/memory-page.ts
+// src/web/client/memory-page.ts
 function recentPeople(everyone) {
   const recordedAt = (one) => {
     if (typeof one.recent_at === "number" && Number.isFinite(one.recent_at)) {
@@ -12248,7 +12281,7 @@ function memoryPage(shell2) {
   };
 }
 
-// maintenance/release-0549-20261125/build/core/src/web/client/plugin-versions.ts
+// src/web/client/plugin-versions.ts
 var states = /* @__PURE__ */ new Map();
 var painters = /* @__PURE__ */ new Map();
 var el4 = (tag, text2 = "", cls = "") => {
@@ -12368,7 +12401,7 @@ function pluginVersions(repo2, name, current2, blocked, install) {
   return Object.assign(box, { loadVersions: read4 });
 }
 
-// maintenance/release-0549-20261125/build/core/src/web/client/plugin-origin.ts
+// src/web/client/plugin-origin.ts
 function githubRepository(value) {
   return /^https:\/\/github\.com\/([\w.-]+\/[\w.-]+?)(?:\.git)?(?:\/|$)/.exec(value)?.[1] || "";
 }
@@ -12379,7 +12412,7 @@ function pluginOrigin(plugin, repository = "") {
 }
 var pluginOriginOrder = (group) => ({ "Core": 0, "GitHub": 1, "本地导入": 2, "来源待确认": 3 })[group];
 
-// maintenance/release-0549-20261125/build/core/src/web/client/plugin-operation.ts
+// src/web/client/plugin-operation.ts
 var state2;
 var continuation;
 var pluginOperation = () => state2;
@@ -12547,10 +12580,10 @@ async function runPluginOperation(name, action) {
   }
 }
 
-// maintenance/release-0549-20261125/build/core/src/web/client/plugin-guide-version.ts
+// src/web/client/plugin-guide-version.ts
 var PLUGIN_GUIDE_VERSION = true ? "v1.18" : "";
 
-// maintenance/release-0549-20261125/build/core/src/web/client/plugin-catalog.ts
+// src/web/client/plugin-catalog.ts
 var pluginCategories = [
   ["all", "全部"],
   ["communication", "通讯接入"],
@@ -12579,7 +12612,7 @@ function pluginRequirement(one) {
   return (one.full || "").toLowerCase() === "ar15mod3/infinity-comfyui" ? "需启用 QQ 连接" : "";
 }
 
-// maintenance/release-0549-20261125/build/core/src/web/client/plugin-platforms.ts
+// src/web/client/plugin-platforms.ts
 var platformNames = { windows: "Windows", linux: "Linux", macos: "macOS" };
 function pluginPlatforms(one) {
   const supported = Object.keys(platformNames).filter((id) => one.keywords?.includes(`platform-${id}`));
@@ -12597,7 +12630,7 @@ function platformSummary(info) {
   return values.length ? values.join(" / ") : "平台未声明";
 }
 
-// maintenance/release-0549-20261125/build/core/src/web/client/plugin-workspace.ts
+// src/web/client/plugin-workspace.ts
 var node5 = (tag, cls = "", text2 = "") => {
   const n = document.createElement(tag);
   n.className = cls;
@@ -13258,12 +13291,12 @@ function pluginWorkspace(shell2, view2 = "local") {
   } };
 }
 
-// maintenance/release-0549-20261125/build/core/src/web/client/plugin-market-page.ts
+// src/web/client/plugin-market-page.ts
 function pluginMarketPage(shell2) {
   return pluginWorkspace(shell2, "discover");
 }
 
-// maintenance/release-0549-20261125/build/core/src/web/client/infinity-plugin-page.ts
+// src/web/client/infinity-plugin-page.ts
 function infinityPluginPage(shell2) {
   const route2 = location.hash.replace(/^#\/?infinity\//, "");
   let name = "";
@@ -13275,7 +13308,7 @@ function infinityPluginPage(shell2) {
   return pluginPage(shell2, name);
 }
 
-// maintenance/release-0549-20261125/build/core/src/web/client/knowledge-page.ts
+// src/web/client/knowledge-page.ts
 var READ_FAILED2 = "知识库加载失败，请重试。";
 var NOT_WIRED2 = "当前服务暂不支持查看知识库。";
 var NOTHING_YET = "暂无知识库内容。";
@@ -13451,7 +13484,7 @@ function knowledgePage(shell2) {
   };
 }
 
-// maintenance/release-0549-20261125/build/core/src/web/client/portrait-display.ts
+// src/web/client/portrait-display.ts
 function portraitAccount(raw) {
   const group = /^group:qq:\d+\|sender=(qq:\d+)$/.exec(raw);
   if (group) return group[1];
@@ -13509,7 +13542,7 @@ function portraitGroups(people) {
   return [...groups.values()].sort((a, b) => Number(b.key === "console") - Number(a.key === "console")).map((group) => ({ ...group, people: group.people.sort((a, b) => Number(portraitLinkedToConsole(b)) - Number(portraitLinkedToConsole(a))) }));
 }
 
-// maintenance/release-0549-20261125/build/core/src/web/client/people-page.ts
+// src/web/client/people-page.ts
 var READ_FAILED3 = "画像加载失败，请重试。";
 var NOT_WIRED3 = "当前服务暂不支持查看画像。";
 var NOBODY_YET = "暂无画像记录。";
@@ -14079,7 +14112,7 @@ function peoplePage(shell2) {
   };
 }
 
-// maintenance/release-0549-20261125/build/core/src/web/client/record-labels.ts
+// src/web/client/record-labels.ts
 function experienceSourceName(path) {
   const name = path.split(/[\\/]/).filter(Boolean).at(-1)?.replace(/\.[^.]+$/, "") || "";
   if (/^对话(?:记录)?$/.test(name)) return "对话";
@@ -14089,7 +14122,7 @@ function experienceSourceName(path) {
   return labels[name] || name;
 }
 
-// maintenance/release-0549-20261125/build/core/src/web/client/experience-page.ts
+// src/web/client/experience-page.ts
 var READ_FAILED4 = "经历加载失败，请重试。";
 var NOT_WIRED4 = "当前服务暂不支持查看经历。";
 var NOTHING_YET2 = "暂无经历。保存的对话和记录会显示在这里。";
@@ -14480,7 +14513,7 @@ function experiencePage(shell2) {
   };
 }
 
-// maintenance/release-0549-20261125/build/core/src/web/client/plugin-storage-settings.ts
+// src/web/client/plugin-storage-settings.ts
 var element2 = (tag, cls, label) => {
   const el6 = document.createElement(tag);
   el6.className = cls;
@@ -14696,7 +14729,7 @@ function snowlumaSessionSettings() {
   return root;
 }
 
-// maintenance/release-0549-20261125/build/core/src/web/client/model-proxy-settings.ts
+// src/web/client/model-proxy-settings.ts
 var PROVIDERS = [["openai", "OpenAI / ChatGPT"], ["google", "Google Gemini"], ["anthropic", "Anthropic Claude"], ["xai", "xAI Grok"]];
 var el5 = (tag, cls = "", text2 = "") => {
   const n = document.createElement(tag);
@@ -14914,7 +14947,7 @@ function modelProxySettings() {
   return root;
 }
 
-// maintenance/release-0549-20261125/build/core/src/web/client/settings-page.ts
+// src/web/client/settings-page.ts
 var GROUPS = [
   ["背景层级", [
     ["--color-canvas", "页面背景"],
@@ -15469,7 +15502,7 @@ function settingsPage(shell2) {
   };
 }
 
-// maintenance/release-0549-20261125/build/core/src/web/client/pages.ts
+// src/web/client/pages.ts
 function page(row2, build) {
   return { ...row2, build };
 }
@@ -15633,7 +15666,7 @@ function route(shell2, pages = PAGES) {
   return live;
 }
 
-// maintenance/release-0549-20261125/build/core/src/web/client/state.ts
+// src/web/client/state.ts
 var COUNTER_KEYS = ["tokens", "messages", "batches", "paused"];
 var ENGINE_KEYS = ["endpoint", "model", "profile", "model_available"];
 function count2(value) {
@@ -15658,7 +15691,7 @@ function counterChips(m) {
   ];
 }
 
-// maintenance/release-0549-20261125/build/core/src/web/client/main.ts
+// src/web/client/main.ts
 var READ_NAMES = [
   ...COUNTER_KEYS,
   ...ENGINE_KEYS,

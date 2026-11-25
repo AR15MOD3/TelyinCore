@@ -1,3 +1,4 @@
+@import '../../../builtin/infinity/core-infinity-qq/web/environment-editor.css';
 /* Light polish for THE WORLD: keep the book, profile and timeline compositions. */
 @layer components {
   .page-world.world-studio {

@@ -5911,6 +5911,9 @@ def _main_impl(argv: list[str] | None = None, *, sharing_bridge_factory=None, pr
         if route.startswith(plugin_config_route):
             from urllib.parse import unquote
             return plugin_config.read(unquote(route[len(plugin_config_route):]))
+        if route == infinity_path + "/tools":
+            from qq_tool_catalog import snapshot
+            return snapshot(core_root, plugin_scope, _the_current_declarations)
         if route == "/infinity/waves/accounts":
             with plugins.lifecycle_transaction():
                 return waves_accounts.snapshot()

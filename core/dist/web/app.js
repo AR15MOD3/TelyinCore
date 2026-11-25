@@ -2936,13 +2936,13 @@ function searchBox(placeholder) {
 }
 var EMPTY_CHIPS = ["tokens", "messages", "batches", "paused"];
 function node(tag, cls, text2) {
-  const el5 = document.createElement(tag);
-  if (cls !== void 0) el5.className = cls;
+  const el6 = document.createElement(tag);
+  if (cls !== void 0) el6.className = cls;
   if (text2 !== void 0) {
-    if (typeof text2 === "string") el5.textContent = text2;
-    else coreSetUIText(el5, "textContent", text2);
+    if (typeof text2 === "string") el6.textContent = text2;
+    else coreSetUIText(el6, "textContent", text2);
   }
-  return el5;
+  return el6;
 }
 function groupEl(index, label, items, soon = []) {
   const box = node("div", "rail-group");
@@ -3411,6 +3411,114 @@ function onEngineChanged(refresh2) {
   return () => window.removeEventListener(ENGINE_CHANGED, refresh2);
 }
 
+// core/src/web/client/qq-toolbox.ts
+var QQ = "core-infinity-qq";
+var guide = [
+  ["消息与语音", "qq_send_text", "发送文字"],
+  ["消息与语音", "qq_send_reply", "引用并回复消息"],
+  ["消息与语音", "qq_send_voice", "合成并发送语音"],
+  ["消息与语音", "qq_read_group_history", "回查共同群聊记录"],
+  ["图片与表情", "qq_send_image", "发送插件生成的图片"],
+  ["图片与表情", "qq_look_image", "查看收到的图片"],
+  ["图片与表情", "qq_send_face", "发送 QQ 原生表情"],
+  ["图片与表情", "qq_list_custom_faces", "列出收藏表情"],
+  ["图片与表情", "qq_inspect_custom_face", "识别表情包内容"],
+  ["图片与表情", "qq_collect_sticker", "收藏表情包"],
+  ["图片与表情", "qq_correct_sticker", "按 owner 的纠正更新表情资料"],
+  ["图片与表情", "qq_send_custom_face", "发送收藏表情"],
+  ["图片与表情", "qq_send_saved_image", "发回收到的图片或 GIF"],
+  ["主动分享", "qq_sharing_preview", "审核拟分享的内容"],
+  ["主动分享", "qq_share_to_owner", "向 owner 分享"]
+];
+function el2(tag, cls = "", text2 = "") {
+  const item = document.createElement(tag);
+  item.className = cls;
+  item.textContent = text2;
+  return item;
+}
+function qqToolbox() {
+  const root = el2("div", "infinity-pane infinity-pane-single");
+  const card = el2("section", "infinity-voice-card qq-diagnostic-card qq-tools-card");
+  const header = el2("div", "qq-diagnostic-heading");
+  const status = el2("span", "qq-diagnostic-badge");
+  status.setAttribute("role", "status");
+  const reload = el2("button", "btn ghost", "刷新");
+  reload.type = "button";
+  header.append(el2("h3", "", "QQ 工具集"), status, reload);
+  const search = el2("input", "qq-tools-search");
+  search.type = "search";
+  search.placeholder = "搜索用途或工具名";
+  search.setAttribute("aria-label", search.placeholder);
+  const list = el2("div", "qq-tools-groups");
+  card.append(header, el2("p", "qq-diagnostic-description", "已注册的工具仍受当前会话、账号权限和服务配置限制。展开可查看说明和参数。"), search, list);
+  root.append(card);
+  let data;
+  let state3 = "正在读取";
+  let serial2 = 0;
+  function render2() {
+    const live2 = data?.tools.filter((tool) => tool.provider === QQ) || [];
+    const index = new Map(live2.map((tool) => [tool.name, tool]));
+    const labels = data?.guide?.length ? data.guide : guide.map(([group, name, title]) => ({ group, name, title }));
+    const rows = labels.map((row2) => ({ ...row2, tool: index.get(row2.name) }));
+    for (const tool of live2) {
+      if (rows.some((row2) => row2.name === tool.name)) continue;
+      rows.push({ group: "其他 QQ 工具", name: tool.name, title: tool.name, tool });
+    }
+    const query = search.value.trim().toLowerCase();
+    const filtered = rows.filter((row2) => (row2.title + " " + row2.name + " " + row2.group).toLowerCase().includes(query));
+    list.replaceChildren();
+    status.textContent = state3;
+    for (const group of new Set(filtered.map((row2) => row2.group))) {
+      const section = el2("section", "qq-tools-section");
+      section.append(el2("h4", "", group));
+      for (const row2 of filtered.filter((row3) => row3.group === group)) {
+        const item = el2("details", "qq-tool-item");
+        const line = el2("summary");
+        const label = el2("span", "qq-tool-label");
+        label.append(el2("span", "", row2.title), el2("code", "", row2.name));
+        line.append(label, el2("small", row2.tool ? "qq-tool-on" : "", row2.tool ? "已注册" : data ? "未注册" : "待核实"));
+        item.append(line);
+        if (row2.tool) {
+          item.append(el2("p", "", row2.tool.description));
+          if (row2.tool.parameters.length) item.append(el2("p", "qq-tool-params", "参数 · " + row2.tool.parameters.map((p) => p + (row2.tool.required.includes(p) ? "（必填）" : "")).join("、")));
+        } else {
+          item.append(el2("p", "", "官方 QQ 插件的功能说明。当前注册状态以本 Bot 加载的插件和配置为准。"));
+        }
+        section.append(item);
+      }
+      list.append(section);
+    }
+    if (!filtered.length) list.append(el2("p", "qq-diagnostic-note", "没有匹配的工具。"));
+  }
+  async function refresh2() {
+    const id = ++serial2;
+    reload.disabled = true;
+    try {
+      const response = await pageFetch("/infinity/qq/tools", { cache: "no-store" });
+      if (!response.ok) throw new Error("HTTP " + response.status);
+      const result = await response.json();
+      if (!result.plugins || !Array.isArray(result.tools)) throw new Error("响应格式无效");
+      if (id !== serial2) return;
+      data = result;
+      const plugin = result.plugins[QQ];
+      state3 = !plugin ? "QQ 未安装" : !plugin.enabled ? "QQ 已停用" : !plugin.loaded ? "QQ 尚未加载" : "QQ 已注册 " + result.tools.filter((t) => t.provider === QQ).length + " 项";
+    } catch {
+      if (id !== serial2) return;
+      data = void 0;
+      state3 = "注册状态暂不可用";
+    } finally {
+      if (id === serial2) {
+        reload.disabled = false;
+        render2();
+      }
+    }
+  }
+  search.addEventListener("input", render2);
+  reload.addEventListener("click", () => void refresh2());
+  render2();
+  return { root, refresh: refresh2 };
+}
+
 // core/src/web/client/qq-stickers.ts
 function qqStickers() {
   function element3(tag, text2 = "") {
@@ -3762,13 +3870,13 @@ function voiceSetup(kind, selection) {
     checklist.append(item);
   }
   if (kind === "tts") {
-    const guide = document.createElement("a");
-    guide.href = "https://github.com/FunAudioLLM/CosyVoice/blob/074ca6dc9e80a2f424f1f74b48bdd7d3fea531cc/README.md#install";
-    guide.target = "_blank";
-    guide.rel = "noopener noreferrer";
-    guide.textContent = "CosyVoice 安装说明 ↗";
-    guide.className = "qq-voice-install-guide";
-    checklist.children[1].append(guide);
+    const guide2 = document.createElement("a");
+    guide2.href = "https://github.com/FunAudioLLM/CosyVoice/blob/074ca6dc9e80a2f424f1f74b48bdd7d3fea531cc/README.md#install";
+    guide2.target = "_blank";
+    guide2.rel = "noopener noreferrer";
+    guide2.textContent = "CosyVoice 安装说明 ↗";
+    guide2.className = "qq-voice-install-guide";
+    checklist.children[1].append(guide2);
   }
   const state3 = document.createElement("p");
   state3.className = "infinity-hint";
@@ -4216,8 +4324,8 @@ function createQQEnvironment() {
   const text2 = element("div", "qq-environment-document");
   coreSetUIAttribute(text2, "aria-label", corePhrase("QQ 插件环境声明文本"));
   const hint = element("p", "qq-diagnostic-note", "正在读取环境声明…");
-  const description = element("p", "qq-diagnostic-description", "插件提供的 QQ 通道环境说明。");
-  const header = heading("QQ 通道 · 环境提示词", badge);
+  const description = element("p", "qq-diagnostic-description", "插件声明 QQ 消息的来源和范围。工具能力随启用状态提供，运行状态和工具结果按轮追加。");
+  const header = heading("QQ 通道 · 插件声明", badge);
   let previousText;
   let editing = false;
   let revision = "";
@@ -4232,9 +4340,11 @@ function createQQEnvironment() {
   const buttons = element("div", "qq-diagnostic-actions");
   buttons.append(reload, save);
   buttons.hidden = editor.hidden = true;
-  header.append(buttons);
+  const sceneHeader = heading("当前 Bot · QQ 场景提示词", element("span", "qq-diagnostic-badge", "可编辑"));
+  sceneHeader.append(buttons);
+  sceneHeader.hidden = true;
   status.setAttribute("role", "status");
-  root.append(header, description, sourceRow, text2, hint, editor, status);
+  root.append(header, description, sourceRow, text2, hint, sceneHeader, editor, status);
   let lastSaved = "";
   async function loadEditor() {
     if (busy) return;
@@ -4247,13 +4357,8 @@ function createQQEnvironment() {
       editor.value = lastSaved = info.text;
       revision = info.revision;
       editing = true;
-      coreSetUIText(badge, "textContent", corePhrase("可编辑"));
-      badge.dataset.state = "neutral";
-      coreSetUIText(source, "textContent", corePhrase("当前 Bot · 环境/QQ.md"));
-      coreSetUIText(description, "textContent", corePhrase("编辑当前 Bot 在 QQ 场景中的提示词。"));
-      sourceRow.hidden = text2.hidden = hint.hidden = true;
-      buttons.hidden = editor.hidden = false;
-      coreSetUIText(status, "textContent", corePhrase("只修改当前 Bot 的 QQ 场景。"));
+      sceneHeader.hidden = buttons.hidden = editor.hidden = false;
+      status.textContent = "保存到当前 Bot 的 环境/QQ.md，下一轮匹配的 QQ 会话读取。";
     } catch (error) {
       coreSetUIText(status, "textContent", [corePhrase("读取失败："), error.message]);
     } finally {
@@ -4305,9 +4410,10 @@ function createQQEnvironment() {
   });
   return {
     root,
-    loadEditor,
+    async open() {
+      if (!editing) await loadEditor();
+    },
     update(value) {
-      if (editing) return;
       source.textContent = value?.source || "QQ 插件 · channel/qq.md";
       const available2 = value?.status === "available";
       coreSetUIText(badge, "textContent", available2 ? corePhrase("只读声明") : value?.status === "unconfigured" ? corePhrase("尚未声明") : value ? corePhrase("不可读取") : corePhrase("接口未提供"));
@@ -4321,7 +4427,6 @@ function createQQEnvironment() {
       hint.textContent = value?.message || "仅显示已安装 QQ 插件的声明；不会读取其他插件或终端环境作为替代。";
     },
     unavailable() {
-      if (editing) return;
       coreSetUIText(badge, "textContent", corePhrase("读取暂不可用"));
       badge.dataset.state = "warn";
       coreSetUIText(hint, "textContent", corePhrase("状态更新失败；保留上次读取内容，不代表当前进程已经加载此声明。"));
@@ -4727,7 +4832,7 @@ function infinityPage(shell2, pluginName = "") {
   const voiceGrid = node2("div", "infinity-voice-grid");
   const environmentPane = node2("div", "infinity-pane infinity-environment-pane");
   const environmentView = createQQEnvironment();
-  void environmentView.loadEditor();
+  const toolbox = qqToolbox();
   environmentPane.append(environmentView.root);
   const routePane = node2("div", "infinity-pane");
   const voicePane = node2("div", "infinity-pane");
@@ -5162,6 +5267,7 @@ function infinityPage(shell2, pluginName = "") {
       { label: "表情包", pane: stickers.root, id: 5 },
       { label: "语音模型", pane: voicePane, id: 2 },
       { label: "终端", pane: terminalPane, id: 3 },
+      { label: "工具集", pane: toolbox.root, id: 6 },
       { label: "环境", pane: environmentPane, id: 4 }
     ];
     let tabTouched = false;
@@ -5182,6 +5288,8 @@ function infinityPage(shell2, pluginName = "") {
         if (section.pane === terminalPane) terminalView.activate();
         else terminalView.deactivate();
         if (section.pane === stickers.root) stickers.open();
+        if (section.pane === environmentPane) void environmentView.open();
+        if (section.pane === toolbox.root) void toolbox.refresh();
       });
       tabs.append(tab);
       section.pane.hidden = index !== 0;
@@ -5198,7 +5306,7 @@ function infinityPage(shell2, pluginName = "") {
     voicePane.append(ttsCard, asrCard, voiceActions);
     snowPane.append(snowCard);
     terminalPane.append(terminalView.root);
-    voiceGrid.append(...sections.map((section) => section.pane));
+    voiceGrid.append(...sections.filter((section) => section.pane !== toolbox.root && section.pane !== environmentPane).map((section) => section.pane));
   }
   const configFields = document.createElement("fieldset");
   configFields.style.display = "contents";
@@ -5210,6 +5318,7 @@ function infinityPage(shell2, pluginName = "") {
     health,
     tabs,
     configFields,
+    ...knownConfig ? [toolbox.root, environmentPane] : [],
     feedback
   );
   qqPanel.hidden = !knownConfig;
@@ -6176,6 +6285,8 @@ function infinityPage(shell2, pluginName = "") {
       corpusPanel.start();
       root.hidden = false;
       if (!terminalPane.hidden) terminalView.activate();
+      if (!environmentPane.hidden && knownConfig) void environmentView.open();
+      if (!toolbox.root.hidden && knownConfig) void toolbox.refresh();
       void load();
       if (pollTimer !== void 0) window.clearInterval(pollTimer);
       if (typeof window.setInterval === "function") {
@@ -6750,10 +6861,10 @@ var menus = /* @__PURE__ */ new Map();
 var serial = 0;
 var listening = false;
 function node3(tag, cls, text2 = "") {
-  const el5 = document.createElement(tag);
-  el5.className = cls;
-  el5.textContent = text2;
-  return el5;
+  const el6 = document.createElement(tag);
+  el6.className = cls;
+  el6.textContent = text2;
+  return el6;
 }
 function remember(box, close2) {
   menus.set(box, close2);
@@ -7147,7 +7258,7 @@ function hasEngineDraft() {
   return !!drafts.fresh || Object.keys(drafts.profiles).length > 0;
 }
 var SECTIONS = ["API 设置", "模型设置", "高级"];
-function el2(tag, cls, text2) {
+function el3(tag, cls, text2) {
   const one = document.createElement(tag);
   if (cls !== void 0) one.className = cls;
   if (text2 !== void 0) {
@@ -7165,8 +7276,8 @@ function button(label, cls = "btn") {
 }
 var fieldId = 0;
 function row(label, cell, hint, required = false) {
-  const box = el2("div", "engine-row");
-  const tag = el2("label", "engine-label", label);
+  const box = el3("div", "engine-row");
+  const tag = el3("label", "engine-label", label);
   const control = cell.tagName === "DIV" ? cell.querySelector("input") : cell;
   if (control) {
     control.id = `engine-field-${++fieldId}`;
@@ -7174,12 +7285,12 @@ function row(label, cell, hint, required = false) {
     tag.setAttribute("for", cell.tagName === "SELECT" ? `${control.id}-button` : control.id);
   }
   if (required) {
-    const mark = el2("span", "engine-required", "*");
+    const mark = el3("span", "engine-required", "*");
     tag.append(mark);
     cell.requiredMark = mark;
   }
   box.append(tag, cell.tagName === "SELECT" ? selectControl(cell, label) : cell);
-  box.append(el2("span", "engine-hint", hint ?? ""));
+  box.append(el3("span", "engine-hint", hint ?? ""));
   return box;
 }
 function input(kind) {
@@ -7202,12 +7313,12 @@ function pick(choices) {
   return one;
 }
 function enginePage(shell2) {
-  const column = el2("div", "page-engine");
-  const left = el2("div", "engine-left");
-  const right = el2("div", "engine-right");
-  const notice = el2("p", "engine-notice");
+  const column = el3("div", "page-engine");
+  const left = el3("div", "engine-left");
+  const right = el3("div", "engine-right");
+  const notice = el3("p", "engine-notice");
   notice.setAttribute("role", "status");
-  const title = el2("h1", "page-title", corePhrase("模型 · MODEL"));
+  const title = el3("h1", "page-title", corePhrase("模型 · MODEL"));
   column.append(title, left, right, notice);
   shell2.content.replaceChildren(column);
   let report = null;
@@ -7374,9 +7485,9 @@ function enginePage(shell2) {
   const isLocalService = (url) => /^https?:\/\/(127\.0\.0\.1|localhost|\[::1\])(?::|\/|$)/i.test(url.trim());
   function drawLeft(one) {
     left.replaceChildren();
-    const list = el2("div", "engine-cards");
+    const list = el3("div", "engine-cards");
     for (const rowOne of one.data?.profiles ?? []) {
-      const cardEl = el2("div", "engine-card");
+      const cardEl = el3("div", "engine-card");
       cardEl.setAttribute("role", "button");
       cardEl.setAttribute("tabindex", "0");
       coreSetUIAttribute(cardEl, "aria-label", [corePhrase("编辑 "), rowOne.name, corePhrase("")]);
@@ -7387,18 +7498,18 @@ function enginePage(shell2) {
         cardEl.classList.add("picked");
       }
       cardEl.title = rowOne.name;
-      cardEl.append(el2("strong", "engine-card-name", rowOne.display_name || rowOne.name));
-      const pills = el2("div", "engine-pills");
+      cardEl.append(el3("strong", "engine-card-name", rowOne.display_name || rowOne.name));
+      const pills = el3("div", "engine-pills");
       const shownModel = (one.data?.profiles ?? []).find((p) => p.name === rowOne.name)?.model_name || rowOne.model;
       for (const text2 of [rowOne.kind, shownModel || "（没选模型）", rowOne.base_url]) {
-        pills.append(el2("span", "pill", text2));
+        pills.append(el3("span", "pill", text2));
       }
       cardEl.append(pills);
-      const marks = el2("div", "engine-card-marks");
-      if (rowOne.name === one.data?.current) marks.append(el2("span", "dot-mark", corePhrase("● 当前")));
+      const marks = el3("div", "engine-card-marks");
+      if (rowOne.name === one.data?.current) marks.append(el3("span", "dot-mark", corePhrase("● 当前")));
       const hasModel = one.data?.availability?.[rowOne.name];
       const missingKey = rowOne.auth !== "chatgpt" && !isLocalService(rowOne.base_url) && one.data?.secret?.[rowOne.secret] === "missing";
-      marks.append(el2(
+      marks.append(el3(
         "span",
         hasModel && !missingKey ? "ok-mark" : "warn-mark",
         missingKey ? "待配置 API 密钥" : hasModel ? "模型已配置" : "还差一个模型"
@@ -7424,23 +7535,23 @@ function enginePage(shell2) {
     const make = button("+ 新建实例", "btn ghost");
     list.append(make);
     if (fresh || readDrafts().fresh) {
-      const draft = el2("div", fresh ? "engine-card draft picked" : "engine-card draft");
+      const draft = el3("div", fresh ? "engine-card draft picked" : "engine-card draft");
       if (fresh) draft.setAttribute("aria-current", "true");
       const planned = readDrafts().fresh?.values?.displayName || spareName();
       const maybe = presetOf(planned);
-      draft.append(el2("strong", "engine-card-name", planned || "未命名实例"));
-      const pills = el2("div", "engine-pills");
+      draft.append(el3("strong", "engine-card-name", planned || "未命名实例"));
+      const pills = el3("div", "engine-pills");
       for (const text2 of [
         maybe?.kind || "kind",
         maybe?.model || "model —",
         maybe?.base_url || "baseUrl —"
       ]) {
-        pills.append(el2("span", "pill", text2));
+        pills.append(el3("span", "pill", text2));
       }
       draft.append(pills);
-      const draftFoot = el2("div", "engine-draft-foot");
-      draftFoot.append(el2("span", "engine-draftmark", corePhrase("✎ 草稿")));
-      const giveUp = el2("button", "engine-card-drop", "🗑");
+      const draftFoot = el3("div", "engine-draft-foot");
+      draftFoot.append(el3("span", "engine-draftmark", corePhrase("✎ 草稿")));
+      const giveUp = el3("button", "engine-card-drop", "🗑");
       coreSetUIText(giveUp, "title", corePhrase("丢掉这张草稿"));
       giveUp.addEventListener("click", (ev) => {
         ev.stopPropagation();
@@ -7494,11 +7605,11 @@ function enginePage(shell2) {
     }
     rememberedEffort = profile?.reasoning_effort ?? "";
     let modelsEpoch = 0;
-    const colLeft = el2("div", "engine-col engine-connection");
-    const colRight = el2("div", "engine-col");
+    const colLeft = el3("div", "engine-col engine-connection");
+    const colRight = el3("div", "engine-col");
     right.replaceChildren(colLeft, colRight);
-    const basic = el2("div", "engine-section");
-    basic.append(el2("h3", "engine-sub", corePhrase("基本信息")));
+    const basic = el3("div", "engine-section");
+    basic.append(el3("h3", "engine-sub", corePhrase("基本信息")));
     const preset = profile ? (one.data?.presets ?? []).find((p) => p.base_url === profile.base_url && p.kind === profile.kind && (p.auth ?? "api_key") === (profile.auth ?? "api_key")) : presetOf(spareName());
     const authIn = pick(["api_key", "chatgpt"]);
     coreSetUIText(authIn.options[0], "textContent", corePhrase("API 密钥认证"));
@@ -7544,8 +7655,8 @@ function enginePage(shell2) {
     basic.append(row("协议", kindIn));
     colLeft.append(basic);
     const kind = kindIn.value;
-    const flow = el2("div", "engine-section engine-api");
-    flow.append(el2("h3", "engine-sub", SECTIONS[0]));
+    const flow = el3("div", "engine-section engine-api");
+    flow.append(el3("h3", "engine-sub", SECTIONS[0]));
     const urlIn = input("url");
     urlIn.value = profile?.base_url || preset?.base_url || String(one.data?.keys?.base_url?.value ?? "");
     cells.base_url = urlIn;
@@ -7604,9 +7715,9 @@ function enginePage(shell2) {
     urlIn.addEventListener("input", applyKeyRow);
     const keyRow = row("API 密钥", secretIn, void 0, true);
     flow.append(keyRow);
-    const authSlot = el2("div", "engine-chatgpt-slot");
+    const authSlot = el3("div", "engine-chatgpt-slot");
     flow.append(authSlot);
-    const planNote = el2("p", "engine-chatgpt-note");
+    const planNote = el3("p", "engine-chatgpt-note");
     flow.append(planNote);
     let oauthIdentity = "";
     const syncDraft = () => {
@@ -7617,7 +7728,7 @@ function enginePage(shell2) {
       if (title2) title2.textContent = instanceNameIn.value.trim() || nameIn.value.trim() || "未命名实例";
       if (pills) {
         const model = cells.model?.value || "（没选模型）";
-        pills.replaceChildren(...[kindIn.value, model, urlIn.value || "（未填地址）"].map((value) => el2("span", "pill", value)));
+        pills.replaceChildren(...[kindIn.value, model, urlIn.value || "（未填地址）"].map((value) => el3("span", "pill", value)));
       }
     };
     const rebindSecret = () => {
@@ -7727,7 +7838,7 @@ function enginePage(shell2) {
     }
     applyKeyRow();
     const tester = button("测试连通", "btn ghost");
-    const probeOut = el2("p", "engine-hint", "");
+    const probeOut = el3("p", "engine-hint", "");
     probeOut.dataset.state = "";
     const admitProbeTarget = () => {
       if (isSubscription() && profile && (profile.auth !== "chatgpt" || profile.kind !== kindIn.value || profile.base_url !== urlIn.value.trim())) {
@@ -7775,8 +7886,8 @@ function enginePage(shell2) {
     });
     flow.append(tester, probeOut);
     colLeft.append(flow);
-    const gen = el2("div", "engine-section");
-    gen.append(el2("h3", "engine-sub", SECTIONS[1]));
+    const gen = el3("div", "engine-section");
+    gen.append(el3("h3", "engine-sub", SECTIONS[1]));
     for (const [field, label] of FIELD_ROWS) {
       const supported = accepts(kind, field, urlIn.value);
       const hint = void 0;
@@ -7885,7 +7996,7 @@ function enginePage(shell2) {
       }
       gen.append(row(label, cell, hint));
       if (field === "max_tokens") {
-        const sees = el2("button", "engine-switch");
+        const sees = el3("button", "engine-switch");
         sees.dataset.on = profile?.multimodal ? "yes" : "no";
         coreSetUIText(sees, "title", corePhrase("上游报了会自动开；也可以自己扳"));
         sees.addEventListener("click", () => {
@@ -7895,7 +8006,7 @@ function enginePage(shell2) {
         });
         cellsVision = sees;
         const visionRow = row("图片输入", sees);
-        visionHint = el2("p", "engine-hint", "");
+        visionHint = el3("p", "engine-hint", "");
         visionRow.append(visionHint);
         gen.append(visionRow);
       }
@@ -7907,7 +8018,7 @@ function enginePage(shell2) {
         one2.title = WHY_NOT[field] ?? "";
       }
     }
-    const subscriptionNote = el2(
+    const subscriptionNote = el3(
       "p",
       "engine-hint",
       corePhrase("温度由上游控制；输出值为本地预算。")
@@ -7988,9 +8099,9 @@ function enginePage(shell2) {
       one2?.addEventListener("input", refreshHandoffNote);
     }
     colRight.append(gen);
-    const act = el2("div", "engine-section engine-actions");
+    const act = el3("div", "engine-section engine-actions");
     act.append(notice);
-    const actions = el2("div", "engine-foot");
+    const actions = el3("div", "engine-foot");
     act.append(actions);
     colLeft.append(act);
     const drop = button("删除", "btn ghost");
@@ -8152,11 +8263,11 @@ function enginePage(shell2) {
   function skeleton() {
     left.replaceChildren();
     const bone = () => {
-      const col = el2("div", "engine-col");
-      col.append(el2("div", "engine-section"), el2("div", "engine-section"));
+      const col = el3("div", "engine-col");
+      col.append(el3("div", "engine-section"), el3("div", "engine-section"));
       return col;
     };
-    right.replaceChildren(el2("h2", "card-title", corePhrase("正在读…")), bone(), bone());
+    right.replaceChildren(el3("h2", "card-title", corePhrase("正在读…")), bone(), bone());
   }
   let readEpoch = 0;
   const readHint = pageLoad(column, "模型档案", () => {
@@ -8533,18 +8644,18 @@ function latestCacheRead(fetcher) {
 
 // core/src/web/client/console-introduction.ts
 function mountConsoleIntroduction(root, composer2) {
-  const guide = document.createElement("section");
-  guide.className = "console-introduction";
-  guide.hidden = true;
-  guide.setAttribute("aria-label", "首次见面");
-  root.querySelector(".live-stream")?.before(guide);
+  const guide2 = document.createElement("section");
+  guide2.className = "console-introduction";
+  guide2.hidden = true;
+  guide2.setAttribute("aria-label", "首次见面");
+  root.querySelector(".live-stream")?.before(guide2);
   const setPending = (pending5) => {
     composer2.toggleAttribute("data-introducing", pending5);
   };
   const line = (text2) => {
-    const el5 = document.createElement("p");
-    el5.textContent = text2;
-    return el5;
+    const el6 = document.createElement("p");
+    el6.textContent = text2;
+    return el6;
   };
   async function load() {
     try {
@@ -8553,7 +8664,7 @@ function mountConsoleIntroduction(root, composer2) {
       if (!response.ok) throw new Error();
       const state3 = await response.json();
       if (!state3.pending) {
-        guide.hidden = true;
+        guide2.hidden = true;
         setPending(false);
         return;
       }
@@ -8573,14 +8684,14 @@ function mountConsoleIntroduction(root, composer2) {
       later.type = "button";
       later.textContent = "稍后再填";
       later.onclick = () => {
-        guide.hidden = true;
+        guide2.hidden = true;
         setPending(false);
       };
       const status = line("");
       status.setAttribute("role", "status");
       form.append(input2, save, later);
-      guide.replaceChildren(heading2, greeting, line("填个常用的名字吧，我会把它记在你的控制台画像里。"), form, status);
-      guide.hidden = false;
+      guide2.replaceChildren(heading2, greeting, line("填个常用的名字吧，我会把它记在你的控制台画像里。"), form, status);
+      guide2.hidden = false;
       setPending(true);
       form.onsubmit = async (event) => {
         event.preventDefault();
@@ -8606,7 +8717,7 @@ function mountConsoleIntroduction(root, composer2) {
             }
             throw new Error(result.said || "保存失败，请重试。");
           }
-          guide.replaceChildren(heading2, line("记住了，" + name + "。"));
+          guide2.replaceChildren(heading2, line("记住了，" + name + "。"));
           setPending(false);
         } catch (error) {
           status.textContent = error instanceof Error ? error.message : "保存状态未确认，请重试。";
@@ -8622,8 +8733,8 @@ function mountConsoleIntroduction(root, composer2) {
         retry.disabled = true;
         void load();
       };
-      guide.replaceChildren(line("暂时读不到控制台画像。"), retry);
-      guide.hidden = false;
+      guide2.replaceChildren(line("暂时读不到控制台画像。"), retry);
+      guide2.hidden = false;
       setPending(false);
     }
   }
@@ -9105,9 +9216,9 @@ function appendTool(chat2, frame) {
   if (group.selected === step) showTool(group);
   return group.row;
 }
-function stickToTheBottom(el5) {
-  if (!el5) return;
-  for (let one = el5; one; one = one.parentElement) {
+function stickToTheBottom(el6) {
+  if (!el6) return;
+  for (let one = el6; one; one = one.parentElement) {
     if (one.scrollHeight > one.clientHeight + 1) {
       one.scrollTop = one.scrollHeight;
     }
@@ -10094,13 +10205,13 @@ function draftOf(segment) {
   };
 }
 function node4(tag, cls, text2) {
-  const el5 = document.createElement(tag);
-  if (cls !== void 0) el5.className = cls;
-  if (text2 !== void 0) el5.textContent = text2;
-  return el5;
+  const el6 = document.createElement(tag);
+  if (cls !== void 0) el6.className = cls;
+  if (text2 !== void 0) el6.textContent = text2;
+  return el6;
 }
-function surfaceOf(el5) {
-  let one = el5;
+function surfaceOf(el6) {
+  let one = el6;
   for (let hops = 0; one !== null && one !== void 0 && hops < 8; hops += 1) {
     if (one.classList !== void 0 && one.classList.contains("persona-body")) {
       return one;
@@ -10636,9 +10747,9 @@ function personaPage(shell2, options = {}) {
     surface.addEventListener("mouseup", followCaret);
   };
   const flushFocused = () => {
-    const el5 = document.activeElement;
-    if (el5 === null || el5 === void 0) return;
-    const surface = surfaceOf(el5);
+    const el6 = document.activeElement;
+    if (el6 === null || el6 === void 0) return;
+    const surface = surfaceOf(el6);
     if (surface !== null) surface.blur();
   };
   const segmentRow = (segment) => {
@@ -11142,16 +11253,16 @@ function memoryPage(shell2) {
   shell2.content.replaceChildren(root);
   const keepPosition = (render2) => {
     const parents = [];
-    for (let el5 = root; el5; el5 = el5.parentElement) parents.push([el5, el5.scrollTop, el5.scrollLeft]);
+    for (let el6 = root; el6; el6 = el6.parentElement) parents.push([el6, el6.scrollTop, el6.scrollLeft]);
     const x = window.scrollX, y = window.scrollY;
-    const inner = [...root.querySelectorAll(".memory-pull-content")].map((el5) => el5.scrollTop);
+    const inner = [...root.querySelectorAll(".memory-pull-content")].map((el6) => el6.scrollTop);
     render2();
-    root.querySelectorAll(".memory-pull-content").forEach((el5, i) => {
-      el5.scrollTop = inner[i] || 0;
+    root.querySelectorAll(".memory-pull-content").forEach((el6, i) => {
+      el6.scrollTop = inner[i] || 0;
     });
-    for (const [el5, top, left] of parents) {
-      el5.scrollTop = top;
-      el5.scrollLeft = left;
+    for (const [el6, top, left] of parents) {
+      el6.scrollTop = top;
+      el6.scrollLeft = left;
     }
     window.scrollTo(x, y);
   };
@@ -11491,7 +11602,7 @@ function memoryPage(shell2) {
   const drawSkillsContents = (answer) => {
     latestSkills = answer;
     if (composing) return;
-    const opened = new Set([...skillsBox.querySelectorAll("details[data-section]")].filter((el5) => el5.open).map((el5) => el5.dataset.section));
+    const opened = new Set([...skillsBox.querySelectorAll("details[data-section]")].filter((el6) => el6.open).map((el6) => el6.dataset.section));
     for (const child of [...skillsBox.children]) if (child !== toolbar) child.remove();
     const head2 = document.createElement("h2");
     head2.className = "memory-document-title";
@@ -11623,7 +11734,7 @@ function memoryPage(shell2) {
         more.addEventListener("click", () => {
           visibleLimits.set(said, limit + pageSize);
           drawSkills(latestSkills);
-          const updated = [...skillsBox.querySelectorAll(".memory-skill-section")].find((el5) => el5.querySelector("h3")?.textContent === said);
+          const updated = [...skillsBox.querySelectorAll(".memory-skill-section")].find((el6) => el6.querySelector("h3")?.textContent === said);
           const next = updated?.querySelectorAll("summary")[limit];
           next?.focus();
         });
@@ -11755,7 +11866,7 @@ function memoryPage(shell2) {
 // core/src/web/client/plugin-versions.ts
 var states = /* @__PURE__ */ new Map();
 var painters = /* @__PURE__ */ new Map();
-var el3 = (tag, text2 = "", cls = "") => {
+var el4 = (tag, text2 = "", cls = "") => {
   const n = document.createElement(tag);
   n.textContent = text2;
   n.className = cls;
@@ -11769,28 +11880,28 @@ function pluginVersions(repo2, name, current2, blocked, install) {
     states.set(key2, state3);
   }
   const s = state3;
-  const box = el3("details", "", "pw-versions");
+  const box = el4("details", "", "pw-versions");
   box.open = s.open;
-  const summary2 = el3("summary", "版本与历史下载");
-  const body = el3("div", "", "pw-version-body");
+  const summary2 = el4("summary", "版本与历史下载");
+  const body = el4("div", "", "pw-version-body");
   box.append(summary2, body);
   const link = (label, url) => {
-    const a = el3("a", label, "pw-button");
+    const a = el4("a", label, "pw-button");
     a.href = url;
     a.target = "_blank";
     a.rel = "noopener noreferrer";
     return a;
   };
   const button3 = (label, click) => {
-    const b = el3("button", label, "pw-button");
+    const b = el4("button", label, "pw-button");
     b.type = "button";
     b.onclick = click;
     return b;
   };
   function draw() {
     body.replaceChildren();
-    const controls = el3("div", "", "pw-version-controls");
-    const kind = el3("select");
+    const controls = el4("div", "", "pw-version-controls");
+    const kind = el4("select");
     kind.setAttribute("aria-label", "版本来源");
     kind.add(new Option("正式发布与预发布", "releases"));
     kind.add(new Option("全部版本标签", "tags"));
@@ -11810,18 +11921,18 @@ function pluginVersions(repo2, name, current2, blocked, install) {
     controls.append(kind, refresh2);
     body.append(controls);
     if (s.error) {
-      const error = el3("p", s.error, "pw-operation");
+      const error = el4("p", s.error, "pw-operation");
       error.setAttribute("role", "status");
       body.append(error);
     }
     if (!s.data) {
-      body.append(el3("p", s.loading ? "正在读取版本…" : "展开后读取 GitHub 版本。"));
+      body.append(el4("p", s.loading ? "正在读取版本…" : "展开后读取 GitHub 版本。"));
       return;
     }
     if (!s.data.rows.length) {
-      body.append(el3("p", s.kind === "releases" ? "作者尚未创建 Release，可切换到“全部版本标签”。" : "作者尚未发布版本标签。"));
+      body.append(el4("p", s.kind === "releases" ? "作者尚未创建 Release，可切换到“全部版本标签”。" : "作者尚未发布版本标签。"));
     } else {
-      const select2 = el3("select");
+      const select2 = el4("select");
       select2.setAttribute("aria-label", "选择插件版本");
       select2.disabled = blocked || s.loading;
       for (const row3 of s.data.rows) select2.add(new Option(row3.tag + (row3.prerelease ? " · 预发布" : "") + (row3.date ? " · " + row3.date.slice(0, 10) : "") + (row3.tag.replace(/^v/, "") === current2 ? " · 当前版本" : ""), row3.tag));
@@ -11833,20 +11944,20 @@ function pluginVersions(repo2, name, current2, blocked, install) {
       };
       body.append(select2);
       const row2 = s.data.rows.find((row3) => row3.tag === s.selected);
-      const actions = el3("div", "", "pw-version-controls");
+      const actions = el4("div", "", "pw-version-controls");
       const apply = button3(current2 ? "安装所选版本" : "安装此版本", () => install(row2));
       apply.disabled = blocked || s.loading;
       actions.append(apply, link("下载源码包 ↗", row2.download), link("发布说明 ↗", row2.source));
       body.append(actions);
       if (row2.notes) {
-        const notes = el3("details", "", "pw-version-notes");
-        notes.append(el3("summary", "查看版本说明"), el3("p", row2.notes));
+        const notes = el4("details", "", "pw-version-notes");
+        notes.append(el4("summary", "查看版本说明"), el4("p", row2.notes));
         body.append(notes);
       }
-      body.append(el3("p", current2 ? "切换前请先停用插件。原安装包会备份，配置和缓存保留；旧版是否兼容现有配置，以作者说明为准。" : "按所选标签安装并核对插件清单，安装后默认停用。", "pw-version-hint"));
+      body.append(el4("p", current2 ? "切换前请先停用插件。原安装包会备份，配置和缓存保留；旧版是否兼容现有配置，以作者说明为准。" : "按所选标签安装并核对插件清单，安装后默认停用。", "pw-version-hint"));
     }
     if (s.page > 1 || s.data.more) {
-      const pages = el3("div", "", "pw-version-controls");
+      const pages = el4("div", "", "pw-version-controls");
       const previous = button3("上一页", () => {
         s.page--;
         s.selected = "";
@@ -11859,7 +11970,7 @@ function pluginVersions(repo2, name, current2, blocked, install) {
         void read4();
       });
       next.disabled = blocked || s.loading || !s.data.more;
-      pages.append(previous, el3("span", "第 " + s.page + " 页"), next);
+      pages.append(previous, el4("span", "第 " + s.page + " 页"), next);
       body.append(pages);
     }
   }
@@ -12159,12 +12270,12 @@ function pluginWorkspace(shell2, view2 = "local") {
   const heading2 = node5("div", "pw-heading");
   heading2.append(node5("h1", "page-title", view2 === "local" ? "插件总览 · PLUGIN OVERVIEW" : "插件市场 · PLUGIN MARKETPLACE"));
   if (view2 === "discover") {
-    const guide = node5("a", "pw-guide", "开发规范手册 ↗");
-    guide.href = assetUrl("infinity-plugin-spec.html");
-    guide.target = "_blank";
-    guide.rel = "noopener noreferrer";
-    guide.title = "插件开发规范 " + PLUGIN_GUIDE_VERSION;
-    heading2.append(guide);
+    const guide2 = node5("a", "pw-guide", "开发规范手册 ↗");
+    guide2.href = assetUrl("infinity-plugin-spec.html");
+    guide2.target = "_blank";
+    guide2.rel = "noopener noreferrer";
+    guide2.title = "插件开发规范 " + PLUGIN_GUIDE_VERSION;
+    heading2.append(guide2);
   }
   header.append(heading2);
   const scope2 = node5("div", "pw-scope");
@@ -12847,8 +12958,8 @@ function knowledgePage(shell2) {
     };
     const pick2 = (index) => {
       at = index;
-      for (const el5 of toc.querySelectorAll(".one")) {
-        el5.classList.toggle("on", el5.dataset.at === String(index));
+      for (const el6 of toc.querySelectorAll(".one")) {
+        el6.classList.toggle("on", el6.dataset.at === String(index));
       }
       showBody(index);
     };
@@ -13428,8 +13539,8 @@ function peoplePage(shell2) {
     const pick2 = (index) => {
       at = index;
       selectedWho = rows[index].who;
-      for (const [i, el5] of [...roster.querySelectorAll(".one")].entries()) {
-        el5.classList.toggle("on", i === index);
+      for (const [i, el6] of [...roster.querySelectorAll(".one")].entries()) {
+        el6.classList.toggle("on", i === index);
       }
       showFace(index);
     };
@@ -13920,10 +14031,10 @@ function experiencePage(shell2) {
 
 // core/src/web/client/plugin-storage-settings.ts
 var element2 = (tag, cls, label) => {
-  const el5 = document.createElement(tag);
-  el5.className = cls;
-  if (label) uiLabel(el5, label);
-  return el5;
+  const el6 = document.createElement(tag);
+  el6.className = cls;
+  if (label) uiLabel(el6, label);
+  return el6;
 };
 function pluginStorageSettings() {
   const root = element2("section", "settings-card plugin-storage");
@@ -14136,7 +14247,7 @@ function snowlumaSessionSettings() {
 
 // core/src/web/client/model-proxy-settings.ts
 var PROVIDERS = [["openai", "OpenAI / ChatGPT"], ["google", "Google Gemini"], ["anthropic", "Anthropic Claude"], ["xai", "xAI Grok"]];
-var el4 = (tag, cls = "", text2 = "") => {
+var el5 = (tag, cls = "", text2 = "") => {
   const n = document.createElement(tag);
   n.className = cls;
   n.textContent = text2;
@@ -14145,65 +14256,65 @@ var el4 = (tag, cls = "", text2 = "") => {
 var modes = [["direct", "直接连接"], ["fallback", "代理优先，失败后直连"], ["required", "仅使用代理"]];
 var mode = (on, fallback) => !on ? "direct" : fallback ? "fallback" : "required";
 var select = (label, options) => {
-  const box = el4("label", "public-network-field", label), input2 = el4("select");
+  const box = el5("label", "public-network-field", label), input2 = el5("select");
   input2.setAttribute("aria-label", label);
   for (const [value, text2] of options) input2.add(new Option(text2, value));
   box.append(input2);
   return { box, input: input2 };
 };
 function modelProxySettings() {
-  const root = el4("section", "settings-card model-proxy-settings");
+  const root = el5("section", "settings-card model-proxy-settings");
   configPresentation(root, "loading");
-  const header = el4("div", "model-proxy-header");
-  header.append(el4("h3", "", "网络与下载"));
-  const note = el4("p", "set-note", "下载与模型 API 分别选择连接方式，共用一个代理地址。");
-  const addressLabel = el4("label", "model-proxy-address", "代理地址");
-  const addressRow = el4("div", "model-proxy-address-row");
-  const address = el4("input", "engine-input engine-input-wide");
+  const header = el5("div", "model-proxy-header");
+  header.append(el5("h3", "", "网络与下载"));
+  const note = el5("p", "set-note", "下载与模型 API 分别选择连接方式，共用一个代理地址。");
+  const addressLabel = el5("label", "model-proxy-address", "代理地址");
+  const addressRow = el5("div", "model-proxy-address-row");
+  const address = el5("input", "engine-input engine-input-wide");
   address.type = "url";
   address.autocomplete = "off";
   address.spellcheck = false;
   address.placeholder = "http://127.0.0.1:7893";
   address.setAttribute("aria-label", "共用代理地址");
-  const system = el4("button", "btn ghost", "填入系统代理");
+  const system = el5("button", "btn ghost", "填入系统代理");
   system.type = "button";
   addressRow.append(address, system);
   addressLabel.append(addressRow);
-  const addressHint = el4("p", "set-note", "支持 HTTP(S) 代理；修改后保存生效。");
-  const policies = el4("div", "public-network-policies");
-  const download = el4("section", "public-network-policy");
-  download.append(el4("h4", "", "下载与插件市场"));
+  const addressHint = el5("p", "set-note", "支持 HTTP(S) 代理；修改后保存生效。");
+  const policies = el5("div", "public-network-policies");
+  const download = el5("section", "public-network-policy");
+  download.append(el5("h4", "", "下载与插件市场"));
   const source = select("来源顺序", [["mirror", "镜像优先"], ["official", "官方优先"]]);
   const connection = select("官方连接方式", modes);
-  const downloadFlow = el4("p", "public-network-flow");
+  const downloadFlow = el5("p", "public-network-flow");
   download.append(source.box, connection.box, downloadFlow);
-  const overrides = el4("details", "model-proxy-details");
-  const overrideSummary = el4("summary", "", "插件市场单独设置");
-  const separateLabel = el4("label", "model-proxy-provider");
-  const separate = el4("input");
+  const overrides = el5("details", "model-proxy-details");
+  const overrideSummary = el5("summary", "", "插件市场单独设置");
+  const separateLabel = el5("label", "model-proxy-provider");
+  const separate = el5("input");
   separate.type = "checkbox";
   separate.setAttribute("aria-label", "插件市场使用独立设置");
   separateLabel.append(separate, "插件市场使用独立设置");
-  const marketFields = el4("div", "model-network-fields");
+  const marketFields = el5("div", "model-network-fields");
   const marketSource = select("插件市场来源顺序", [["mirror", "镜像优先"], ["official", "官方优先"]]);
   const marketConnection = select("插件市场官方连接方式", modes);
   marketFields.append(marketSource.box, marketConnection.box);
-  const marketFlow = el4("p", "public-network-flow");
+  const marketFlow = el5("p", "public-network-flow");
   overrides.append(overrideSummary, separateLabel, marketFields, marketFlow);
   download.append(overrides);
-  const downloadHint = el4("p", "public-network-caption", "用于 Core 更新、插件搜索与安装、模型和运行环境下载。镜像始终直连；校验摘要只向官方核验。");
+  const downloadHint = el5("p", "public-network-caption", "用于 Core 更新、插件搜索与安装、模型和运行环境下载。镜像始终直连；校验摘要只向官方核验。");
   download.append(downloadHint);
-  const model = el4("section", "public-network-policy");
-  model.append(el4("h4", "", "模型 API"));
+  const model = el5("section", "public-network-policy");
+  model.append(el5("h4", "", "模型 API"));
   const modelConnection = select("模型连接方式", modes);
   modelConnection.box.classList.add("model-network-wide");
-  const modelFlow = el4("p", "public-network-flow");
+  const modelFlow = el5("p", "public-network-flow");
   model.append(modelConnection.box, modelFlow);
-  const providers = el4("details", "model-proxy-details");
-  const providerSummary = el4("summary");
-  const targets = el4("div", "model-proxy-targets");
+  const providers = el5("details", "model-proxy-details");
+  const providerSummary = el5("summary");
+  const targets = el5("div", "model-proxy-targets");
   const boxes = PROVIDERS.map(([id, title]) => {
-    const label = el4("label", "model-proxy-provider"), input2 = el4("input");
+    const label = el5("label", "model-proxy-provider"), input2 = el5("input");
     input2.type = "checkbox";
     input2.setAttribute("aria-label", title);
     label.append(input2, title);
@@ -14211,14 +14322,14 @@ function modelProxySettings() {
     return { id, input: input2 };
   });
   providers.append(providerSummary, targets);
-  model.append(providers, el4("p", "public-network-caption", "仅连接尚未建立、模型请求尚未发送时允许直连回退；已发送请求和生成中断不重发。自定义 API 地址保持直连。"));
+  model.append(providers, el5("p", "public-network-caption", "仅连接尚未建立、模型请求尚未发送时允许直连回退；已发送请求和生成中断不重发。自定义 API 地址保持直连。"));
   policies.append(download, model);
-  const actions = el4("div", "model-proxy-actions");
-  const save = el4("button", "btn", "保存"), reload = el4("button", "btn ghost", "重新读取");
+  const actions = el5("div", "model-proxy-actions");
+  const save = el5("button", "btn", "保存"), reload = el5("button", "btn ghost", "重新读取");
   save.type = reload.type = "button";
   save.setAttribute("aria-label", "保存网络设置");
   actions.append(save, reload);
-  const status = el4("p", "model-proxy-status");
+  const status = el5("p", "model-proxy-status");
   status.setAttribute("role", "status");
   root.append(header, note, addressLabel, addressHint, policies, actions, status);
   let revision = null, systemProxy = "", busy = false, saving = false, baseline = "", guarding = false;
@@ -15077,8 +15188,8 @@ var live = null;
 function route(shell2, pages = PAGES) {
   const one = currentPage(pages);
   const selected = one.id === "infinity-entry" ? location.hash.replace(/^#\/?/, "") : one.id;
-  for (const el5 of shell2.railNav.querySelectorAll(".rail-item")) {
-    el5.classList.toggle("active", el5.dataset.page === selected);
+  for (const el6 of shell2.railNav.querySelectorAll(".rail-item")) {
+    el6.classList.toggle("active", el6.dataset.page === selected);
   }
   if (live !== null) live.stop();
   live = one.build(shell2);
@@ -15133,9 +15244,9 @@ function isChat(view2) {
   return typeof view2 === "object" && view2 !== null && typeof view2.append === "function";
 }
 function need(id) {
-  const el5 = document.getElementById(id);
-  if (el5 === null) throw new Error(`那一页的壳里少了 #${id}`);
-  return el5;
+  const el6 = document.getElementById(id);
+  if (el6 === null) throw new Error(`那一页的壳里少了 #${id}`);
+  return el6;
 }
 function anchors() {
   for (const id of ["rail", "topbar", "content", "bottom"]) need(id);

@@ -21,6 +21,7 @@ def sync_bundled(core):
             if Version(spec['version'])<=Version(current['version']): continue
             stage=Path(tempfile.mkdtemp(prefix='.builtin-update-',dir=core/'extensions'))
             for source in manifest.parent.rglob('*'):
+                if '__pycache__' in source.parts or source.suffix == '.pyc': continue
                 source=safe_path(core,source)
                 target=stage/source.relative_to(manifest.parent)
                 if source.is_dir():target.mkdir(parents=True,exist_ok=True)

@@ -363,6 +363,7 @@ def _guard_plugin_handler(name: str, instance: Any, handler: Any) -> Any:
     owned = getattr(handler, '__owned_async_handler__', None)
     if callable(owned):
         run.__owned_async_handler__ = _guard_plugin_handler(name, instance, owned)
+    run.__core_plugin_owner__ = (name, instance)
     return run
 
 

@@ -151,8 +151,8 @@ export function createQQEnvironment() {
   const text = element('div', 'qq-environment-document');
   coreSetUIAttribute(text, 'aria-label', corePhrase("QQ 插件环境声明文本"));
   const hint = element('p', 'qq-diagnostic-note', '正在读取环境声明…');
-  const description = element('p', 'qq-diagnostic-description', '插件提供的 QQ 通道环境说明。');
-  const header = heading('QQ 通道 · 环境提示词', badge);
+  const description = element('p', 'qq-diagnostic-description', '插件声明 QQ 消息的来源和范围。工具能力随启用状态提供，运行状态和工具结果按轮追加。');
+  const header = heading('QQ 通道 · 插件声明', badge);
   let previousText: string | undefined;
   let editing = false;
   let revision = '';
@@ -167,9 +167,11 @@ export function createQQEnvironment() {
   const buttons = element('div', 'qq-diagnostic-actions');
   buttons.append(reload, save);
   buttons.hidden = editor.hidden = true;
-  header.append(buttons);
+  const sceneHeader = heading('当前 Bot · QQ 场景提示词', element('span', 'qq-diagnostic-badge', '可编辑'));
+  sceneHeader.append(buttons);
+  sceneHeader.hidden = true;
   status.setAttribute('role', 'status');
-  root.append(header, description, sourceRow, text, hint, editor, status);
+  root.append(header, description, sourceRow, text, hint, sceneHeader, editor, status);
   let lastSaved = '';
 
   async function loadEditor(): Promise<void> {
@@ -183,13 +185,8 @@ export function createQQEnvironment() {
       editor.value = lastSaved = info.text;
       revision = info.revision;
       editing = true;
-      coreSetUIText(badge, 'textContent', corePhrase("可编辑"));
-      badge.dataset.state = 'neutral';
-      coreSetUIText(source, 'textContent', corePhrase("当前 Bot · 环境/QQ.md"));
-      coreSetUIText(description, 'textContent', corePhrase("编辑当前 Bot 在 QQ 场景中的提示词。"));
-      sourceRow.hidden = text.hidden = hint.hidden = true;
-      buttons.hidden = editor.hidden = false;
-      coreSetUIText(status, 'textContent', corePhrase("只修改当前 Bot 的 QQ 场景。"));
+      sceneHeader.hidden = buttons.hidden = editor.hidden = false;
+      status.textContent = '保存到当前 Bot 的 环境/QQ.md，下一轮匹配的 QQ 会话读取。';
     } catch (error) {
       coreSetUIText(status, 'textContent', [corePhrase("读取失败："), (error as Error).message]);
     } finally {
@@ -235,9 +232,8 @@ export function createQQEnvironment() {
   });
   return {
     root,
-    loadEditor,
+    async open() { if (!editing) await loadEditor(); },
     update(value?: QQEnvironmentDeclaration): void {
-      if (editing) return;
       source.textContent = value?.source || 'QQ 插件 · channel/qq.md';
       const available = value?.status === 'available';
       coreSetUIText(badge, 'textContent', (available ? corePhrase("只读声明") : (value?.status === 'unconfigured' ? corePhrase("尚未声明") : (value ? corePhrase("不可读取") : corePhrase("接口未提供")))));
@@ -252,7 +248,6 @@ export function createQQEnvironment() {
       hint.textContent = value?.message || '仅显示已安装 QQ 插件的声明；不会读取其他插件或终端环境作为替代。';
     },
     unavailable(): void {
-      if (editing) return;
       coreSetUIText(badge, 'textContent', corePhrase("读取暂不可用")); badge.dataset.state = 'warn';
       coreSetUIText(hint, 'textContent', corePhrase("状态更新失败；保留上次读取内容，不代表当前进程已经加载此声明。"));
     },

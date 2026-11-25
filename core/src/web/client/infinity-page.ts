@@ -1,3 +1,4 @@
+import { qqToolbox } from './qq-toolbox';
 import {qqStickers} from './qq-stickers';
 import { voiceSetup } from './qq-voice-setup';
 import {readyPluginDisplay, readPluginTab, writePluginTab} from './plugin-display-cache';
@@ -213,6 +214,7 @@ export function infinityPage(shell: Chrome, pluginName = ''): Panel {
 
   head.append(liveNotice);
 
+
   const summary = node('div', 'infinity-summary');
 
   const cards = node('div', 'infinity-cards');
@@ -233,7 +235,7 @@ export function infinityPage(shell: Chrome, pluginName = ''): Panel {
   const environmentPane = node('div', 'infinity-pane infinity-environment-pane');
 
   const environmentView = createQQEnvironment();
-  void environmentView.loadEditor();
+  const toolbox = qqToolbox();
   environmentPane.append(environmentView.root);
 
   const routePane = node('div', 'infinity-pane');
@@ -768,6 +770,7 @@ export function infinityPage(shell: Chrome, pluginName = ''): Panel {
       { label: '表情包', pane: stickers.root, id: 5 },
       { label: '语音模型', pane: voicePane, id: 2 },
       { label: '终端', pane: terminalPane, id: 3 },
+      { label: '工具集', pane: toolbox.root, id: 6 },
       { label: '环境', pane: environmentPane, id: 4 },
     ];
     let tabTouched = false;
@@ -787,6 +790,8 @@ export function infinityPage(shell: Chrome, pluginName = ''): Panel {
         }
         if (section.pane === terminalPane) terminalView.activate(); else terminalView.deactivate();
         if (section.pane === stickers.root) stickers.open();
+        if (section.pane === environmentPane) void environmentView.open();
+        if (section.pane === toolbox.root) void toolbox.refresh();
       });
       tabs.append(tab);
       section.pane.hidden = index !== 0;
@@ -808,7 +813,8 @@ export function infinityPage(shell: Chrome, pluginName = ''): Panel {
 
     terminalPane.append(terminalView.root);
 
-    voiceGrid.append(...sections.map(section => section.pane));
+    voiceGrid.append(...sections.filter(section => section.pane !== toolbox.root && section.pane !== environmentPane)
+      .map(section => section.pane));
 
   }
 
@@ -825,7 +831,7 @@ export function infinityPage(shell: Chrome, pluginName = ''): Panel {
   if (knownConfig) configPresentation(voiceGrid, 'loading');
 
   qqPanel.append(node('h2', 'qq-section-title', 'QQ 接入与消息设置'),
-    health, tabs, configFields, feedback);
+    health, tabs, configFields, ...(knownConfig ? [toolbox.root, environmentPane] : []), feedback);
 
   qqPanel.hidden = !knownConfig;
 
@@ -2381,6 +2387,8 @@ export function infinityPage(shell: Chrome, pluginName = ''): Panel {
 
       root.hidden = false;
       if (!terminalPane.hidden) terminalView.activate();
+      if (!environmentPane.hidden && knownConfig) void environmentView.open();
+      if (!toolbox.root.hidden && knownConfig) void toolbox.refresh();
 
       void load();
 

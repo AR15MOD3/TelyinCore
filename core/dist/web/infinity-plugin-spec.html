@@ -1,7 +1,7 @@
 <!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'">
-<title>TelyinCore Infinity 插件开发手册 v1.17</title><style>
+<title>TelyinCore Infinity 插件开发手册 v1.18</title><style>
 :root{--color-dim:#535f70;--color-mint-text:#3e6089;--radius-pill:999px}
 /* Shared by the Core application and the standalone plugin manual. */
 @layer base {
@@ -85,7 +85,7 @@ h2,h3{break-after:avoid}.code{break-inside:avoid}a{color:inherit}}
 </style></head><body><div class="shell" id="top">
 <header class="top"><span class="brand">TelyinCore <span class="badge">INFINITY</span></span>
 <a href="/#/plugin">← 返回插件市场</a></header><div class="layout">
-<aside><div class="eyebrow">DEVELOPER REFERENCE · v1.17</div><nav aria-label="章节目录">
+<aside><div class="eyebrow">DEVELOPER REFERENCE · v1.18</div><nav aria-label="章节目录">
 <a href="#section-1">1. 范围与信任边界</a>
 <a href="#section-2">2. 目录与清单</a>
 <a href="#section-6">3. 生命周期</a>
@@ -112,9 +112,10 @@ h2,h3{break-after:avoid}.code{break-inside:avoid}a{color:inherit}}
 <a href="#section-53">24. Windows、Linux 与档案名称</a>
 <a href="#section-54">25. 配置页、预览与状态提示</a>
 <a href="#section-58">26. 将页面显示缓存接入设置</a>
+<a href="#section-65">27. 热加载与重启后生效</a>
 </nav></aside><main><header class="hero"><div class="eyebrow">插件开发参考</div>
-<h1>Infinity 插件开发规范</h1><p class="subtitle">v1.17 · Python Infinity API 1
- · 本地与 GitHub 统一接入</p></header><p>适用于 Python Infinity API 1。本次按 Windows Core beta.0.5.4.6 核对，更新于 2026-11-23。</p>
+<h1>Infinity 插件开发规范</h1><p class="subtitle">v1.18 · Python Infinity API 1
+ · 本地与 GitHub 统一接入</p></header><p>适用于 Python Infinity API 1。本次按 Windows Core beta.0.5.4.7 修订版核对，更新于 2026-11-25。</p>
 <p>本手册面向插件开发者，介绍插件目录、工具接口、配置页面、发布方法和常见问题。第一次开发建议先阅读第 2～5 节，完成一个本地插件，再阅读第 11 节发布到插件市场。涉及模型调用、长期记忆或独立模型依赖时，再阅读第 21～23 节；跨平台发布和配置页开发参见第 24～25 节；页面显示缓存接入参见第 26 节。向模型提供工具前，请先按第 21 节检查固定前缀和逐轮追加的内容。</p>
 <p>文中的代码和命令是示例，请按自己的插件名称、路径和配置调整。可选接口应先检查宿主是否提供；文档版本与插件 API 版本分别管理。</p>
 <h2 id="section-1">1. 范围与信任边界</h2>
@@ -565,5 +566,41 @@ parent.postMessage({
 <p>需要账号、凭据或会话范围的插件必须考虑用户先点启用、再进配置页的流程。缺少必填配置时，保留当前 Bot 的启用意图，并明确提示下一步在哪里配置。配置就绪后，通过宿主正常的重载入口激活。</p>
 <p>插件可在 <code>create(ctx)</code> 启动任何后台任务、网络连接或注册运行能力前抛出 <code>telyincore.plugins.PluginSetupRequired</code>，并提供面向用户的说明。宿主返回 <code>ok=true</code> 和 <code>setup_required=true</code>，此时插件 <code>loaded=false</code>。首次唤醒时这类插件进入 <code>waiting</code> 列表。真实装载、启动或清理错误仍按失败返回。</p>
 <p>有前置配置的插件都应验收首次启用、配置完成后重载、配置损坏及不同 Bot 档案隔离。未配置时不可默认放开会话范围，也不可启动消息处理。独立桥接进程的就绪状态需单独显示。</p>
+<h2 id="section-65">27. 热加载与重启后生效</h2>
+<p>本节为 v1.18 新增宿主能力（Windows Core beta.0.5.4.7 修订版）。插件 API 仍为 1。作者必须核对目标 Core 是否支持该能力；旧宿主可能忽略新增声明。若插件不能安全热加载，README 必须明确要求使用支持 <code>reload_mode</code> / <code>restart_required</code> 状态的 Core，不能只依赖旧宿主忽略的字段。</p>
+<h3 id="section-66">清单声明</h3>
+<p>在 <code>package.json</code> 的 <code>telyincore</code> 对象中声明 <code>&quot;reload&quot;: &quot;hot&quot;</code> 或 <code>&quot;reload&quot;: &quot;restart&quot;</code>。省略时保持现有插件的热加载行为；其他值属于无效声明，不得静默当作 hot。</p>
+<div class="code"><div class="code-label">json</div><pre><code>{
+  &quot;telyincore&quot;: {
+    &quot;kind&quot;: &quot;infinity&quot;,
+    &quot;api&quot;: 1,
+    &quot;reload&quot;: &quot;restart&quot;
+  }
+}</code></pre></div>
+<p>能完整撤销线程、监听器、路由和全局状态的插件使用 hot。加载原生库、修改进程级状态或不能安全反复导入的插件应使用 restart。此字段只声明生命周期需求，不授予额外权限，不替代 Bot 范围、依赖关系、清理和宿主关闭检查。</p>
+<h3 id="section-67">生效规则与界面回执</h3>
+<p>安装仍只写入插件包，不自动启用。restart 插件启用时保存当前 Bot 的启用意图，下一次新 Core 进程启动时加载；停用时先保存停用意图，现有实例继续运行到正常关闭。关闭时仍必须执行 stop 清理，不允许以需要重启为由跳过清理或强制终止其他进程。</p>
+<p>插件列表保留 <code>enabled</code>（持久设置）、<code>loaded</code>（运行状态）、<code>tracked</code>（清理责任），另提供 <code>reload_mode</code>、<code>restart_required</code>、<code>restart_action</code>（enable / disable / config）和 <code>restart_reason</code>。有待生效更改时页面应说明现有运行状态，不能把保存成功画成加载或停止成功。</p>
+<p>切换接口的 <code>ok=true, applied=false, restart_required=true</code> 仅表示设置已保存。调用方不可把这个回执当作实例已停止。重启前可以撤销启用或停用；配置保存导致的待重启状态不会因撤销开关而消失。失败原因应保留，不把所有错误泛化成“重启即可解决”。</p>
+<p>通用配置保存通过宿主重载回调处理 restart 插件：保存配置，记录待重启，保留当前实例，不执行 stop/create。自定义配置页不得自行假报重载成功，应使用宿主提供的保存与回执路径。刷新浏览器不等于重启 Core。</p>
+<h3 id="section-68">卸载和更新</h3>
+<p>共享包卸载必须确认所有相关 Bot 的实例已退出；需要重启或 applied=false 时，保留安装包、配置和缓存，当前 Bot 的页面内操作可在完成停用、重启并验证新实例后继续卸载。其他 Bot 尚占用时保留文件并提示具体档案。不会静默升级。</p>
+<p>restart 插件只要尝试导入，其包就被当前进程持续持有，即使启动失败或 stop 返回成功也不在该进程内替换代码。只有相关进程全部退出后才能释放，防止原生模块和进程级残留引用旧文件。卸载后安装新版仍保持停用，启用后按同一规则在新进程加载。</p>
+<h3 id="section-69">必须验收</h3>
+<ol>
+<li>默认 hot 插件可以原样热启停，失败清理仍保留实例责任。</li>
+<li>restart 启用不会提前 import，停用不把运行中实例伪报为已停止，撤销操作恢复原意图。</li>
+<li>新进程按持久启用设置加载；再次在同进程调用启动恢复不等于重启。</li>
+<li>保存配置明确提示待重启，旧实例保持不变；配置错误和失败不得报重载成功。</li>
+<li>单 Bot 和共享包卸载均拒绝在待停用、导入失败残留或其他进程持有时删除文件。</li>
+<li>列表刷新失败保留最后状态并说明未确认，不能清除待生效提醒冒充操作成功。</li>
+</ol>
+<h3 id="section-70">页面内完成启用、停用和卸载</h3>
+<p>用户看到的稳定状态为已启用、已停用、已卸载；首次安装为已停用。切换过程中的“正在启用、正在停用、服务重启中、正在验证、正在卸载”是操作进度，不得冒充稳定结果。</p>
+<p><code>GET /plugins</code> 同时返回 runtime：instance 是本次服务实例标识；bot 是宿主确认的当前档案；restart_supported 表示当前父启动器是否接入页面内重启。作者不可通过插件清单自行授予重启能力。</p>
+<p>页面提交启用或停用后，以宿主回执判断是否需要重启。需要时，<code>POST /plugins/restart</code> 携带 name、action（enable / disable / remove / config）及 <code>X-Telyin-Shutdown-Instance</code>。该接口要求同源、当前服务实例、匹配的待生效状态和支持重启的原父启动器。普通启动脚本、旧启动器和未接入的平台应明确报告不支持，不假报自动重启。</p>
+<p>受支持的 Windows 父启动器在原子进程、输出、端点和已有退出责任完成后，使用同一个 Bot 与端口启动新服务，不打开新网页，不顺便安装待更新的 Core 包。端口被其他服务占用、异常退出或清理失败时，不另起重复实例。</p>
+<p>页面保持 DOM、路由、列表选择和当前操作，通过只读轮询等待新服务实例。HTTP 202 仅表示接受退出请求；原实例仍可访问、单纯连接中断或超时都不代表重启成功。必须验证新的 instance、相同 Bot、相同插件包及最终 enabled/loaded/tracked 状态。超时保留未确认提示，允许继续检查，不自动重复发送重启请求。</p>
+<p>卸载需要重启时，页面先确认插件已停止，再继续原先明确确认的卸载；包在等待期间发生变化则停止后续删除。任何阶段失败均保留可核对的错误。共享安装包若仍被其他 Bot 使用，必须保留文件并说明占用档案，不自动终止其他 Bot。</p>
 <footer><span>TelyinCore · 以实际实现为准</span><a href="#top">返回顶部 ↑</a></footer>
 </main></div></div></body></html>

@@ -5429,8 +5429,9 @@ def _main_impl(argv: list[str] | None = None, *, sharing_bridge_factory=None, pr
                     read_infinity=acceptance_plugins.read_page,
                     act_infinity=acceptance_plugins.act_page)
             from telyincore.package_updates import package_updates
+            from telyincore.plugin_updates import plugin_updates
             return await serve(
-                console, root=args.root, config=body_config, package_updates=package_updates,
+                console, root=args.root, config=body_config, package_updates=package_updates, plugin_updates=plugin_updates,
                 **evidence_options,
                 persona_root=Path(home).parent / "persona",
                 event_store=shared_events, engine=engine, port=args.port,
@@ -5829,6 +5830,10 @@ def _main_impl(argv: list[str] | None = None, *, sharing_bridge_factory=None, pr
             pass  # The market read endpoint reports the invalid setting.
     # 启停开关与实例生命周期分别记录。宿主负责加载，并在操作后重算工具表，使变更当场生效。
     apply_plugin_switch = plugins.switcher(core_root, host=plugin_host, scope=plugin_scope)
+    from telyincore.plugin_service_restart import PluginServiceRestart
+    plugin_restart = PluginServiceRestart(core_root, args.bot, read_plugins,
+        allowed=(instance_lifecycle is not None and shutdown_receiver is not None
+                 and confined_plugins is None))
     qq_waiting_for_setup = any(name == "core-infinity-qq" for name, _ in woke.get("waiting", ()))
 
     def _flip(name, on):
@@ -5861,7 +5866,7 @@ def _main_impl(argv: list[str] | None = None, *, sharing_bridge_factory=None, pr
     qq_panel = QQPanel(create_qq_control)
 
     @_with_plugin_tables
-    def _reload_infinity(name: str) -> None:
+    def _reload_infinity(name: str):
         rows = read_plugins().get("plugins", [])
         # A failed start leaves the user's switch enabled but the instance unloaded.
         # The rollback call must still retry that original, restored config.
@@ -5869,9 +5874,12 @@ def _main_impl(argv: list[str] | None = None, *, sharing_bridge_factory=None, pr
                      and (row.get("loaded") or row.get("enabled") or row.get("tracked"))
                      for row in rows)
         if active:
+            deferred = plugins.defer_config_reload(core_root, name, scope=plugin_scope)
+            if deferred is not None:
+                return deferred
             with plugins.preserve_enabled_intent(core_root, name, scope=plugin_scope):
                 stopped = _flip(name, False)
-                if not stopped.get("ok"):
+                if not stopped.get("ok") or stopped.get("restart_required") or stopped.get("applied") is False:
                     raise RuntimeError(stopped.get("said") or f"{name} 插件停止失败")
                 result = _flip(name, True)
                 if not result.get("ok") or not any(
@@ -5961,6 +5969,8 @@ def _main_impl(argv: list[str] | None = None, *, sharing_bridge_factory=None, pr
     @_with_plugin_tables
     def switch_plugin(name: str, on: bool) -> dict:
         result = _flip(name, on)
+        if result.get("applied") is False:
+            return result  # Persisted intent does not change live companion services.
         if name == "core-infinity-qq":
             if not on and result.get("ok"):
                 try:
@@ -6426,7 +6436,8 @@ def _main_impl(argv: list[str] | None = None, *, sharing_bridge_factory=None, pr
                     linked_accounts=lambda account: _linked_accounts(_request_identity_book(identity_book, console), account),
                 )
             from telyincore.package_updates import package_updates
-            return await serve(console, root=args.root, config=config_for_body, package_updates=package_updates,
+            from telyincore.plugin_updates import plugin_updates
+            return await serve(console, root=args.root, config=config_for_body, package_updates=package_updates, plugin_updates=plugin_updates,
                                **evidence_options,
                                generate=observe_generate(default_generate, runtime_evidence_owner),
                                persona_root=Path(home).parent / "persona",
@@ -6522,7 +6533,7 @@ def _main_impl(argv: list[str] | None = None, *, sharing_bridge_factory=None, pr
                              memory_handlers=remember_handlers, read_usage=see_usage,
                              read_history=console.history,
                              run_tools=observe_tools(the_tools_and_their_ledger, runtime_evidence_owner),
-                             read_plugins=read_plugins, read_market=read_market,
+                             read_plugins=read_plugins, read_market=read_market, plugin_restart=plugin_restart,
                              switch_plugin=switch_plugin, install_plugin=install_plugin,
                              remove_plugin=remove_plugin,
                              read_infinity=read_infinity,

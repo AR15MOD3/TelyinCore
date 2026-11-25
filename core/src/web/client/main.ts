@@ -1,3 +1,5 @@
+import { startPluginRestart } from './plugin-restart';
+import { startPluginUpdates } from './plugin-updates';
 import { startPackageUpdates } from './package-updates';
 import { corePhrase, coreSetUIText } from './ui-language';
 import { syncGateState } from './shell';
@@ -86,7 +88,7 @@ function anchors(): void {
 void initializeDisplayScope(); // Optional display identity never blocks the shell.
 anchors();
 const mounted = createShell(document.body);
-if (typeof window.setInterval === 'function') startPackageUpdates();
+if (typeof window.setInterval === 'function') { startPackageUpdates(); startPluginUpdates(); startPluginRestart(); }
 const shell: Chrome = mounted.shell;
 const bar = mounted.topbar;
 const conn = bar.provider; // 连接那一格（顶栏右边那一枚）

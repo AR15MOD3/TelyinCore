@@ -181,8 +181,17 @@ class PluginConfig:
         if 'enum' in rule and value not in rule['enum']:
             raise ValueError('选项不在声明范围内')
 
+    def _save_receipt(self, name, row, receipt):
+        pending = isinstance(receipt, dict) and receipt.get('restart_required') is True
+        message = ('配置已保存，重启当前 Bot 的 Core 服务后生效。' if pending else
+                   '配置已保存并重载插件。' if row.get('enabled') or row.get('loaded') else
+                   '配置已保存；插件保持停用。')
+        return {'ok': True, 'message': message, 'restart_required': pending,
+                'config': self.read(name)}
+
     def save(self, name: str, request: dict) -> dict:
         with self.lock:
+            receipt = None
             folder, row, path, values, fields, raw, revision, _ = self._load(name)
             if request.get('revision') != revision:
                 raise ValueError('配置已被其他页面修改，请重新加载后再保存')
@@ -214,7 +223,7 @@ class PluginConfig:
                 written=self.scope.save_config(name,values,expected_sha256=expected)
                 try:
                     if row.get('enabled') or row.get('loaded'):
-                        self.reload(name)
+                        receipt = self.reload(name)
                 except Exception:
                     try:
                         self.scope.restore_config(name,raw,expected_sha256=written)
@@ -225,8 +234,7 @@ class PluginConfig:
                     except Exception:
                         raise ValueError('重载失败，已还原配置；旧实例恢复未确认，请检查插件日志') from None
                     raise ValueError('插件拒绝新配置，已还原原配置及实例') from None
-                return {'ok':True,'message':'当前 Bot 配置已保存' + ('并重载插件。' if row.get('enabled') or row.get('loaded') else '；插件保持停用。'),
-                        'config':self.read(name)}
+                return self._save_receipt(name, row, receipt)
             if raw is not None:
                 backup = self._path(folder, '.config-backups')
                 backup.mkdir(exist_ok=True)
@@ -236,7 +244,7 @@ class PluginConfig:
             temp.replace(path)
             try:
                 if row.get('enabled') or row.get('loaded'):
-                    self.reload(name)
+                    receipt = self.reload(name)
             except Exception:
                 if raw is None:
                     path.unlink(missing_ok=True)
@@ -248,6 +256,4 @@ class PluginConfig:
                 except Exception:
                     raise ValueError('重载失败，已还原配置；旧实例恢复未确认，请检查插件日志') from None
                 raise ValueError('插件拒绝新配置，已还原原配置及实例') from None
-            return {'ok': True, 'message': '配置已保存' + (
-                '并重载插件。' if row.get('enabled') or row.get('loaded') else '；插件保持停用。'),
-                    'config': self.read(name)}
+            return self._save_receipt(name, row, receipt)

@@ -13,6 +13,12 @@ import uuid
 from .plugin_package_lock import PackageLock
 from .plugin_scope_store import PluginScopeStore, plugin_name, identifier
 
+class RestartNeeded(ValueError):
+    def __init__(self, message, bot, local):
+        super().__init__(message)
+        self.bot, self.local = bot, local
+
+
 class NoRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, *args, **kwargs): return None
 
@@ -88,10 +94,14 @@ def uninstall_shared(core, name, *, scope, stop_local, roster):
                            for row in status.get('plugins', [])):
                     raise ValueError('其他档案的插件清单与共享安装区不一致')
                 result = _request(port, '/plugins/switch', {'name': name, 'on': False})
+                if result.get('restart_required') or result.get('applied') is False:
+                    raise RestartNeeded('档案「' + bot + '」需要先完成重启；安装包已保留', bot, False)
                 if result.get('ok') is not True:
                     raise ValueError('档案「' + bot + '」未能停用插件，安装包已保留')
                 stopped.append(bot)
             result = stop_local(name, False)
+            if result.get('restart_required') or result.get('applied') is False:
+                raise RestartNeeded('当前档案需要重启后完成停用；安装包已保留', scope.bot, True)
             if result.get('ok') is not True:
                 raise ValueError('当前档案未能停用插件，安装包已保留')
             stopped.append(scope.bot)
@@ -116,7 +126,9 @@ def uninstall_shared(core, name, *, scope, stop_local, roster):
         detail = str(error) if isinstance(error, ValueError) else type(error).__name__
         return {**plugins.installed(core, scope=scope), 'ok':False, 'name':name,
             'said':'卸载未完成：' + detail + '。已停用的档案保持停用；配置和缓存未删除。',
-            'stopped_bots':stopped}
+            'stopped_bots':stopped,
+            **({'restart_required': True, 'restart_local': error.local,
+                'restart_bots': [error.bot]} if isinstance(error, RestartNeeded) else {})}
 
 
 def publish_package(core, name, stage, destination):

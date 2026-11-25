@@ -1,8 +1,9 @@
+import { pluginUpdateNotice } from './plugin-updates';
 import {readyPluginDisplay, readPluginTab, writePluginTab, protectPluginDisplay, pluginDisplayBridge, displayCacheCapability} from './plugin-display-cache';
 import { corePhrase, coreSetUIText } from './ui-language';
 import { pluginPageBridge } from './plugin-page-bridge';
 import { pageLoad } from './page-load';
-import { StaleStatusError } from './status-json';
+import { getStatusJson, StaleStatusError } from './status-json';
 import { pageFetch as fetch } from './status-json';
 import type { Chrome, Panel } from './shell';
 
@@ -42,9 +43,11 @@ export function pluginConfigPage(shell: Chrome, name: string): Panel {
   let editVersion = 0;
   let unprotect: (() => void) | undefined;
   let customOpened = false;
+  let integrated = false;
   let tabEdits = 0;
   let values: Array<() => { path: string[]; value: unknown } | null> = [];
   const draw = (answer: Config): void => {
+    integrated = false; tabs.hidden = false; reload.hidden = false; status.hidden = false; custom.style.height = '';
     state = answer; dirty = false; values = []; form.replaceChildren(); tabs.replaceChildren();
     coreSetUIText(title, 'textContent', [corePhrase(""), answer.displayName, corePhrase(" · 配置")]);
     for (const field of answer.fields) {
@@ -122,19 +125,20 @@ export function pluginConfigPage(shell: Chrome, name: string): Panel {
         const tab = text('button', 'infinity-tab', label) as HTMLButtonElement;
         tab.type = 'button'; tab.setAttribute('aria-selected', String(!isCustom));
         tab.addEventListener('click', () => {
+          if (integrated) return;
           tabEdits++; writePluginTab(name, isCustom ? 1 : 0);
           if (isCustom) customOpened = true;
           form.hidden = isCustom; custom.hidden = !isCustom; save.hidden = isCustom;
           for (const item of tabs.children) item.setAttribute('aria-selected', 'false');
           tab.setAttribute('aria-selected', 'true');
           if (isCustom && state) { const {page:_, ...publicState}=state;
-            custom.contentWindow?.postMessage({type:'telyincore:config:state',config:publicState,displayCache:displayCacheCapability,active:true}, '*'); }
+            custom.contentWindow?.postMessage({type:'telyincore:config:state',config:publicState,toolCatalog:true, displayCache:displayCacheCapability,active:true}, '*'); }
         });
         tabs.append(tab);
       }
       const tabVersion = tabEdits;
       void readyPluginDisplay().then(() => {
-        if (!root.hidden && !dirty && state === answer && tabVersion === tabEdits && readPluginTab(name) === 1)
+        if (!integrated && !root.hidden && !dirty && state === answer && tabVersion === tabEdits && readPluginTab(name) === 1)
           (tabs.children[1] as HTMLButtonElement).click();
       });
     }
@@ -205,17 +209,41 @@ export function pluginConfigPage(shell: Chrome, name: string): Panel {
     const request = event.data;
     if (!request || typeof request !== 'object') return;
     const reply = (payload: object): void => custom.contentWindow?.postMessage(payload, '*');
+    // The package may own a unified editor; this changes presentation only.
+    // It retains the same scoped config/revision and opaque-origin bridges.
+    if (request.type === 'telyincore:config:layout' && request.mode === 'integrated' && state.page) {
+      integrated = true; customOpened = true;
+      tabs.hidden = form.hidden = save.hidden = reload.hidden = status.hidden = true;
+      custom.hidden = false;
+      custom.style.height = 'max(620px, calc(100dvh - 250px))';
+      const {page: _, ...publicState} = state;
+      reply({type:'telyincore:config:state', config:publicState, active:true,
+        toolCatalog:true, displayCache:displayCacheCapability});
+    }
+    if (request.type === 'telyincore:config:dirty' && integrated && typeof request.dirty === 'boolean') {
+      dirty = request.dirty; editVersion++;
+    }
+    if (request.type === 'telyincore:tools:get' && !custom.hidden && Number.isSafeInteger(request.id)) {
+      const epoch = generation;
+      const send = (catalog: unknown) => {
+        if (epoch === generation && !root.hidden && !custom.hidden)
+          reply({type:'telyincore:tools:result', id:request.id, catalog});
+      };
+      // The host binds the lookup to this iframe's package.
+      void getStatusJson('/infinity/plugin-tools/' + encodeURIComponent(name)).then(send, () => send(null));
+      return;
+    }
     if (request.type === 'telyincore:config:get') {
       const { page: _, ...publicState } = state;
-      reply({ type: 'telyincore:config:state', config: publicState, displayCache:displayCacheCapability, active:!custom.hidden });
+      reply({ type: 'telyincore:config:state', config: publicState, toolCatalog:true, displayCache:displayCacheCapability, active:!custom.hidden });
     }
-    if (request.type === 'telyincore:config:save' && Array.isArray(request.changes)) {
+    if (request.type === 'telyincore:config:save' && !custom.hidden && Array.isArray(request.changes)) {
       void persist(request.changes, request.revision).then(() => {
         reply({ type: 'telyincore:config:saved', ok: true });
-      }).catch(() => { reply({ type: 'telyincore:config:saved', ok: false }); });
+      }).catch(error => { reply({ type: 'telyincore:config:saved', ok: false, message: String(error) }); });
     }
   };
-  root.append(title, info, tabs, message, form, custom, save, reload, status);
+  root.append(title, pluginUpdateNotice(name), info, tabs, message, form, custom, save, reload, status);
   shell.content.replaceChildren(root);
   return { root, show(): void {
     root.hidden = false; unprotect ??= protectPluginDisplay(name, () => dirty || busy || customOpened); window.addEventListener('message', bridge); void load();

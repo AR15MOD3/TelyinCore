@@ -1390,6 +1390,13 @@ class _Handler(BaseHTTPRequestHandler):
             self._send_json(200, {'observation_exempt':True,'runtime_evidence':
                 {'recording_status':'DISABLED'} if owner is None else owner.capacity_state()})
             return
+        if route == "/plugin-updates":
+            checker = self._service.plugin_updates
+            if checker is None:
+                self._send_json(503, {"message": "当前 Core 尚未接入插件更新检查"})
+            else:
+                self._send_json(200, checker.read(refresh=self.path == "/plugin-updates?refresh=1"))
+            return
         if route == "/package-update":
             checker = self._service.package_updates
             if checker is None:
@@ -1623,6 +1630,10 @@ class _Handler(BaseHTTPRequestHandler):
             # 不是 `{}`（那会让页上拿不到 `wired`，而它就分不开那两件事了 ）。
             answer = ({"where": "", "plugins": [], "broken": [], "wired": False}
                       if mine is None else dict(mine()))
+            restart = self._service.plugin_restart
+            answer['runtime'] = {**(restart.snapshot() if restart is not None else
+                {'restart_supported': False, 'restart_reason': '当前服务尚未接入页面内重启。'}),
+                'instance': self._service._shutdown_instance_token}
             self._send_json(200, answer)
         elif route == "/infinity/waves/read-check":
             checker = self._service.read_tool_check
@@ -1887,6 +1898,36 @@ class _Handler(BaseHTTPRequestHandler):
                 self._reject_cross_origin("跨站的一页不许叫它交接\n")
                 return
             self._ask_for_handoff()
+            return
+        if route in ("/plugins/switch", "/plugins/remove", "/plugins/restart"):
+            expected = self.headers.get('X-Telyin-Shutdown-Instance')
+            if expected is not None and expected != self._service._shutdown_instance_token:
+                self.close_connection = True
+                self._send_json(409, {'ok': False, 'said': 'Bot 服务实例已变化，请重新确认操作。'})
+                return
+        if route == "/plugins/restart":
+            if (not self.headers.get('Origin') or not self._same_origin()
+                    or not self.headers.get('X-Telyin-Shutdown-Instance')):
+                self._reject_cross_origin('页面内重启需要同源及当前实例标识')
+                return
+            raw = self._read_body()
+            if raw is None:
+                return
+            try:
+                body = json.loads(raw)
+                if type(body) is not dict or set(body) != {'name', 'action'}:
+                    raise ValueError('无效重启请求')
+                restart = self._service.plugin_restart
+                if restart is None or self._service._shutdown_callback is None:
+                    raise ValueError('当前服务不支持页面内重启')
+                restart.request(body['name'], body['action'], self.server.server_address[1])
+            except (ValueError, TypeError, KeyError) as exc:
+                self._send_json(409, {'ok': False, 'said': str(exc)})
+                return
+            except OSError:
+                self._send_json(500, {'ok': False, 'said': '无法保存重启请求，请检查本机日志。'})
+                return
+            self._accept_the_shutdown()
             return
         if route == "/plugins/switch":
             # **开它 ／ 关它**（2026-10-05 作者："接着做" ⇒ 那一页上的开关 ）。
@@ -3345,6 +3386,8 @@ class WebService:
                  read_tool_check: Any = None,
                  act_infinity: Callable[[str, dict[str, Any]], dict[str, Any]] | None = None,
                  package_updates: Any = None,
+                 plugin_updates: Any = None,
+                 plugin_restart: Any = None,
                  runtime_evidence: Any = None, runtime_evidence_finalizer: bool = True
                  ) -> None:
         if not _is_loopback(host):
@@ -3352,6 +3395,8 @@ class WebService:
                 f"只听回环：host 得是一个回环字面量（缺省 {LOOPBACK}），递进来的是 {host!r}")
         self.host = host
         self.package_updates = package_updates
+        self.plugin_updates = plugin_updates
+        self.plugin_restart = plugin_restart
         self._updates_stopped = threading.Event()
         self.runtime_evidence = runtime_evidence
         self.runtime_evidence_finalizer = runtime_evidence_finalizer
@@ -3494,6 +3539,9 @@ class WebService:
             raise
         if self.package_updates is not None:
             self.package_updates.warm(self._updates_stopped)
+        if self.plugin_updates is not None:
+            self.plugin_updates.warm(self._updates_stopped, lambda: not bool(
+                getattr(getattr(self.console, 'round_control', None), 'status', lambda: {})().get('processing')))
         return self
 
     def _begin_subscription_http(self):
@@ -4632,6 +4680,8 @@ async def serve(console: Any, *, root: Any = "data", runtime_evidence: Any = Non
 
 async def _serve_owned(console: Any, *, root: Any = "data", config: Any = None,
     package_updates: Any = None,
+    plugin_updates: Any = None,
+    plugin_restart: Any = None,
     runtime_evidence: Any = None,
     reply_review: bool | str = False,
     persona_root: Any = None,
@@ -4822,7 +4872,7 @@ async def _serve_owned(console: Any, *, root: Any = "data", config: Any = None,
         return box.get("total") if isinstance(box, dict) else None
 
     service = WebService(host=host, port=port, web_root=web_root, runtime_evidence=runtime_evidence,
-                         package_updates=package_updates,
+                         package_updates=package_updates, plugin_updates=plugin_updates, plugin_restart=plugin_restart,
                          runtime_evidence_finalizer=False,
                          state=state_of(
                      console, config=config, total_of=_the_total,

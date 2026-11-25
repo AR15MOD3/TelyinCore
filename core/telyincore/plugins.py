@@ -45,6 +45,45 @@ MAKE = "create"
 _loaded: dict[str, Any] = {}
 _channel_leases: dict[str, tuple[Any, Any]] = {}
 _package_leases: dict[tuple[str, str], Any] = {}
+# A restart-only import can leave native/global state even after stop(). Keep its
+# package pinned for this process lifetime; only process exit releases that claim.
+_restart_imports: dict[tuple[str, str], Any] = {}
+_restart_pending: dict[tuple[Any, ...], str] = {}
+_restart_booted_roots: set[str] = set()
+_restart_configs: set[tuple[Any, ...]] = set()
+_restart_errors: dict[tuple[str, str], str] = {}
+
+
+def _reload_mode(manifest):
+    metadata = manifest.get("telyincore")
+    mode = metadata.get("reload", "hot") if isinstance(metadata, dict) else "hot"
+    if mode not in ("hot", "restart"):
+        raise ValueError('telyincore.reload 必须为 "hot" 或 "restart"')
+    return mode
+
+
+def _restart_key(root, name, scope):
+    return (_root_key(root), _setting_scope_key(scope), name)
+
+
+def _release_package_lease(root_key, name):
+    lease = _package_leases.pop((root_key, name), None)
+    if lease is not None and _restart_imports.get((root_key, name)) is not lease:
+        lease.close()
+
+
+def _restart_status(root, name, scope, enabled):
+    action = _restart_pending.get(_restart_key(root, name, scope), "")
+    if not action and not enabled and (_root_key(root), name) in _restart_imports:
+        action = "disable"
+    if not action and _restart_key(root, name, scope) in _restart_configs:
+        action = "config"
+    reason = ("配置已保存，重启当前 Bot 的 Core 服务后重新加载。" if action == "config" else
+              "启用设置已保存，重启当前 Bot 的 Core 服务后加载。" if action == "enable" else
+              "停用设置已保存；本进程已加载过此插件，重启当前 Bot 的 Core 服务后完成停用。" if action else "")
+    return {"restart_required": bool(action), "restart_action": action,
+            "restart_reason": reason}
+
 
 # One process-wide transaction protects check/create/start/register/stop AND the
 # state.json read-modify-write. Reentrant hook calls are rejected by phase below.
@@ -206,7 +245,7 @@ def confine_lifecycle() -> None:
     if not _lifecycle_lock.acquire(blocking=False):
         raise ValueError('experimental plugin loader busy')
     try:
-        if _loaded or _channel_leases or _lifecycle_threads or _lifecycle_states:
+        if _loaded or _channel_leases or _lifecycle_threads or _lifecycle_states or _restart_imports:
             raise ValueError('experimental lifecycle requires a fresh plugin loader')
         _lifecycle_confined.set()
     finally:
@@ -841,7 +880,7 @@ class PluginSetupRequired(ValueError):
 
 
 @_serialized_lifecycle
-def carry(root: Any, name: str, *, host: Any = None, scope=None) -> dict[str, Any]:
+def carry(root: Any, name: str, *, host: Any = None, scope=None, _startup: bool = False) -> dict[str, Any]:
     """ **把一份插件真的跑起来**（A 那一半：import 它 ＋ 叫 `create(ctx)`）。
 
     交回四样：`ok`（成没成）／ `said`（一句人话）／ `what`（它交回来的那一份）／
@@ -918,6 +957,14 @@ def carry(root: Any, name: str, *, host: Any = None, scope=None) -> dict[str, An
                     "what": _loaded[box], "got": _loaded[box]}
         return {"ok": False, "said": error or f"「{box}」正在 {state}，不能重复装载。",
                 "what": None, "got": None}
+    try:
+        mode = _reload_mode(manifest)
+    except ValueError as exc:
+        return {"ok": False, "said": str(exc), "what": None, "got": None}
+    if mode == "restart" or (root_key, box) in _restart_imports:
+        if not _startup or (root_key, box) in _restart_imports:
+            return {"ok": False, "applied": False, "restart_required": True,
+                    "said": "此插件需要重启 Core 服务后加载。", "what": None, "got": None}
     module = None
     created = False
     module_key = f"core_infinity_{box}"
@@ -949,6 +996,8 @@ def carry(root: Any, name: str, *, host: Any = None, scope=None) -> dict[str, An
             raise ImportError(f"「{box}」那一份加载不起来。")
         module = importlib.util.module_from_spec(spec)
         sys.modules[f"core_infinity_{box}"] = module
+        if mode == "restart":
+            _restart_imports[(root_key, box)] = package_lease
         spec.loader.exec_module(module)
         _require_open_root(root)
         make = getattr(module, MAKE, None)
@@ -990,6 +1039,8 @@ def carry(root: Any, name: str, *, host: Any = None, scope=None) -> dict[str, An
         if lease is not None:
             lease.abort()
         why = f"「{box}」装载的时候出错了：{type(exc).__name__}: {exc}"
+        if (root_key, box) in _restart_imports:
+            _restart_errors[(root_key, box)] = why
         cleanup_target = got if created else module
         if cleanup_target is not None:
             try:
@@ -1002,8 +1053,7 @@ def carry(root: Any, name: str, *, host: Any = None, scope=None) -> dict[str, An
                 _lifecycle_states[box] = (cleanup_target, "cleanup_failed", why)
                 return {"ok": False, "said": why, "what": None, "got": None}
         _loaded.pop(box, None)
-        package_lease = _package_leases.pop((root_key, box), None)
-        if package_lease is not None: package_lease.close()
+        _release_package_lease(root_key, box)
         _instance_setting_scopes.pop(box, None)
         _lifecycle_roots.pop(box, None)
         _lifecycle_states.pop(box, None)
@@ -1013,6 +1063,7 @@ def carry(root: Any, name: str, *, host: Any = None, scope=None) -> dict[str, An
             else:
                 sys.modules[module_key] = previous_module
         if isinstance(exc, PluginSetupRequired):
+            _restart_errors.pop((root_key, box), None)
             return {"ok": True, "setup_required": True, "said": str(exc),
                     "what": None, "got": None}
         return {"ok": False, "said": why,
@@ -1036,6 +1087,9 @@ def put_out(root: Any, name: str, *, scope=None) -> dict[str, Any]:
     owner = _owned_root(name, got)
     if owner is not None and owner != _root_key(root):
         return {"ok": False, "said": "plugin instance belongs to another root"}
+    if (_root_key(root), name) in _restart_imports:
+        return {"ok": False, "applied": False, "restart_required": True,
+                "said": "此插件无法热停用，请先保存停用设置，再重启当前 Bot 的 Core 服务。"}
     return _put_out_owned_name(name, got)
 
 
@@ -1067,8 +1121,7 @@ def _put_out_owned_name(name: str, got: Any) -> dict[str, Any]:
         return {"ok": False, "said": why}
     package_root = _owned_root(name, got)
     _loaded.pop(name, None)
-    package_lease = _package_leases.pop((package_root, name), None)
-    if package_lease is not None: package_lease.close()
+    _release_package_lease(package_root, name)
     _instance_setting_scopes.pop(name, None)
     _lifecycle_roots.pop(name, None)
     _lifecycle_states.pop(name, None)
@@ -1137,6 +1190,10 @@ installed 表示目录存在，enabled 表示配置意图，loaded 表示进程�
     mine = manifest.get("telyincore")
     theirs = manifest.get("cortico")
     box = mine if isinstance(mine, dict) else (theirs if isinstance(theirs, dict) else {})
+    try:
+        reload_mode, reload_error = _reload_mode(manifest), ""
+    except ValueError as exc:
+        reload_mode, reload_error = "invalid", str(exc)
     keywords = manifest.get("keywords")
     display = box.get("displayName")
     kind = str(box.get("kind") or "")
@@ -1163,7 +1220,16 @@ installed 表示目录存在，enabled 表示配置意图，loaded 表示进程�
             except OSError:
                 continue
             files += 1
+    package_id = ""
+    if place is not None and not gone:
+        try:
+            import hashlib
+            stat = (place / MANIFEST).stat()
+            package_id = hashlib.sha256(f"{stat.st_dev}:{stat.st_ino}:{stat.st_ctime_ns}:{stat.st_size}".encode()).hexdigest()
+        except OSError:
+            pass
     return {
+        "package_id": package_id,
         "name": named,
         "displayName": str(display) if isinstance(display, str) and display else named,
         "icon": box.get("icon") if isinstance(box.get("icon"), str) else "",
@@ -1198,7 +1264,8 @@ installed 表示目录存在，enabled 表示配置意图，loaded 表示进程�
         # ⚠️ 形状不对的那几条**丢掉**（一个坏插件不许把整页带走）。
         "channels": _the_channels(box.get("channels")),
         # **契约那一句**（空那一串 ＝ 对得上 ／ 有字 ＝ 为什么对不上 ）
-        "contract": _contract_said(kind, api),
+        "reload_mode": reload_mode,
+        "contract": reload_error or _contract_said(kind, api),
         # 装进来的那一份在哪儿（详情面板要显示"安装位置"那一行 ）
         "where": str(place) if place is not None else "",
         # **从哪儿来**（装的那一刻记下来的那条链接 ／ 谁写的 —— 空那一份 ＝ 不知道 ）
@@ -1246,6 +1313,9 @@ def installed(root: Any, *, scope=None) -> dict[str, Any]:
     builtin_names = {one["name"] for one in _the_builtin_rows(root, set())}
     for one in plugins:
         one["can_remove"] = True
+        one.update(_restart_status(root, one["name"], scope, one["enabled"]))
+        if not one["lifecycle_error"]:
+            one["lifecycle_error"] = _restart_errors.get((_root_key(root), one["name"]), "")
         if not _same_setting_scope(one["name"], _loaded.get(one["name"]), scope):
             one["loaded"] = False
         if one["name"] in builtin_names:
@@ -1302,6 +1372,19 @@ def switch(root: Any, name: str, *, on: bool, host: Any = None, scope=None) -> d
     have = {one["name"] for one in installed(root, scope=scope)["plugins"] if one.get("installed")}
     if name not in have:
         raise KeyError(f"没装过叫「{name}」的插件（现在装着的是 {sorted(have)}）")
+    _, manifest = _plugin_folder(root, name)
+    try:
+        mode = _reload_mode(manifest or {})
+    except ValueError as exc:
+        if on:
+            return {**installed(root, scope=scope), "ok": False, "said": str(exc)}
+        mode = "hot"  # A broken declaration must remain removable while unloaded.
+    restart_only = mode == "restart" or (root_key, name) in _restart_imports
+    got = _loaded.get(name)
+    if name in _loaded and (not _same_setting_scope(name, got, scope)
+                            or _owned_root(name, got) != root_key):
+        return {**installed(root, scope=scope), "ok": False,
+                "said": "plugin instance belongs to another root or Bot settings scope"}
     # 启用配置表达用户意图；loaded 与 lifecycle 反映实际实例状态及失败原因。
     if scope is not None:
         _scope_context(host, scope, name)
@@ -1313,9 +1396,35 @@ def switch(root: Any, name: str, *, on: bool, host: Any = None, scope=None) -> d
                     and (_scope_switches(root, scope).get(dependency.child, False) or retained)):
                 return {**installed(root, scope=scope), 'ok': False,
                         'said': dependency.disable_denied}
+        if restart_only and on:
+            for dependency in policy.dependencies:
+                if dependency.child == name:
+                    parent = _loaded.get(dependency.parent)
+                    if (parent is None or _owned_root(dependency.parent, parent) != root_key
+                            or not _same_runtime_policy(dependency.parent, parent, policy)
+                            or _lifecycle_state(dependency.parent)[0] != "running"):
+                        return {**installed(root, scope=scope), "ok": False,
+                                "said": dependency.load_denied}
         # Publish persistent intent before starting/stopping anything. A failed
         # durable write must never create an unrecorded running instance.
         _save_scope_switch(root, scope, name, bool(on))
+    if restart_only:
+        if scope is None:
+            _save_scope_switch(root, scope, name, bool(on))
+        state, error = _lifecycle_state(name)
+        error = error or _restart_errors.get((root_key, name), "")
+        action = "enable" if on and state != "running" else "disable" if not on and name in _loaded else ""
+        key = _restart_key(root, name, scope)
+        if action:
+            _restart_pending[key] = action
+        else:
+            _restart_pending.pop(key, None)
+        if not on and (root_key, name) not in _restart_imports:
+            _restart_configs.discard(key)
+        status = _restart_status(root, name, scope, bool(on))
+        return {**installed(root, scope=scope), "ok": not bool(error),
+                "applied": not status["restart_required"] and not bool(error), **status,
+                "said": error or status["restart_reason"] or "插件设置已保存。"}
     if on:
         outcome = carry(root, name, host=host, scope=scope)
     else:
@@ -1326,17 +1435,45 @@ def switch(root: Any, name: str, *, on: bool, host: Any = None, scope=None) -> d
             **({"setup_required": True} if outcome.get("setup_required") else {})}
 
 
+@_serialized_lifecycle
+def defer_config_reload(root: Any, name: str, *, scope=None):
+    """Host-only config receipt; None means use the ordinary hot-reload path."""
+    _require_unconfined_lifecycle()
+    root_key = _require_open_root(root)
+    _scope_runtime_policy(root_key, scope)
+    name = _plugin_name(root, name)
+    _, manifest = _plugin_folder(root, name)
+    if manifest is None:
+        raise KeyError(name)
+    if _reload_mode(manifest) != "restart" and (root_key, name) not in _restart_imports:
+        return None
+    got = _loaded.get(name)
+    if name in _loaded and (not _same_setting_scope(name, got, scope)
+                            or _owned_root(name, got) != root_key):
+        raise ValueError("plugin instance belongs to another root or Bot settings scope")
+    _restart_configs.add(_restart_key(root, name, scope))
+    return {"ok": True, "applied": False, "restart_required": True,
+            "said": "配置已保存，重启当前 Bot 的 Core 服务后生效。"}
+
+
+@_serialized_lifecycle
 def wake(root: Any, *, host: Any = None, scope=None) -> dict[str, Any]:
     """启动时仅加载已启用插件，分别返回成功列表和带原因的失败列表。"""
     _require_unconfined_lifecycle()
     _require_open_root(root)
+    root_key = _root_key(root)
+    first_start = root_key not in _restart_booted_roots
+    _restart_booted_roots.add(root_key)
     up: list[str] = []
     down: list[tuple[str, str]] = []
     waiting: list[tuple[str, str]] = []
     for one in installed(root, scope=scope)["plugins"]:
         if not one.get("enabled"):
             continue
-        got = carry(root, one["name"], host=host, scope=scope)
+        if first_start:
+            _restart_pending.pop(_restart_key(root, one["name"], scope), None)
+            _restart_configs.discard(_restart_key(root, one["name"], scope))
+        got = carry(root, one["name"], host=host, scope=scope, _startup=first_start)
         if got.get("setup_required"):
             waiting.append((one["name"], str(got["said"])))
         elif got["ok"]:
@@ -1706,7 +1843,7 @@ def gathered(root: Any, *, taken: Any = (), reserved: Any = None, scope=None) ->
     said: list[tuple[str, str]] = []
     mine = {str(one) for one in taken}
     for one in installed(root, scope=scope)["plugins"]:
-        if not one.get("enabled"):
+        if not one.get("enabled") and not (one.get("restart_required") and one.get("loaded")):
             continue
         got = _loaded.get(one["name"])
         if not _same_setting_scope(one["name"], got, scope):
@@ -1802,8 +1939,10 @@ def remove(root: Any, name: str, *, host: Any = None, scope=None) -> dict[str, A
                 "said": f"没有叫「{said}」的插件（没动 —— 现在装着的是 {have}）。"}
     # ① **先关掉**（ 而它同时把工具从那张表里拿掉 ）
     stopped = switch(root, said, on=False, host=host)
-    if not stopped.get("ok"):
-        return {"ok": False, "name": said, "where": "", "said": stopped["said"]}
+    if not stopped.get("ok") or stopped.get("restart_required") or stopped.get("applied") is False:
+        return {"ok": False, "name": said, "where": "",
+                "restart_required": bool(stopped.get("restart_required")),
+                "said": stopped["said"] + " 卸载尚未执行，重启后请再次卸载。"}
     # ② **删那一格**（ 先确认那一格**真在** `extensions/` 里面 —— 不许越界 ）
     place = the_place(root) / said
     if place.resolve().parent != base:

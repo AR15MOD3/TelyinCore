@@ -18,8 +18,8 @@ import { chatPage } from './live';
 import { enginePage } from './engine-page';
 import { personaPage } from './persona-page';
 import { memoryPage } from './memory-page';
-import { pluginsPage } from './plugins-page';
-import { infinityPage } from './infinity-page';
+import { pluginWorkspace } from './plugin-workspace';
+import { pluginMarketPage } from './plugin-market-page';
 import { infinityPluginPage } from './infinity-plugin-page';
 // 2026-10-08 作者拍的「世界里的事 ⇒ 三个子项」： **三个新文件 ＋ 三行**
 // （ 那就是本仓"加一页"的全部代价 —— 见头上那两处 ）。
@@ -137,10 +137,10 @@ page({ group: 'PERSONA & MEMORY', id: 'persona', label: '人设', icon: 'person'
   // `INFINITY` 照旧是**最后一组** （这是 `groupsOf()` 那一段自己点名的隐式依赖 ）。
   // 而 `SOON` 里那一项**同时删掉**：同一个入口不许有两个登记处
   // （"加一页 = 一个文件 ＋ 一行" ／ 而"还没做"那条清单是另一回事 ）。
-  page({ group: 'INFINITY', id: 'plugin', label: '插件市场', icon: 'store',
-         file: 'plugins-page.ts' }, pluginsPage),
-  page({ group: 'INFINITY', id: 'infinity', label: '插件总览', icon: 'grid',
-         file: 'infinity-page.ts' }, infinityPage),
+  page({ group: 'INFINITY', id: 'plugin', label: '插件市场', icon: 'grid',
+         file: 'plugin-market-page.ts' }, pluginMarketPage),
+  page({ group: 'INFINITY', id: 'infinity', label: '插件总览', icon: 'puzzle',
+         file: 'plugin-workspace.ts' }, pluginWorkspace),
   page({ group: 'INFINITY', id: 'infinity-entry', label: '插件配置', icon: 'puzzle',
          offRail: true, file: 'infinity-plugin-page.ts' }, infinityPluginPage),
 ];

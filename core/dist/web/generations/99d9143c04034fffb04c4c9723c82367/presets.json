@@ -1,0 +1,38 @@
+[
+  {
+    "file": "default.json",
+    "name": "霜白映微蓝",
+    "order": 0,
+    "scheme": "light"
+  },
+  {
+    "file": "orange.json",
+    "name": "暖橙照初晴",
+    "order": 1,
+    "scheme": "light"
+  },
+  {
+    "file": "purple.json",
+    "name": "烟紫栖墨夜",
+    "order": 2,
+    "scheme": "dark"
+  },
+  {
+    "file": "blue.json",
+    "name": "雾蓝泊深海",
+    "order": 3,
+    "scheme": "dark"
+  },
+  {
+    "file": "amber.json",
+    "name": "星夜映鎏金",
+    "order": 4,
+    "scheme": "dark"
+  },
+  {
+    "file": "green.json",
+    "name": "烟玫映炭夜",
+    "order": 5,
+    "scheme": "dark"
+  }
+]

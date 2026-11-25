@@ -1,3 +1,5 @@
+import { pluginCategories, pluginCategory, pluginCategoryLabel, pluginRequirement } from './plugin-catalog';
+import { pluginUpdateNotice, updateFor, updateText, pluginUpdatesPanel, takePluginUpdateRequest } from './plugin-updates';
 import { confirmAction } from './confirm-dialog';
 import { uiLabel } from './ui-language';
 import { corePhrase, coreSetUIAttribute, coreSetUIText, coreUITextNode } from './ui-language';
@@ -10,7 +12,14 @@ import { icon, type Chrome, type Panel } from './shell';
 
 /* 服务端返回的已安装插件信息。 */
 export interface InstalledPlugin {
+  readonly package_id?: string;
   readonly can_remove?: boolean;
+  readonly reload_mode?: 'hot'|'restart'|'invalid';
+  readonly restart_required?: boolean;
+  readonly restart_action?: 'enable'|'disable'|'config'|'';
+  readonly restart_reason?: string;
+  readonly lifecycle_error?: string;
+  readonly tracked?: boolean;
   /** 包名（`package.json` 的 `name` ）。 */
   readonly name: string;
   /* 显示名称；缺省使用包名。 */
@@ -55,7 +64,11 @@ export interface InstalledPlugin {
 }
 
 /** 服务端那一格交回来的东西（`GET /plugins`）。 */
+export interface PluginRuntime {
+  instance: string; bot?: string; restart_supported: boolean; restart_reason?: string;
+}
 export interface PluginsAnswer {
+  readonly runtime?: PluginRuntime;
   readonly broken?: readonly string[];
   /* 插件安装位置。 */
   readonly where: string;
@@ -116,10 +129,10 @@ export interface PluginsView extends Panel {
 const NONE_YET = '还没有装任何插件。';
 // 而这一句去掉那半句附注（"不当成零个插件"）—— 那半句是**写给我们自己看的**，
 // 摆在页上只会让人以为"页面在解释一个不存在的问题" （ 而事实照旧说清：读不到就是读不到 ）。
-const READ_FAILED = '读不到插件那一格。';
+const READ_FAILED = '无法读取本机插件。';
 // 同一个道理（那一句是"没拉到 GitHub"那一种 —— 而它说的是事实，不带附注 ）。
 const MARKET_NOT_WIRED = '这次没拉到 GitHub。';
-const FILTERED_OUT = '筛过之后一个都没有。';
+const FILTERED_OUT = '没有符合条件的本机插件。';
 
 /** **这一份的源代码仓库在哪**（2026-10-05 作者："2也要做" ⇒ 照参考那张底下那枚
  * 「源代码仓库」）。 两边的来处不同，而**都取自我们手里真有的东西**：
@@ -132,10 +145,10 @@ function repoOf(one: InstalledPlugin | MarketPackage, from: 'installed' | 'marke
     return full ? `https://github.com/${full}` : '';
   }
   const url = (one as InstalledPlugin).origin?.url || '';
-  const cut = /^https:\/\/github\.com\/([^/]+\/[^/]+)\//.exec(url);
+  const cut = /^https:\/\/github\.com\/([^/]+\/[^/#?]+)/.exec(url);
   return cut ? `https://github.com/${cut[1]}` : '';
 }
-const MARKET_FAILED = '市场那一格没答上来。';
+const MARKET_FAILED = '无法读取插件市场。';
 // 操作已经把请求发出去之后，列表那一格仍可能读不回来 —— 这时**不能**把操作
 // 那一句真话吞掉，也不能让页面假装自己是最新的。两句一起说。
 const REFRESH_FAILED = '列表刷新失败，当前显示可能不是最新。';
@@ -150,9 +163,13 @@ function showVersion(said: string): string {
 }
 
 /** 那一页。 */
-export function pluginsPage(shell: Chrome): PluginsView {
+export function pluginOverviewPage(shell: Chrome): PluginsView { return pluginsPage(shell, 'overview'); }
+
+export function pluginsPage(shell: Chrome, mode: 'market'|'overview' = 'market'): PluginsView {
+  const overview=mode==='overview';
   const root = document.createElement('section');
   root.className = 'plugins page-plugin';
+  root.dataset.pageRole=mode;
   // **2026-10-09 作者：「已安装和插件市场做成其他几页的标题一样的大小和标签。」**
   // ⇒ **`h2` → `h1`** （ 其他几页的页标题都是 `h1` ）； 字号那一半在
   // `style.css` 的 `.plugins-title-row .plugins-title` 上 （ 只有这两处吃它 ）。
@@ -193,7 +210,7 @@ export function pluginsPage(shell: Chrome): PluginsView {
   const marketTitle = document.createElement('h1');
   marketTitle.className = 'plugins-title';
   // 同上那一句（ 「给它们俩也加上 · 英文翻译」）。
-  coreSetUIText(marketTitle, 'textContent', corePhrase("插件市场 · MARKETPLACE"));
+  coreSetUIText(marketTitle, 'textContent', corePhrase(overview ? "插件总览" : "插件市场"));
   // **「插件市场」那一行**（2026-10-05 作者："根据图2的样子，把隐藏已安装放到图3里的右侧，
   // 记得做好对齐和排版"）—— 照图2那条（「已安装」＋ 紧跟它右边那一枚胶囊 ）：
   // 标题与它那一枚**同一行**，用的是**同一个** `.plugins-title-row` （一处一条 ）。
@@ -222,15 +239,15 @@ export function pluginsPage(shell: Chrome): PluginsView {
   // ⚠️⚠️ **2026-10-05 作者："详情应该是个浮窗不是打开在下面，这样根本看不见了"** ——
   // 所以这一格是**浮窗**：`detail` 是**那一层压暗的底**，`detailCard` 才是**那张纸**
   // （ 位置与尺寸全在 `style.css` 里 —— 它 `position: fixed` 覆盖整屏 ）。
-  const detail = document.createElement('div');
+  const detail = document.createElement('dialog');
   detail.className = 'plugins-detail';
-  detail.hidden = true;
+  detail.setAttribute('aria-label', '插件详情');
   const detailCard = document.createElement('div');
   detailCard.className = 'plugins-detail-card';
   detail.append(detailCard);
   // **点那一层底就关**（浮窗的常规 —— 而纸**里面**点不关：那一下不该被读成"关" ）
   detail.addEventListener('click', (ev) => {
-    if (ev.target === detail) { detail.hidden = true; }
+    if (ev.target === detail) { detail.close(); }
   });
   // **市场那一段的表头**（2026-10-05 作者："做"）—— 照参考那份工具栏：
   // 一个「隐藏已安装」的开关（它那一栏的右边那一枚 ）。
@@ -273,7 +290,7 @@ export function pluginsPage(shell: Chrome): PluginsView {
       one.textContent = `${n}`;
       it.append(one);
     }
-    it.value = '6';
+    it.value = '12';
     box.append(it);
     box.dataset.for = 'plugins';
     return it;
@@ -294,6 +311,7 @@ export function pluginsPage(shell: Chrome): PluginsView {
   installedRow.append(searchField(installedFind, '筛选已安装插件'),
                       installedPer.parentElement as HTMLElement,
                       againBtn('↻ 刷新', () => { void refresh(); }));
+  // 更新筛选由更新标签页提供。
   const marketRow = document.createElement('div');
   marketRow.className = 'plugins-toolbar';
   marketRow.append(searchField(marketFind, '筛选插件市场'),
@@ -304,16 +322,66 @@ export function pluginsPage(shell: Chrome): PluginsView {
   hideTick.type = 'checkbox';
   // 2026-10-05 作者：「我上传的 GitHub 插件并没有安装，应该放在插件市场里」
   //  ⇒ 两段真正分开：市场那一段只列还没装的。
-  hideTick.checked = true;
+  hideTick.checked = false;
   hideTick.className = 'plugins-hide-tick';
   const hideSay = document.createElement('span');
   coreSetUIText(hideSay, 'textContent', corePhrase("隐藏已安装"));
   hideBox.append(hideTick, hideSay);
   marketRow.append(againBtn('↻ 刷新', () => { void refreshMarket(); }));
   // 它现在挂在标题那一行（ 而不是工具栏里 —— 照图2的排法 ）
-  marketTitleRow.append(marketTitle, developmentGuide, hideBox);
-  root.append(titleRow, note, installedRow, installedBox, marketTitleRow, marketNote,
-              marketRow, marketBox, detail);
+  marketTitleRow.append(marketTitle, developmentGuide);
+  marketRow.append(hideBox);
+  const updatePanel=pluginUpdatesPanel();
+  const marketTabs=document.createElement('nav');marketTabs.className='plugin-market-tabs';
+  marketTabs.setAttribute('aria-label','插件管理分区');marketTabs.setAttribute('role','tablist');
+  const tabs=['本机插件','发现插件'].map(label=>{const button=document.createElement('button');button.type='button';button.textContent=label;button.setAttribute('role','tab');marketTabs.append(button);return button;});
+  const categoryBar=document.createElement('nav');categoryBar.className='plugin-categories';categoryBar.setAttribute('aria-label','插件用途');
+  let category='all';
+  const categoryButtons=new Map<string,HTMLButtonElement>();
+  for(const [id,label] of pluginCategories){
+    const button=document.createElement('button');button.type='button';button.textContent=label;button.setAttribute('aria-pressed',String(id===category));
+    button.onclick=()=>{category=id;pageOut=1;for(const [key,node] of categoryButtons)node.setAttribute('aria-pressed',String(key===category));if(lastMarket)drawMarket(lastMarket);};
+    categoryButtons.set(id,button);categoryBar.append(button);
+  }
+  const categoryCounts=(rows:readonly MarketPackage[])=>{
+    for(const [id,button] of categoryButtons){const count=id==='all'?rows.length:rows.filter(one=>pluginCategory(one)===id).length;
+      button.textContent=`${pluginCategories.find(([key])=>key===id)![1]} ${count}`;
+      button.hidden=id!=='all'&&count===0&&id!==category;
+    }
+  };
+  let selectedTab=0;
+  let showingUpdates=false;
+  const updateButton=document.createElement('button');updateButton.type='button';updateButton.className='btn ghost plugin-updates-entry';updateButton.textContent='检查更新';
+  installedRow.append(updateButton);updateButton.hidden=overview;
+  const returnFromUpdates=document.createElement('button');returnFromUpdates.type='button';returnFromUpdates.className='btn ghost plugin-updates-back';returnFromUpdates.textContent='← 本机插件';
+  updatePanel.root.prepend(returnFromUpdates);
+  const selectMarket=(index:number, updates=false)=>{
+    selectedTab=index;showingUpdates=!overview&&updates;
+    root.dataset.marketView=showingUpdates?'updates':overview||index===0?'installed':'discover';
+    titleRow.hidden=true;
+    note.hidden=installedRow.hidden=installedBox.hidden=(!overview&&index!==0)||showingUpdates;
+    marketNote.hidden=marketRow.hidden=marketBox.hidden=categoryBar.hidden=overview||index!==1;
+    updatePanel.root.hidden=!showingUpdates;
+    marketTabs.hidden=overview;
+    tabs.forEach((button,i)=>{button.setAttribute('aria-selected',String(i===index));button.tabIndex=i===index?0:-1;});
+    if(showingUpdates)updatePanel.render();
+  };
+  updateButton.onclick=()=>selectMarket(0,true);
+  returnFromUpdates.onclick=()=>selectMarket(0);
+  tabs.forEach((button,i)=>button.onclick=()=>selectMarket(i));
+  marketTabs.addEventListener('keydown',event=>{
+    if(!['ArrowLeft','ArrowRight','Home','End'].includes(event.key))return;
+    event.preventDefault();const index=event.key==='Home'?0:event.key==='End'?1:1-selectedTab;
+    selectMarket(index);tabs[index].focus();
+  });
+  const updateTabLabel=()=>{const count=lastInstalled?.plugins.filter(one=>one.installed!==false&&updateFor(one.name)?.status==='available').length||0;updateButton.textContent=count?`可更新 ${count}`:'检查更新';};
+  const openRequestedUpdates=()=>{if(overview)return;const request=takePluginUpdateRequest();if(request){selectMarket(0,true);updatePanel.search(request.name);}};
+  const runtimeFilter=document.createElement('select');runtimeFilter.setAttribute('aria-label','运行状态筛选');runtimeFilter.className='plugins-per';
+  for(const [value,label] of [['all','全部状态'],['enabled','已启用'],['disabled','已停用'],['issue','已启用但未运行']])runtimeFilter.add(new Option(label,value));
+  if(overview)installedRow.append(runtimeFilter);
+  runtimeFilter.onchange=()=>{pageIn=1;if(lastInstalled)draw(lastInstalled);};
+  root.append(marketTitleRow,marketTabs,titleRow,note,installedRow,installedBox,marketNote,marketRow,categoryBar,marketBox,updatePanel.root,detail);
+  selectMarket(0);
   // ⚠️ **那个开关要看"两段的名字"** ⇒ 它得记住**上面那一段现在有什么**
   let haveInstalled = new Set<string>();
   // **最后拿到手的那一份**（2026-10-05）—— 筛的时候用它**重画**， 不再打一次网
@@ -516,7 +584,7 @@ export function pluginsPage(shell: Chrome): PluginsView {
   });
   // 照参考那张图右上角写的「× 关闭 (Esc)」—— **Esc 也关它**
   window.addEventListener('keydown', (ev) => {
-    if (ev.key === 'Escape') { detail.hidden = true; }
+    if (ev.key === 'Escape') { detail.close(); }
   });
   // **两段各一行数**（照参考底下那句「显示 1-5，共 5 个」）
   const count = document.createElement('p');
@@ -524,7 +592,7 @@ export function pluginsPage(shell: Chrome): PluginsView {
   const marketCount = document.createElement('p');
   marketCount.className = 'plugins-note plugins-count';
   // 那个开关一动 ⇒ **只重画市场那一段**（ 上面那一段没变 ）
-  hideTick.addEventListener('change', () => { void refreshMarket(); });
+  hideTick.addEventListener('change', () => {pageOut=1;if(lastMarket)drawMarket(lastMarket);});
   // ⚠️ **这一句是"挂上去"那一步**（照 `persona-page.ts:733` ／ `engine-page.ts:199` 那两处）——
   // **少了它，左栏那一项点得动、而正文是空的** （实测抓到过一次：`content.children` 是空数组）。
   // 而 `show()` 只负责**取消刚藏**（上一页走的时候把它的 `root.hidden` 设成 `true` ）。
@@ -549,15 +617,18 @@ export function pluginsPage(shell: Chrome): PluginsView {
     haveInstalled = new Set(answer.plugins
       .filter((one) => one.installed !== false).map((one) => one.name));
     lastInstalled = answer;
-    if (answer.plugins.length === 0) {
+    updateTabLabel();
+
+    const localPlugins=answer.plugins.filter(one=>!overview||one.installed!==false);
+    if (localPlugins.length === 0) {
       note.textContent = NONE_YET;
       installedFind.hidden = true; // 一个都没有 ⇒ 那个框没意义（收起 ）
       return;
     }
     installedFind.hidden = false;
     // **过了筛子的那些**（2026-10-05：那个搜索框是真筛 ）
-    const shown = answer.plugins.filter((one) => hits(
-      [one.name, one.displayName, one.description, one.author, one.kind], installedFind.value));
+    const shown = localPlugins.filter(one=>!overview||runtimeFilter.value==='all'||runtimeFilter.value==='enabled'&&one.enabled||runtimeFilter.value==='disabled'&&!one.enabled||runtimeFilter.value==='issue'&&one.enabled&&!one.loaded).filter((one) => hits(
+      [one.name, one.displayName, one.description, one.author, one.kind], installedFind.value)).sort((a,b) => (!overview ? Number(!!b.builtin)-Number(!!a.builtin) || Number(updateFor(b.name)?.status === 'available') - Number(updateFor(a.name)?.status === 'available') : 0) || a.name.localeCompare(b.name));
     if (shown.length === 0) {
       // 与市场那一段同一条口径：**筛空也说一行数**（ 而不是只剩一句提示 ）
       note.textContent = FILTERED_OUT;
@@ -572,7 +643,7 @@ export function pluginsPage(shell: Chrome): PluginsView {
     // 原先是由"位置那一句"顺手抹掉的 ⇒ 那一句挪进胶囊之后，它**永远留着了** 。
     note.textContent = '';
     if (answer.broken?.length) {
-      coreSetUIText(note, 'textContent', [[corePhrase("插件目录读取失败："), answer.broken.join('、')], corePhrase("。请检查各目录的 package.json；安装位置见上方。")]);
+      coreSetUIText(note, 'textContent', [[corePhrase("插件目录读取失败："), answer.broken.join('、')], corePhrase("。请检查各目录的 package.json。")]);
     }
     const list = document.createElement('ul');
     list.className = 'plugins-row';
@@ -582,7 +653,15 @@ export function pluginsPage(shell: Chrome): PluginsView {
     if (pageIn > pages) { pageIn = pages; }
     const from = (pageIn - 1) * every;
     const slice = shown.slice(from, from + every);
+    let group: boolean|undefined;
     for (const one of slice) {
+      if(!overview&&group!==!!one.builtin){
+        group=!!one.builtin;
+        const heading=document.createElement('li');heading.className='plugin-origin-heading';
+        const title=document.createElement('h2');title.textContent=group?'Core 内置':'自行安装';
+        const note=document.createElement('span');note.textContent=group?'随 Core 提供与更新':'来自社区或本地导入';
+        heading.append(title,note);list.append(heading);
+      }
       const item = document.createElement('li');
       // **内置而没装 ⇒ 整块灰着**（2026-10-05 作者："插件卡片整体灰色处理"）——
       // ⚠️ 而它**照旧在名单里**（那是"卸了也不消失"那一条 ）。
@@ -597,9 +676,12 @@ export function pluginsPage(shell: Chrome): PluginsView {
       names.className = 'plugins-names';
       const who = document.createElement('strong');
       who.className = 'plugins-name';
+      who.tabIndex=0;who.setAttribute('role','button');
+      who.onclick=()=>openDetail(one,'displayName' in one?'installed':'market');
+      who.onkeydown=event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();who.click();}};
       // 2026-10-05 作者给的排法：那一行写 core-infinity-sample（标题就是包名）。
       // 原先把 displayName 当标题、把包名塞进元信息里 ⇒ 同一件事写了两遍。
-      who.textContent = one.name;
+      who.textContent = 'displayName' in one && one.displayName ? String(one.displayName) : one.name;
       const meta = document.createElement('span');
       meta.className = 'plugins-meta';
       // 元信息照它那一行（"内置扩展 · 版本 · 作者"）—— 我们这几格今天有的是这些
@@ -607,10 +689,13 @@ export function pluginsPage(shell: Chrome): PluginsView {
       //   「包名：…」／「版本：… 作者：…」。⇒ 照它写（别写成"infinity · 版本 …"那种设计腔）。
       coreSetUIText(meta, 'textContent', [[corePhrase("版本："), showVersion(one.version || ''), corePhrase("")], [corePhrase("　作者："), one.author || '（没写）', corePhrase("")]]);
       names.append(who, meta);
+      const update = updateFor(one.name);
+      if (!overview&&update?.status === 'available') names.append(pluginUpdateNotice(one.name));
       const tag = document.createElement('span');
-      tag.className = one.enabled ? 'plugins-tag on' : 'plugins-tag';
-      coreSetUIText(tag, 'textContent', one.enabled ? corePhrase("启用") : corePhrase("停用"));
-      head.append(names, tag);
+      tag.className = (overview ? one.enabled : one.installed!==false) ? 'plugins-tag on' : 'plugins-tag';
+      tag.textContent=overview?(one.loaded?'运行中':one.enabled?'已启用 · 未运行':'已停用'):(one.installed===false?'未安装':'已安装');
+      const mark=document.createElement('span');mark.className='plugin-package-mark';mark.append(icon('puzzle'));mark.setAttribute('aria-hidden','true');
+      head.append(mark,names, tag);
       item.append(head);
       // **简介也要在这张卡上**（2026-10-05 作者："已安装那里…没有把简介显示出来"）——
       // ⚠️ 原先它**只在详情浮窗里有**（要点进去才看得见 ），而市场那一段的卡一直在显示
@@ -687,7 +772,10 @@ export function pluginsPage(shell: Chrome): PluginsView {
       const right = document.createElement('div');
       right.className = 'plugins-acts';
       // 内置而**没装**的 ⇒ 那一枚开关**不画**（ 它没装、开不了 —— 画了会是一句空话 ）
-      if (goneNow) { right.append(drop); } else { right.append(flip, drop); }
+      if(!overview){if(goneNow)drop.textContent='恢复安装';right.append(drop);}else{
+        const configure=document.createElement('a');configure.className='btn ghost plugin-configure';configure.textContent='配置';configure.href=`#/infinity/${encodeURIComponent(one.name)}`;
+        right.append(configure,flip);
+      }
       const actions = document.createElement('div');
       actions.className = 'plugins-actions';
       actions.append(look, right);
@@ -710,7 +798,9 @@ export function pluginsPage(shell: Chrome): PluginsView {
     const here = shown.filter((one) => one.installed !== false).length;
     const on = shown.filter((one) => one.enabled).length;
     const goneCount = shown.length - here;
-    coreSetUIText(count, 'textContent', [[[[corePhrase("共"), here, corePhrase("个已安装，共"), on, corePhrase("个已启用")], [corePhrase("（本页显示 "), slice.length ? from + 1 : 0, corePhrase("-"), from + slice.length, corePhrase("")]], ((goneCount ? [corePhrase("，"), goneCount, corePhrase(" 个内置插件未安装")] : corePhrase("")))], corePhrase("）。")]);
+    const stateCount=overview?` · ${on} 个已启用`:(goneCount?` · ${goneCount} 个内置插件未安装`:'');
+    count.textContent=`${here} 个已安装${stateCount}（本页 ${slice.length ? from+1 : 0}–${from+slice.length}）`;
+
     installedBox.append(count);
     installedBox.append(pager(pages, pageIn, (n) => { pageIn = n; draw(answer); }));
   };
@@ -739,7 +829,7 @@ export function pluginsPage(shell: Chrome): PluginsView {
     shut.type = 'button';
     shut.className = 'btn ghost plugins-detail-shut';
     coreSetUIText(shut, 'textContent', corePhrase("× 关闭"));
-    shut.addEventListener('click', () => { detail.hidden = true; });
+    shut.addEventListener('click', () => { detail.close(); });
     const bar = document.createElement('div');
     bar.className = 'plugins-detail-bar';
     bar.append(head, shut);
@@ -750,6 +840,7 @@ export function pluginsPage(shell: Chrome): PluginsView {
 
     const info = document.createElement('div');
     info.className = 'plugins-kv-box';
+    if (!overview&&from === 'installed') {const update = updateFor(mid); if (update) info.append(row('更新状态', updateText(update)));}
     if (from === 'installed') {
       const box = one as InstalledPlugin;
       info.append(
@@ -797,7 +888,7 @@ export function pluginsPage(shell: Chrome): PluginsView {
     close2.type = 'button';
     close2.className = 'btn ghost';
     coreSetUIText(close2, 'textContent', corePhrase("关闭"));
-    close2.addEventListener('click', () => { detail.hidden = true; });
+    close2.addEventListener('click', () => { detail.close(); });
     const last = document.createElement('button');
     last.type = 'button';
     // 同一个位置的那一枚：两个方向**同一个底座**（只有颜色按方向分 ）
@@ -823,11 +914,12 @@ export function pluginsPage(shell: Chrome): PluginsView {
           if (fail.textContent) {
             (from === 'installed' ? note : marketNote).textContent = fail.textContent;
           }
-          detail.hidden = true;
+          detail.close();
         } else { fail.hidden = fail.textContent === ''; }
       }
     };
     // 卸载／安装**两半都两步**（ 它们都动盘上的东西 ）；「关闭」照旧一步 。
+    if(from==='market'&&haveInstalled.has(mid)){last.disabled=true;last.textContent='已安装';}
     if (removing) uninstallButton(last, one as InstalledPlugin, goLast);
     else twoStep(last, action, '确认' + action, 'btn plugins-act put', goLast);
     // **源代码仓库那一枚**（有真链接才画 ）—— 挂在那一行的**左边**
@@ -843,12 +935,12 @@ export function pluginsPage(shell: Chrome): PluginsView {
     }
     const rightP = document.createElement('div');
     rightP.className = 'plugins-acts';
-    rightP.append(close2, last);
+    if(!overview)rightP.append(last);
     acts.append(rightP);
 
     // 纸是那张 `detailCard`（浮窗里那一张 ），而 `detail` 是压暗的底
     detailCard.replaceChildren(bar, say, info, fail, acts);
-    detail.hidden = false;
+    detail.showModal();
     detailCard.scrollTop = 0;
   };
 
@@ -894,9 +986,9 @@ export function pluginsPage(shell: Chrome): PluginsView {
     const mutation = mutationEpoch;
     const ask = ++installedRead;
     let installed = false;
-    const marketResponse = fetch('/market', { cache: 'no-store' });
+    const marketResponse = overview ? undefined : fetch('/market', { cache: 'no-store' });
     // Attach a handler immediately; it may fail before /plugins finishes.
-    void marketResponse.catch(() => {});
+    void marketResponse?.catch(() => {});
     // ⚠️ **这一格答 404 ⇒ "还没接上"**（不是"零个插件" —— 页上分得开 ）。
     try {
       const got = await fetch('/plugins', { cache: 'no-store' });
@@ -911,7 +1003,7 @@ export function pluginsPage(shell: Chrome): PluginsView {
       if (stillCurrent(view, mutation) && ask === installedRead) { installedReadFailed(); }
     }
     // **市场那一段**（走上面那一个 —— 同一个落点，不写第二遍 ）
-    const market = await refreshMarket(view, mutation, marketResponse);
+    const market = overview ? true : await refreshMarket(view, mutation, marketResponse);
     return { installed, market };
   };
 
@@ -926,6 +1018,8 @@ export function pluginsPage(shell: Chrome): PluginsView {
     // ⚠️ 而"没答上来"／"还没接上"那两种**照旧要说**（那是**说清**，不是那句计数 ）。
     coreSetUIText(marketNote, 'textContent', (answer.stale ? [corePhrase("当前显示上次缓存的插件列表。"), answer.error || '正在后台刷新，请稍后点击刷新查看结果。', corePhrase("")] : corePhrase("")));
     lastMarket = answer;
+    const community=answer.found.filter(one=>!lastInstalled?.plugins.some(local=>local.builtin&&local.name===one.name));
+    categoryCounts(community);
     // **「隐藏已安装」那一半**（2026-10-05 作者："做"）——
     // ⚠️ **比的是"已安装那一段现在有的名字"**（由 `draw()` 那一趟记下来 ）；
     // 而**藏起来的是"市场里那一条"**（不是"已安装那一条" —— 那一段照旧要显示 ）。
@@ -933,17 +1027,17 @@ export function pluginsPage(shell: Chrome): PluginsView {
     // · 「隐藏已安装」那一个（勾着才有 ）；· 搜索框那一个（后来才有的 ）。
     // "一个不剩"的**理由**必须分开说 —— 我第一版把两者混在一起，
     // 于是在搜索框里打一个词筛空时，它说「 都装过了」 —— **那是一句谎** 。
-    const afterHide = answer.found.filter(
+    const afterHide = community.filter(
       (one) => !(hideTick.checked && haveInstalled.has(one.name)));
     const rows = afterHide.filter((one) => hits(
-      [one.name, one.description, one.author, one.full, one.source], marketFind.value));
+      [one.name, one.description, one.author, one.full, one.source], marketFind.value)).filter(one=>category==='all'||pluginCategory(one)===category);
     // 藏完一个不剩 ⇒ **说一句**（ 而不是画一个空列表 —— "空"与"藏起来了"是两件事 ）
     if (rows.length === 0) {
       // 一个不剩 ⇒ **底下那一行数**说清为什么（ 而不是在提示那一行再写一句 ）
-      // ⚠️ **那一句删了**（2026-10-05 作者："共0个可装（ 都装过了 —— 上面那个开关可以放开）。
+      // ⚠️ **那一句删了**（2026-10-05 作者："共0个插件（ 都装过了 —— 上面那个开关可以放开）。
       // 这句话删了。"）—— 而**那一行数照旧在**（"一个不剩"与"本来就空"是两件事，
       // 而"藏起来了"这件事页上**本来就看得出**：上面那个开关正勾着 ）。
-      coreSetUIText(marketCount, 'textContent', (marketFind.value.trim() ? corePhrase("共0个可装（ 筛过之后一个都没有）。") : ((answer.stale ? corePhrase("共0个可装（ 这是上次问到的，正在重问）。") : corePhrase("共0个可装。")))));
+      coreSetUIText(marketCount, 'textContent', (marketFind.value.trim() || category!=='all' ? corePhrase("共0个插件（ 筛过之后一个都没有）。") : ((answer.stale ? corePhrase("共0个插件（ 这是上次问到的，正在重问）。") : corePhrase("共0个插件。")))));
       marketBox.append(marketCount);
       return;
     }
@@ -966,7 +1060,10 @@ export function pluginsPage(shell: Chrome): PluginsView {
       names.className = 'plugins-names';
       const who = document.createElement('strong');
       who.className = 'plugins-name';
-      who.textContent = one.name;
+      who.tabIndex=0;who.setAttribute('role','button');
+      who.onclick=()=>openDetail(one,'displayName' in one?'installed':'market');
+      who.onkeydown=event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();who.click();}};
+      who.textContent = 'displayName' in one && one.displayName ? String(one.displayName) : one.name;
       const meta = document.createElement('span');
       meta.className = 'plugins-meta';
       // 元信息那一行 —— 而**来源要说出来**（"从哪儿来的"是本仓那条口径 ）
@@ -976,12 +1073,13 @@ export function pluginsPage(shell: Chrome): PluginsView {
       // 那枚标签（照它卡上那枚"已加载"）—— 写**来源**： 那就是"它从哪儿来"
       const tag = document.createElement('span');
       tag.className = 'plugins-tag';
-      tag.textContent = one.source === 'github' ? 'GitHub' : (one.source || '来源不明');
+      tag.textContent = pluginCategoryLabel(one);
       // ⚠️⚠️ **这里是那条真凶**（2026-10-05 真驱动浏览器查出来的）：头像删掉之后，
       // 这一句**还在拿 `face`** ⇒ `ReferenceError` ⇒ 而它被 `refreshMarket` 那个
       // `catch` **吞掉**、画成"市场那一格没答上来" —— **看着像网络问题，其实是代码** 。
       // 教训：那一格 `catch` 是"拉不到就说拉不到"，而它会**连自己的 bug 一起收进来** 。
-      head.append(names, tag);
+      const mark=document.createElement('span');mark.className='plugin-package-mark';mark.append(icon('puzzle'));mark.setAttribute('aria-hidden','true');
+      head.append(mark,names, tag);
       item.append(head);
       if (one.description) {
         const line = document.createElement('p');
@@ -1017,6 +1115,7 @@ export function pluginsPage(shell: Chrome): PluginsView {
       put.type = 'button';
       put.className = 'btn plugins-act put';
       coreSetUIText(put, 'textContent', corePhrase("安装"));
+      if (haveInstalled.has(one.name)) {put.disabled = true; put.textContent = '已安装';}
       let putBusy = false;
       put.addEventListener('click', async () => {
         if (putBusy) { return; }
@@ -1041,16 +1140,21 @@ export function pluginsPage(shell: Chrome): PluginsView {
       right2.append(put);
       const actions2 = document.createElement('div');
       actions2.className = 'plugins-actions';
-      actions2.append(look2, right2);
+      const date=item.querySelector('.plugins-chips');
+      if(date)actions2.append(date);
+      const requirement=pluginRequirement(one);
+      if(requirement){const label=document.createElement('span');label.className='plugin-requirement';label.textContent=requirement;actions2.append(label);}
+      actions2.append(look2,right2);
       item.append(actions2);
       list.append(item);
     }
     marketBox.replaceChildren(list);
-    coreSetUIText(marketCount, 'textContent', [[[corePhrase("共"), rows.length, corePhrase("个可装")], [corePhrase("（本页显示 "), sliceOut.length ? fromOut + 1 : 0, corePhrase("-"), fromOut + sliceOut.length, corePhrase("）")]], ((answer.stale ? corePhrase("（ 这是上次问到的，正在重问）。") : corePhrase("。")))]);
+    coreSetUIText(marketCount, 'textContent', [[[corePhrase("共"), rows.length, corePhrase("个插件")], [corePhrase("（本页显示 "), sliceOut.length ? fromOut + 1 : 0, corePhrase("-"), fromOut + sliceOut.length, corePhrase("）")]], ((answer.stale ? corePhrase("（ 这是上次问到的，正在重问）。") : corePhrase("。")))]);
     marketBox.append(marketCount);
     marketBox.append(pager(pagesOut, pageOut, (n) => { pageOut = n; drawMarket(answer); }));
   };
 
+  const updatesChanged = () => { if(root.hidden)return;updatePanel.render();updateTabLabel();if(lastInstalled)draw(lastInstalled); };
   return {
     root,
     draw,
@@ -1058,6 +1162,8 @@ export function pluginsPage(shell: Chrome): PluginsView {
     show(): void {
       // ⚠️ **取消刚藏**（上一页走的时候把它的那一块 `hidden` 了 ；照 `persona-page.ts` 那条）。
       root.hidden = false;
+      window.addEventListener('plugin-updates-changed', updatesChanged);
+      window.addEventListener('plugin-updates-open',openRequestedUpdates);openRequestedUpdates();
       // 回来之后重新开一轮 —— 走之前发出去的回调不许写这一轮。
       viewEpoch += 1;
       void refresh();
@@ -1065,6 +1171,8 @@ export function pluginsPage(shell: Chrome): PluginsView {
     stop(): void {
       // **走的时候把它藏起来**（照那两页；不藏的话换页之后两页的正文会**叠在一起** ）。
       root.hidden = true;
+      window.removeEventListener('plugin-updates-changed', updatesChanged);
+      window.removeEventListener('plugin-updates-open',openRequestedUpdates);detail.close();
       // 导航离开：旧 GET ／ 旧 POST 回来得再晚，也不许落到已经藏起来的面板上。
       viewEpoch += 1;
       installedRead += 1;

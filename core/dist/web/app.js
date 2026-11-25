@@ -1,15 +1,318 @@
-// src/web/client/package-updates.ts
+// maintenance/plugin-release-0547-20261125/source/core/src/web/client/status-json.ts
+var StatusHttpError = class extends Error {
+  constructor(url, status) {
+    super(`${url} returned ${status}`);
+    this.url = url;
+    this.status = status;
+    this.name = "StatusHttpError";
+  }
+  url;
+  status;
+};
+var StatusTimeoutError = class extends Error {
+  constructor(url, timeoutMs) {
+    super(`${url} timed out after ${timeoutMs}ms`);
+    this.url = url;
+    this.timeoutMs = timeoutMs;
+    this.name = "StatusTimeoutError";
+  }
+  url;
+  timeoutMs;
+};
+var StaleStatusError = class extends Error {
+  constructor(url) {
+    super(`${url} response was invalidated`);
+    this.url = url;
+    this.name = "StaleStatusError";
+  }
+  url;
+};
+var inFlight = /* @__PURE__ */ new Map();
+function invalidateStatus(url) {
+  for (const [key2, entry] of inFlight) if (entry.url === url) inFlight.delete(key2);
+}
+function invalidateStatuses(urls) {
+  for (const url of urls) invalidateStatus(url);
+}
+function snapshot(url, init, timeoutMs) {
+  const headers = typeof Headers === "function" ? Array.from(new Headers(init.headers).entries()).sort() : init.headers ?? {};
+  const key2 = JSON.stringify([url, headers, init.credentials ?? "same-origin"]);
+  const shared = inFlight.get(key2);
+  if (shared) return shared.promise;
+  let promise;
+  promise = (async () => {
+    const controller = typeof AbortController === "function" ? new AbortController() : null;
+    let timer;
+    try {
+      return await Promise.race([
+        (async () => {
+          const response = await fetch(url, {
+            ...init,
+            cache: "no-store",
+            signal: controller?.signal
+          });
+          const body = typeof response.text === "function" ? await response.text() : JSON.stringify(await response.json());
+          if (inFlight.get(key2)?.promise !== promise) throw new StaleStatusError(url);
+          return { status: response.status ?? (response.ok ? 200 : 500), ok: response.ok, body };
+        })(),
+        new Promise((_, reject) => {
+          timer = setTimeout(() => {
+            controller?.abort();
+            reject(new StatusTimeoutError(url, timeoutMs));
+          }, timeoutMs);
+        })
+      ]);
+    } finally {
+      if (timer !== void 0) clearTimeout(timer);
+      if (inFlight.get(key2)?.promise === promise) inFlight.delete(key2);
+    }
+  })();
+  inFlight.set(key2, { url, promise });
+  return promise;
+}
+async function pageFetch(url, init = {}, timeoutMs = 8e3) {
+  if ((init.method ?? "GET").toUpperCase() !== "GET") {
+    inFlight.clear();
+    try {
+      return await fetch(url, init);
+    } finally {
+      inFlight.clear();
+    }
+  }
+  const result = await snapshot(url, init, timeoutMs);
+  return {
+    ok: result.ok,
+    status: result.status,
+    text: async () => result.body,
+    json: async () => JSON.parse(result.body)
+  };
+}
+async function getStatusJson(url, timeoutMs = 8e3) {
+  const response = await pageFetch(url, {}, timeoutMs);
+  if (!response.ok) throw new StatusHttpError(url, response.status);
+  return await response.json();
+}
+
+// maintenance/plugin-release-0547-20261125/source/core/src/web/client/plugin-restart.ts
+var pending = [];
+var request;
+var requested;
+var stale = false;
+function acceptPluginRuntime(rows) {
+  pending = rows.filter((row2) => row2.installed !== false && row2.restart_required === true);
+  stale = false;
+  paint();
+}
+function takePluginRestartRequest() {
+  const value = requested;
+  requested = void 0;
+  return value;
+}
+function openPluginRestart(name) {
+  requested = name || pending[0]?.name;
+  if (location.hash !== "#/infinity") location.hash = "#/infinity";
+  else window.dispatchEvent(new Event("plugin-restart-open"));
+}
+function paint() {
+  const button3 = document.querySelector(".topbar-plugin-restart");
+  if (!button3) return;
+  button3.hidden = !pending.length;
+  button3.textContent = `插件待重启 ${pending.length}${stale ? " · 待确认" : ""}`;
+  button3.title = stale ? "状态刷新失败，显示上次确认的待生效插件" : pending.map((p) => p.displayName || p.name).join("、") + "：重启当前 Bot 的 Core 服务后生效";
+}
+async function read() {
+  if (request) return request;
+  request = (async () => {
+    try {
+      const response = await pageFetch("/plugins", { cache: "no-store" });
+      if (!response.ok) throw Error();
+      const data = await response.json();
+      if (!data.wired || !Array.isArray(data.plugins)) throw Error();
+      acceptPluginRuntime(data.plugins);
+    } catch {
+      stale = true;
+      paint();
+    }
+  })().finally(() => {
+    request = void 0;
+  });
+  return request;
+}
+function startPluginRestart() {
+  const row2 = document.querySelector(".topbar-status");
+  if (!row2 || row2.querySelector(".topbar-plugin-restart")) return;
+  const button3 = document.createElement("button");
+  button3.type = "button";
+  button3.className = "topbar-update topbar-plugin-restart";
+  button3.hidden = true;
+  button3.onclick = () => openPluginRestart();
+  row2.append(button3);
+  void read();
+  window.setInterval(() => {
+    if (!document.hidden) void read();
+  }, 6e4);
+  window.addEventListener("plugins-changed", () => {
+    void read();
+  });
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) void read();
+  });
+}
+
+// maintenance/plugin-release-0547-20261125/source/core/src/web/client/plugin-updates.ts
+var state = { rows: [], checking: false };
+var pending2;
+var failure = "";
+var started = false;
+var loaded = false;
+var updateFor = (name) => state.rows.find((row2) => row2.name === name);
+var pluginUpdateSnapshot = () => ({ ...state, error: failure });
+var available = () => state.rows.filter((row2) => row2.status === "available");
+var el = (tag, text2 = "", cls = "") => {
+  const node6 = document.createElement(tag);
+  node6.textContent = text2;
+  node6.className = cls;
+  return node6;
+};
+function updateText(row2) {
+  if (row2.status === "available") return `${row2.current} → ${row2.latest}${row2.stale ? " · 上次发现，待复查" : " · 可更新"}`;
+  if (row2.stale && row2.status !== "pending") return row2.error || "检查已过期，等待复查";
+  if (row2.status === "current") return `${row2.current} · 已是最新`;
+  if (row2.status === "ahead") return `${row2.current} · 高于公开版本 ${row2.latest}`;
+  if (row2.status === "prerelease") return `${row2.latest} 为预发布版本`;
+  if (row2.status === "pending") return "等待检查";
+  return row2.message || row2.error || "暂时无法确认";
+}
+function summary() {
+  if (failure) return failure;
+  if (state.checking) return "正在后台检查插件更新…";
+  const count4 = available().length;
+  const unknown = state.rows.filter((row2) => row2.status === "pending" || row2.status === "unavailable" || row2.stale).length;
+  const unsupported = state.rows.filter((row2) => row2.status === "unsupported").length;
+  const checked = state.rows.filter((row2) => ["current", "ahead", "prerelease"].includes(row2.status) && !row2.stale).length;
+  return count4 ? `${count4} 个插件发现新版本${unknown ? `，${unknown} 项待复查` : ""}` : unknown ? `${unknown} 个插件尚未确认版本` : checked ? `已检查 ${checked} 个插件，暂无更新` : unsupported ? `${unsupported} 个插件无法自动检查，请查看来源` : state.rows.length ? "内置插件随 Core 更新" : loaded ? "暂无已安装插件" : "等待读取插件更新状态";
+}
+function paint2() {
+  document.querySelectorAll("[data-plugin-update-summary]").forEach((node6) => node6.textContent = summary());
+  document.querySelectorAll("[data-plugin-update-name]").forEach((node6) => {
+    const row2 = updateFor(node6.dataset.pluginUpdateName);
+    node6.hidden = !row2 || row2.status !== "available";
+    const text2 = node6.querySelector("[data-plugin-update-text]");
+    if (text2 && row2) text2.textContent = updateText(row2);
+    node6.classList.toggle("has-update", row2?.status === "available");
+  });
+  const top = document.querySelector(".topbar-plugin-updates");
+  if (top) {
+    top.textContent = available().length ? `插件更新 ${available().length}` : "插件更新";
+    top.hidden = available().length === 0;
+    top.title = summary();
+    top.classList.toggle("has-update", available().length > 0);
+  }
+  window.dispatchEvent(new Event("plugin-updates-changed"));
+}
+async function checkPluginUpdates(refresh2 = false) {
+  if (pending2) {
+    await pending2;
+    if (refresh2) return checkPluginUpdates(true);
+    return;
+  }
+  pending2 = (async () => {
+    try {
+      const response = await pageFetch("/plugin-updates" + (refresh2 ? "?refresh=1" : ""), { cache: "no-store" });
+      if (!response.ok) throw new Error(response.status === 503 || response.status === 404 ? "此 Core 尚未启用插件更新检查" : "暂时无法读取插件更新");
+      const next = await response.json();
+      if (!Array.isArray(next.rows)) throw new Error("更新状态格式异常");
+      state = next;
+      loaded = true;
+      failure = "";
+    } catch (error) {
+      state.rows = state.rows.map((row2) => ({ ...row2, stale: true }));
+      failure = error instanceof Error ? error.message : "暂时无法读取插件更新";
+    }
+    paint2();
+  })().finally(() => {
+    pending2 = void 0;
+  });
+  return pending2;
+}
+function pluginUpdateNotice(name) {
+  const box = el("section", "", "plugin-update-strip");
+  const text2 = el("span");
+  if (name) {
+    box.dataset.pluginUpdateName = name;
+    text2.dataset.pluginUpdateText = "";
+    box.hidden = true;
+  } else {
+    text2.dataset.pluginUpdateSummary = "";
+    text2.textContent = summary();
+  }
+  const button3 = el("button", name ? "查看更新 →" : "查看更新 →", "infinity-action");
+  button3.type = "button";
+  button3.addEventListener("click", () => openPluginUpdates(name, button3));
+  box.append(text2, button3);
+  if (name) {
+    const row2 = updateFor(name);
+    if (row2 && row2.status === "available") {
+      box.hidden = false;
+      text2.textContent = updateText(row2);
+    }
+  }
+  return box;
+}
+var requested2 = null;
+function takePluginUpdateRequest() {
+  const value = requested2;
+  requested2 = null;
+  return value;
+}
+function openPluginUpdates(name, _opener) {
+  const updates = available();
+  requested2 = { name: name || (updates.length === 1 ? updates[0].name : void 0) };
+  if (location.hash !== "#/infinity") location.hash = "#/infinity";
+  else window.dispatchEvent(new Event("plugin-updates-open"));
+}
+function startPluginUpdates() {
+  if (started) return;
+  started = true;
+  const row2 = document.querySelector(".topbar-status");
+  if (row2) {
+    const button3 = el("button", "插件更新", "topbar-update topbar-plugin-updates");
+    button3.type = "button";
+    button3.hidden = true;
+    button3.onclick = () => openPluginUpdates(void 0, button3);
+    row2.append(button3);
+  }
+  void checkPluginUpdates();
+  window.setInterval(() => {
+    if (!document.hidden) void checkPluginUpdates();
+  }, 6e4);
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) void checkPluginUpdates();
+  });
+  window.addEventListener("plugins-changed", () => {
+    void checkPluginUpdates();
+  });
+}
+
+// maintenance/plugin-release-0547-20261125/source/core/src/web/client/package-updates.ts
 var last;
-var pending;
+var pending3;
 var installing = false;
-function paint(card, state) {
+function paint3(card, state3) {
   if (installing) return;
   const current2 = card.querySelector("[data-version]");
   const notice = card.querySelector("[data-update-message]");
-  const platform = { win: "Windows", linux: "Linux" }[state.platform] ?? "";
-  current2.textContent = [platform, state.localPreview ? "本机验收源" : state.channel === "acceptance" ? "验收更新" : "", state.current ? "已安装 " + state.current : "未识别安装版本"].filter(Boolean).join(" · ");
+  card.dataset.updateState = state3.status;
+  const platform = { win: "Windows", linux: "Linux" }[state3.platform] ?? "";
+  const version = (value) => value.replace(/^beta\./, "");
+  const target = state3.pendingVersion || (state3.status === "available" ? state3.latest : void 0);
+  card.querySelector("h3").textContent = state3.pendingVersion ? "更新已就绪" : state3.status === "available" ? "发现新版本" : state3.status === "current" ? "已是最新版本" : state3.status === "unavailable" ? "检查更新失败" : "版本更新";
+  current2.textContent = target && state3.current ? version(state3.current) + " → " + version(target) : state3.current ? "v" + version(state3.current) : "版本未识别";
+  card.querySelector("[data-update-platform]").textContent = [platform, state3.current, state3.localPreview ? "本机验收源" : state3.channel === "acceptance" ? "验收更新" : ""].filter(Boolean).join(" · ");
+  const links = card.querySelector("[data-update-links]");
+  links.replaceChildren();
   const history = card.querySelector("[data-update-history]");
-  const receipt = state.lastInstall;
+  const receipt = state3.lastInstall;
   history.hidden = !receipt;
   if (receipt) {
     const source = { mirror: "GitHub 镜像", official: "GitHub 官方源", cache: "本地缓存", offline: "离线更新包", preview: "本机验收源" }[receipt.source];
@@ -18,78 +321,98 @@ function paint(card, state) {
     history.textContent = previous + "上次安装来源　" + source + route2;
   }
   const install = card.querySelector("[data-install]");
-  install.hidden = !(state.pendingVersion || state.installable && state.status === "available");
-  install.textContent = state.pendingVersion ? "继续安装并重启" : "立即更新并重启";
-  if (state.pendingVersion) {
-    notice.textContent = state.pendingVersion + " 已下载并校验。重启会短暂中断会话，也可等下次启动时安装。";
-  } else if (state.status === "available") {
-    const tag = state.platform + (state.channel === "acceptance" ? "-acceptance-" : "-") + state.latest;
-    const file = `Telyincore_${state.platform}_${state.current}_to_${state.latest}_update.zip`;
-    const base = state.releaseUrl?.split("/releases/tag/")[0];
-    const direct = base?.startsWith("https://github.com/") && state.releaseUrl === base + "/releases/tag/" + tag && state.downloadUrl === base + "/releases/download/" + tag + "/" + file;
-    notice.textContent = (state.required ? "当前版本已低于最低兼容版本，请先更新再唤醒 Bot。目标版本 " : "发现新版本 ") + state.latest + (state.installable ? "。更新完成后 Core 会自动重启。" : "。");
-    if (direct && state.downloadUrl && !state.installable) {
+  install.hidden = !(state3.pendingVersion || state3.installable && state3.status === "available");
+  install.textContent = state3.pendingVersion ? "安装并重启" : "更新并重启";
+  if (state3.pendingVersion) {
+    notice.textContent = "已下载并校验。安装会重启 Core，短暂中断会话。";
+  } else if (state3.status === "available") {
+    const tag = state3.platform + (state3.channel === "acceptance" ? "-acceptance-" : "-") + state3.latest;
+    const file = `Telyincore_${state3.platform}_${state3.current}_to_${state3.latest}_update.zip`;
+    const base = state3.releaseUrl?.split("/releases/tag/")[0];
+    const direct = base?.startsWith("https://github.com/") && state3.releaseUrl === base + "/releases/tag/" + tag && state3.downloadUrl === base + "/releases/download/" + tag + "/" + file;
+    notice.textContent = state3.required ? "请先更新再唤醒 Bot。安装会重启 Core。" : state3.installable ? "安装会重启 Core，短暂中断会话。" : "此版本需要手动下载安装。";
+    if (direct && state3.downloadUrl && !state3.installable) {
       const download = document.createElement("a");
-      download.href = state.downloadUrl;
+      download.href = state3.downloadUrl;
       download.download = file;
       download.className = "package-download";
       download.textContent = "下载更新包";
-      notice.append(" ", download);
-    } else if (!state.installable) {
-      notice.append("请在发布说明或分发 QQ 群中获取适用的更新包。");
+      links.append(download);
+    } else if (!state3.installable) {
+      notice.textContent = state3.required ? "请先更新再唤醒 Bot。请从发布说明获取更新包。" : "请从发布说明获取适用的更新包。";
     }
-    if (state.releaseUrl?.startsWith("https://github.com/")) {
+    if (state3.releaseUrl?.startsWith("https://github.com/")) {
       const notes = document.createElement("a");
-      notes.href = state.releaseUrl;
+      notes.href = state3.releaseUrl;
       notes.target = "_blank";
       notes.rel = "noopener noreferrer";
       notes.textContent = "查看发布说明";
-      notice.append(" ", notes);
+      links.append(notes);
     }
-  } else if (state.status === "current") {
-    notice.textContent = "当前已是最新发布版本。";
-  } else if (state.status === "ahead") {
-    notice.textContent = "本机版本高于当前公开版本 " + state.latest + "。";
+  } else if (state3.status === "current") {
+    notice.textContent = "当前无需更新。";
+  } else if (state3.status === "ahead") {
+    notice.textContent = "本机版本高于当前公开版本 " + state3.latest + "。";
   } else {
-    notice.textContent = state.message || "暂时无法检查更新。";
+    notice.textContent = state3.status === "unavailable" ? "暂时无法确认新版本，请稍后重试。" : state3.message || "暂时无法检查更新。";
   }
-  if (state.checkRoute) notice.append("　版本检查 · " + state.checkRoute);
+  const details = card.querySelector("[data-update-details]");
+  const detailText = state3.status === "unavailable" ? state3.message : state3.checkRoute;
+  details.querySelector("[data-update-connection]").textContent = detailText || "";
+  links.hidden = !links.childElementCount;
+  const timing = card.querySelector("[data-update-timing]");
+  const time = (stamp) => new Date(stamp * 1e3).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  timing.textContent = [
+    state3.checkedAt ? "最近检查 " + time(state3.checkedAt) : "",
+    state3.status === "unavailable" ? state3.nextCheckAt ? "服务运行期间将于 " + time(state3.nextCheckAt) + " 左右自动重试，也可立即重试。" : "可立即重试；服务运行期间也会自动检查。" : ""
+  ].filter(Boolean).join(" · ");
+  timing.hidden = !timing.textContent;
+  card.querySelector("[data-check-update]").textContent = state3.status === "unavailable" ? "重新检查" : "检查更新";
+}
+function paintTopbar(checking = false) {
+  const button3 = document.querySelector(".topbar-update");
+  if (!button3) return;
+  const available2 = last?.status === "available" && !!last.latest;
+  const failed = last?.status === "unavailable";
+  const version = last?.current ? "v" + last.current.replace(/^beta\./, "") : "版本";
+  button3.classList.toggle("has-update", !checking && available2);
+  button3.classList.toggle("check-failed", !checking && failed);
+  button3.setAttribute("aria-busy", String(checking));
+  button3.querySelector(".topbar-version-label").textContent = checking ? version + " · 检查中" : available2 ? "新版 " + last.latest.replace(/^beta\./, "") : failed ? version + " · 检查失败" : last?.status === "unconfigured" ? version + " · 未配置更新源" : last?.status === "unknown" ? "版本未识别" : version;
+  button3.title = checking ? "正在检查更新" : failed ? "暂时无法确认是否有新版本，点击查看原因并重试" : available2 ? "发现新版本 " + last.latest + "，查看版本更新" : last?.status === "current" ? "已确认是最新发布版本，点击查看详情" : "版本更新 · 查看详情";
+  button3.setAttribute("aria-label", button3.title);
 }
 async function check(force = false) {
-  if (pending) {
-    if (!force) return pending;
-    await pending;
-    if (pending) return pending;
+  if (pending3) {
+    if (!force) return pending3;
+    await pending3;
+    if (pending3) return pending3;
   }
-  pending = (async () => {
-    let state;
+  if (force || !last) paintTopbar(true);
+  pending3 = (async () => {
+    let state3;
     try {
-      const reply = await fetch("/package-update" + (force ? "?refresh=1" : ""), { cache: "no-store" });
+      const reply = await fetch(
+        "/package-update" + (force ? "?refresh=1" : ""),
+        { cache: "no-store", signal: AbortSignal.timeout(2e4) }
+      );
       if (!reply.ok) throw new Error();
-      state = await reply.json();
+      state3 = await reply.json();
     } catch {
-      state = {
+      state3 = {
         platform: last?.platform ?? "",
         current: last?.current ?? null,
         status: "unavailable",
         message: "暂时无法连接 Core 检查更新。"
       };
     }
-    last = state;
-    document.querySelectorAll(".package-update-card").forEach((card) => paint(card, state));
-    const button2 = document.querySelector(".topbar-update");
-    if (button2) {
-      const available = state.status === "available" && !!state.latest;
-      button2.classList.toggle("has-update", available);
-      const label = button2.querySelector(".topbar-version-label");
-      label.textContent = available ? "新版 " + state.latest.replace(/^beta\./, "") : state.current ? "v" + state.current.replace(/^beta\./, "") : "版本";
-      button2.title = available ? "发现新版本 " + state.latest + "，查看版本更新" : "版本更新 · 检查更新";
-      button2.setAttribute("aria-label", button2.title);
-    }
+    last = state3;
+    document.querySelectorAll(".package-update-card").forEach((card) => paint3(card, state3));
+    paintTopbar();
   })().finally(() => {
-    pending = void 0;
+    pending3 = void 0;
   });
-  return pending;
+  return pending3;
 }
 function openUpdateDialog(opener) {
   const dialog = document.createElement("dialog");
@@ -99,10 +422,11 @@ function openUpdateDialog(opener) {
   close2.type = "button";
   close2.textContent = "关闭";
   close2.addEventListener("click", () => dialog.close());
-  const actions = document.createElement("div");
-  actions.className = "avatar-crop-actions";
-  actions.append(close2);
-  dialog.append(packageUpdateCard(), actions);
+  close2.className = "package-update-close";
+  close2.textContent = "×";
+  close2.setAttribute("aria-label", "关闭");
+  close2.title = "关闭";
+  dialog.append(close2, packageUpdateCard());
   dialog.addEventListener("close", () => {
     dialog.remove();
     opener.focus();
@@ -113,21 +437,21 @@ function openUpdateDialog(opener) {
 function startPackageUpdates() {
   const row2 = document.querySelector(".topbar-status");
   if (row2 && !row2.querySelector(".topbar-update")) {
-    const button2 = document.createElement("button");
-    button2.type = "button";
-    button2.className = "topbar-update";
+    const button3 = document.createElement("button");
+    button3.type = "button";
+    button3.className = "topbar-update";
     const mark = document.createElement("span");
     mark.className = "topbar-version-mark";
     mark.setAttribute("aria-hidden", "true");
     const label = document.createElement("span");
     label.className = "topbar-version-label";
     label.textContent = "版本";
-    button2.append(mark, label);
-    button2.title = "版本更新 · 检查更新";
-    button2.setAttribute("aria-haspopup", "dialog");
-    button2.setAttribute("aria-label", button2.title);
-    button2.addEventListener("click", () => openUpdateDialog(button2));
-    row2.append(button2);
+    button3.append(mark, label);
+    button3.title = "版本更新 · 检查更新";
+    button3.setAttribute("aria-haspopup", "dialog");
+    button3.setAttribute("aria-label", button3.title);
+    button3.addEventListener("click", () => openUpdateDialog(button3));
+    row2.append(button3);
   }
   void check();
   window.setInterval(() => {
@@ -150,17 +474,18 @@ function packageUpdateCard() {
   const notice = document.createElement("p");
   notice.dataset.updateMessage = "";
   notice.setAttribute("role", "status");
-  const button2 = document.createElement("button");
-  button2.type = "button";
-  button2.className = "settings-language-button";
-  button2.textContent = "检查更新";
-  button2.addEventListener("click", async () => {
-    button2.disabled = true;
+  const button3 = document.createElement("button");
+  button3.type = "button";
+  button3.dataset.checkUpdate = "";
+  button3.className = "settings-language-button";
+  button3.textContent = "检查更新";
+  button3.addEventListener("click", async () => {
+    button3.disabled = true;
     notice.textContent = "正在检查…";
     try {
       await check(true);
     } finally {
-      button2.disabled = false;
+      button3.disabled = false;
     }
   });
   const install = document.createElement("button");
@@ -180,8 +505,8 @@ function packageUpdateCard() {
       try {
         const response = await fetch("/package-update", { cache: "no-store", signal: AbortSignal.timeout(2e3) });
         if (!response.ok) return;
-        const state = await response.json();
-        if (waitingForTransfer && state.installProgress) notice.textContent = state.installProgress;
+        const state3 = await response.json();
+        if (waitingForTransfer && state3.installProgress) notice.textContent = state3.installProgress;
       } catch {
       }
     }, 2e3);
@@ -202,8 +527,8 @@ function packageUpdateCard() {
       while (Date.now() < deadline) {
         await new Promise((resolve) => setTimeout(resolve, 1500));
         try {
-          const state = await fetch("/package-update", { cache: "no-store", signal: AbortSignal.timeout(4e3) });
-          if (state.ok && (await state.json()).current === targetVersion) {
+          const state3 = await fetch("/package-update", { cache: "no-store", signal: AbortSignal.timeout(4e3) });
+          if (state3.ok && (await state3.json()).current === targetVersion) {
             window.location.reload();
             return;
           }
@@ -223,14 +548,33 @@ function packageUpdateCard() {
   const history = document.createElement("p");
   history.dataset.updateHistory = "";
   history.hidden = true;
-  card.append(title, current2, notice, history, install, button2);
-  if (last) paint(card, last);
+  const timing = document.createElement("p");
+  timing.dataset.updateTiming = "";
+  timing.hidden = true;
+  const details = document.createElement("details");
+  details.dataset.updateDetails = "";
+  details.hidden = true;
+  const summary2 = document.createElement("summary");
+  summary2.textContent = "更新详情";
+  const platform = document.createElement("p");
+  platform.dataset.updatePlatform = "";
+  const connection = document.createElement("p");
+  connection.dataset.updateConnection = "";
+  details.append(summary2, platform, connection, timing, history);
+  details.hidden = false;
+  const links = document.createElement("div");
+  links.dataset.updateLinks = "";
+  const actions = document.createElement("div");
+  actions.className = "package-update-actions";
+  actions.append(button3, install);
+  card.append(title, current2, notice, links, details, actions);
+  if (last) paint3(card, last);
   else notice.textContent = "正在读取版本信息…";
   void check();
   return card;
 }
 
-// src/web/client/ui-phrases.ts
+// maintenance/plugin-release-0547-20261125/source/core/src/web/client/ui-phrases.ts
 var traditional = {
   "国内镜像始终直连。切换到官方源时，按下方用途使用代理。": "國內鏡像一律直連。切換到官方來源時，依下方用途使用代理。",
   "模型 API": "模型 API",
@@ -1449,102 +1793,7 @@ var traditional = {
   "🗑 确认删除": "🗑 確認刪除"
 };
 
-// src/web/client/status-json.ts
-var StatusHttpError = class extends Error {
-  constructor(url, status) {
-    super(`${url} returned ${status}`);
-    this.url = url;
-    this.status = status;
-    this.name = "StatusHttpError";
-  }
-  url;
-  status;
-};
-var StatusTimeoutError = class extends Error {
-  constructor(url, timeoutMs) {
-    super(`${url} timed out after ${timeoutMs}ms`);
-    this.url = url;
-    this.timeoutMs = timeoutMs;
-    this.name = "StatusTimeoutError";
-  }
-  url;
-  timeoutMs;
-};
-var StaleStatusError = class extends Error {
-  constructor(url) {
-    super(`${url} response was invalidated`);
-    this.url = url;
-    this.name = "StaleStatusError";
-  }
-  url;
-};
-var inFlight = /* @__PURE__ */ new Map();
-function invalidateStatus(url) {
-  for (const [key2, entry] of inFlight) if (entry.url === url) inFlight.delete(key2);
-}
-function invalidateStatuses(urls) {
-  for (const url of urls) invalidateStatus(url);
-}
-function snapshot(url, init, timeoutMs) {
-  const headers = typeof Headers === "function" ? Array.from(new Headers(init.headers).entries()).sort() : init.headers ?? {};
-  const key2 = JSON.stringify([url, headers, init.credentials ?? "same-origin"]);
-  const shared = inFlight.get(key2);
-  if (shared) return shared.promise;
-  let promise;
-  promise = (async () => {
-    const controller = typeof AbortController === "function" ? new AbortController() : null;
-    let timer;
-    try {
-      return await Promise.race([
-        (async () => {
-          const response = await fetch(url, {
-            ...init,
-            cache: "no-store",
-            signal: controller?.signal
-          });
-          const body = typeof response.text === "function" ? await response.text() : JSON.stringify(await response.json());
-          if (inFlight.get(key2)?.promise !== promise) throw new StaleStatusError(url);
-          return { status: response.status ?? (response.ok ? 200 : 500), ok: response.ok, body };
-        })(),
-        new Promise((_, reject) => {
-          timer = setTimeout(() => {
-            controller?.abort();
-            reject(new StatusTimeoutError(url, timeoutMs));
-          }, timeoutMs);
-        })
-      ]);
-    } finally {
-      if (timer !== void 0) clearTimeout(timer);
-      if (inFlight.get(key2)?.promise === promise) inFlight.delete(key2);
-    }
-  })();
-  inFlight.set(key2, { url, promise });
-  return promise;
-}
-async function pageFetch(url, init = {}, timeoutMs = 8e3) {
-  if ((init.method ?? "GET").toUpperCase() !== "GET") {
-    inFlight.clear();
-    try {
-      return await fetch(url, init);
-    } finally {
-      inFlight.clear();
-    }
-  }
-  const result = await snapshot(url, init, timeoutMs);
-  return {
-    ok: result.ok,
-    status: result.status,
-    text: async () => result.body,
-    json: async () => JSON.parse(result.body)
-  };
-}
-async function getStatusJson(url, timeoutMs = 8e3) {
-  const response = await pageFetch(url, {}, timeoutMs);
-  if (!response.ok) throw new StatusHttpError(url, response.status);
-  return await response.json();
-}
-
-// src/web/client/display-storage.ts
+// maintenance/plugin-release-0547-20261125/source/core/src/web/client/display-storage.ts
 var localKeys = /* @__PURE__ */ new Set([
   "ui-language",
   "telyincore-look-mode",
@@ -1623,7 +1872,7 @@ function initializeDisplayScope() {
   return loading;
 }
 
-// src/web/client/ui-language.ts
+// maintenance/plugin-release-0547-20261125/source/core/src/web/client/ui-language.ts
 var bindings = /* @__PURE__ */ new Set();
 var owned = /* @__PURE__ */ new WeakMap();
 var listeners2 = /* @__PURE__ */ new Set();
@@ -1638,56 +1887,56 @@ function render(part, locale = language) {
   }
   return String(part ?? "");
 }
-function read(node5, key2, attribute) {
-  return String(attribute ? node5.getAttribute(key2) ?? "" : node5[key2] ?? "");
+function read2(node6, key2, attribute) {
+  return String(attribute ? node6.getAttribute(key2) ?? "" : node6[key2] ?? "");
 }
-function write(node5, key2, value, attribute) {
-  if (attribute) node5.setAttribute(key2, value);
-  else node5[key2] = value;
+function write(node6, key2, value, attribute) {
+  if (attribute) node6.setAttribute(key2, value);
+  else node6[key2] = value;
 }
-function bind(node5, key2, parts, attribute) {
-  let map = owned.get(node5);
+function bind(node6, key2, parts, attribute) {
+  let map = owned.get(node6);
   if (!map) {
     map = /* @__PURE__ */ new Map();
-    owned.set(node5, map);
+    owned.set(node6, map);
   }
   const id = (attribute ? "@" : "") + key2;
   const old = map.get(id);
   if (old) bindings.delete(old);
   const last2 = render(parts);
-  const binding = { node: new WeakRef(node5), key: key2, attribute, parts, last: last2 };
+  const binding = { node: new WeakRef(node6), key: key2, attribute, parts, last: last2 };
   map.set(id, binding);
   bindings.add(binding);
-  write(node5, key2, last2, attribute);
+  write(node6, key2, last2, attribute);
   if (bindings.size % 256 === 0) {
     for (const item of bindings) if (!item.node.deref()) bindings.delete(item);
   }
   return last2;
 }
-var coreSetUIText = (node5, key2, parts) => bind(node5, key2, parts, false);
-var coreSetUIAttribute = (node5, key2, parts) => bind(node5, key2, parts, true);
+var coreSetUIText = (node6, key2, parts) => bind(node6, key2, parts, false);
+var coreSetUIAttribute = (node6, key2, parts) => bind(node6, key2, parts, true);
 function coreUITextNode(parts) {
-  const node5 = document.createTextNode("");
-  bind(node5, "textContent", parts, false);
-  return node5;
+  const node6 = document.createTextNode("");
+  bind(node6, "textContent", parts, false);
+  return node6;
 }
-var uiLabel = (node5, text2, key2 = "textContent") => bind(node5, key2, corePhrase(text2), false);
-function uiSource(node5, key2 = "textContent") {
-  const binding = owned.get(node5)?.get(key2);
-  return binding && read(node5, key2, false) === binding.last ? render(binding.parts, "zh-Hans") : read(node5, key2, false);
+var uiLabel = (node6, text2, key2 = "textContent") => bind(node6, key2, corePhrase(text2), false);
+function uiSource(node6, key2 = "textContent") {
+  const binding = owned.get(node6)?.get(key2);
+  return binding && read2(node6, key2, false) === binding.last ? render(binding.parts, "zh-Hans") : read2(node6, key2, false);
 }
 function setUILanguage(value, persist = true) {
   language = value === "zh-Hant" ? "zh-Hant" : "zh-Hans";
   if (persist) writeDisplayLocal("ui-language", language);
   if (typeof document !== "undefined") document.documentElement.lang = language;
   for (const item of bindings) {
-    const node5 = item.node.deref();
-    if (!node5 || item.key === "textContent" && node5.nodeType === 1 && Array.from(node5.childNodes).some((child) => child.nodeType !== 3) || read(node5, item.key, item.attribute) !== item.last) {
+    const node6 = item.node.deref();
+    if (!node6 || item.key === "textContent" && node6.nodeType === 1 && Array.from(node6.childNodes).some((child) => child.nodeType !== 3) || read2(node6, item.key, item.attribute) !== item.last) {
       bindings.delete(item);
       continue;
     }
     item.last = render(item.parts);
-    write(node5, item.key, item.last, item.attribute);
+    write(node6, item.key, item.last, item.attribute);
   }
   for (const listener of listeners2) listener(language);
 }
@@ -1697,7 +1946,7 @@ function onUILanguage(listener) {
 }
 onDisplayScopeReady(() => setUILanguage(readDisplayLocal("ui-language") === "zh-Hant" ? "zh-Hant" : "zh-Hans", false));
 
-// src/web/client/rail-resize.ts
+// maintenance/plugin-release-0547-20261125/source/core/src/web/client/rail-resize.ts
 var WIDTH_KEY = "telyincore.rail-width";
 var DEFAULT_WIDTH = 280;
 function railWidthBounds(viewport) {
@@ -1821,7 +2070,7 @@ function installRailResize(root, rail) {
     }
   };
   let drag = null;
-  const finish = (cancel = false) => {
+  const finish2 = (cancel = false) => {
     if (drag === null) return;
     const id = drag.id;
     if (cancel) preferred = drag.previous;
@@ -1845,13 +2094,13 @@ function installRailResize(root, rail) {
     apply(true);
   });
   handle.addEventListener("pointerup", (event) => {
-    if (event.pointerId === drag?.id) finish();
+    if (event.pointerId === drag?.id) finish2();
   });
   handle.addEventListener("pointercancel", (event) => {
-    if (event.pointerId === drag?.id) finish(true);
+    if (event.pointerId === drag?.id) finish2(true);
   });
-  handle.addEventListener("lostpointercapture", () => finish(true));
-  window.addEventListener("blur", () => finish(true));
+  handle.addEventListener("lostpointercapture", () => finish2(true));
+  window.addEventListener("blur", () => finish2(true));
   window.addEventListener("resize", () => apply());
   handle.addEventListener("dblclick", () => {
     preferred = DEFAULT_WIDTH;
@@ -1861,7 +2110,7 @@ function installRailResize(root, rail) {
   handle.addEventListener("keydown", (event) => {
     if (event.key === "Escape" && drag !== null) {
       event.preventDefault();
-      finish(true);
+      finish2(true);
       return;
     }
     if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key) || drag !== null) return;
@@ -1887,7 +2136,7 @@ function installRailResize(root, rail) {
   window.requestAnimationFrame?.(() => root.classList.add("rail-motion-ready"));
 }
 
-// src/web/client/brand.ts
+// maintenance/plugin-release-0547-20261125/source/core/src/web/client/brand.ts
 var CORE_MARK_T = "M4 5H28L22 11H18V25L12 29V11H4Z";
 var CORE_MARK_CORE = "M24 17L29 22L24 27L19 22Z";
 function coreBrandMark() {
@@ -1907,7 +2156,7 @@ function coreBrandMark() {
   return svg;
 }
 
-// src/web/client/confirm-dialog.ts
+// maintenance/plugin-release-0547-20261125/source/core/src/web/client/confirm-dialog.ts
 var nextDialogId = 0;
 async function confirmAction(heading2, description, action, notice = false, options = {}) {
   const opener = document.activeElement;
@@ -1934,20 +2183,20 @@ async function confirmAction(heading2, description, action, notice = false, opti
   proceed.className = "primary";
   uiLabel(proceed, action);
   let accepted = false;
-  let finish = () => {
+  let finish2 = () => {
   };
   const closed = new Promise((resolve) => {
-    finish = resolve;
+    finish2 = resolve;
     dialog.addEventListener("close", () => resolve(), { once: true });
   });
   cancel.onclick = () => {
     dialog.close();
-    finish();
+    finish2();
   };
   proceed.onclick = () => {
     accepted = true;
     dialog.close();
-    finish();
+    finish2();
   };
   actions.append(cancel, proceed);
   dialog.append(title);
@@ -1973,13 +2222,13 @@ async function notifyAction(heading2, description) {
   await confirmAction(heading2, description, "知道了", true);
 }
 
-// src/web/client/asset-url.ts
+// maintenance/plugin-release-0547-20261125/source/core/src/web/client/asset-url.ts
 function assetUrl(name) {
   if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(name)) throw new Error("Invalid asset name");
   return new URL(name, import.meta.url).href;
 }
 
-// src/web/client/look.ts
+// maintenance/plugin-release-0547-20261125/source/core/src/web/client/look.ts
 var THE_LOOK_ROWS = [
   ["--color-ink", "正文"],
   ["--color-dim", "次要的字"],
@@ -2172,7 +2421,7 @@ onDisplayScopeReady((prefix2) => {
   void loadLook();
 });
 
-// src/web/client/avatar-crop.ts
+// maintenance/plugin-release-0547-20261125/source/core/src/web/client/avatar-crop.ts
 function cropBounds(width, height, zoom, x, y) {
   const side = Math.min(width, height) / Math.max(1, zoom);
   return {
@@ -2309,16 +2558,16 @@ async function cropAvatar(file, save) {
   status.setAttribute("role", "status");
   const actions = document.createElement("div");
   actions.className = "avatar-crop-actions";
-  const button2 = (text2) => {
+  const button3 = (text2) => {
     const result = document.createElement("button");
     result.type = "button";
     result.textContent = text2;
     actions.append(result);
     return result;
   };
-  const reset = button2("重置");
-  const cancel = button2("取消");
-  const confirm = button2("保存头像");
+  const reset = button3("重置");
+  const cancel = button3("取消");
+  const confirm = button3("保存头像");
   confirm.className = "primary";
   const kicker = document.createElement("span");
   kicker.className = "avatar-crop-kicker";
@@ -2391,7 +2640,7 @@ async function cropAvatar(file, save) {
   }
 }
 
-// src/web/client/speaker.ts
+// maintenance/plugin-release-0547-20261125/source/core/src/web/client/speaker.ts
 var NEUTRAL = "BOT";
 var NAME_LINE = /^[ \t]*-[ \t]*\*\*名字\*\*[ \t]*[：:][ \t]*([^。，,.;；!！?？\n（(]+)/m;
 function bodies_of(report) {
@@ -2432,7 +2681,7 @@ var activeIdentity = "";
 function loadSpeaker(force = false) {
   if (force) loading2 = null;
   if (loading2 === null) {
-    const read2 = ++nameRead;
+    const read4 = ++nameRead;
     loading2 = (async () => {
       let next = current;
       let identity = activeIdentity;
@@ -2452,18 +2701,18 @@ function loadSpeaker(force = false) {
       try {
         const bots = await botsRead;
         if (bots.ok) {
-          const state = await bots.json();
-          const active2 = state.bots?.find((one) => one.id === state.active);
-          if (active2 && state.active !== activeIdentity) {
+          const state3 = await bots.json();
+          const active2 = state3.bots?.find((one) => one.id === state3.active);
+          if (active2 && state3.active !== activeIdentity) {
             next = personaName && personaName !== NEUTRAL ? personaName : active2.id;
           }
-          identity = state.active;
+          identity = state3.active;
           if (active2?.displayName) next = active2.displayName;
           else if (next === NEUTRAL && active2?.id) next = active2.id;
         }
       } catch {
       }
-      if (read2 === nameRead) {
+      if (read4 === nameRead) {
         current = next;
         activeIdentity = identity;
         ready = true;
@@ -2499,12 +2748,12 @@ function loadUserLabel(force = false) {
   return labelRequest;
 }
 
-// src/web/client/bot-manager.ts
+// maintenance/plugin-release-0547-20261125/source/core/src/web/client/bot-manager.ts
 async function botDialog(shownName = speaker()) {
   const opener = document.activeElement;
   const response = await pageFetch("/infinity/bots", { cache: "no-store" });
   if (!response.ok) throw new Error("Bot 信息暂时不可用。");
-  const state = await response.json();
+  const state3 = await response.json();
   const dialog = document.createElement("dialog");
   dialog.className = "avatar-crop-dialog";
   coreSetUIAttribute(dialog, "aria-label", corePhrase("修改显示名"));
@@ -2516,7 +2765,7 @@ async function botDialog(shownName = speaker()) {
   const input2 = document.createElement("input");
   input2.maxLength = 80;
   coreSetUIAttribute(input2, "aria-label", corePhrase("Bot 显示名"));
-  input2.value = state.bots.find((one) => one.id === state.active)?.displayName || shownName;
+  input2.value = state3.bots.find((one) => one.id === state3.active)?.displayName || shownName;
   const status = document.createElement("p");
   status.setAttribute("role", "status");
   const actions = document.createElement("div");
@@ -2542,7 +2791,7 @@ async function botDialog(shownName = speaker()) {
         const answer = await pageFetch("/infinity/bots/rename", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ active: state.active, displayName: input2.value.trim() })
+          body: JSON.stringify({ active: state3.active, displayName: input2.value.trim() })
         });
         if (!answer.ok) {
           const error = await answer.json();
@@ -2573,7 +2822,7 @@ async function botDialog(shownName = speaker()) {
   }
 }
 
-// src/web/client/shell.ts
+// maintenance/plugin-release-0547-20261125/source/core/src/web/client/shell.ts
 var STROKE = {
   fill: "none",
   stroke: "currentColor",
@@ -2679,13 +2928,13 @@ function searchBox(placeholder) {
 }
 var EMPTY_CHIPS = ["tokens", "messages", "batches", "paused"];
 function node(tag, cls, text2) {
-  const el2 = document.createElement(tag);
-  if (cls !== void 0) el2.className = cls;
+  const el3 = document.createElement(tag);
+  if (cls !== void 0) el3.className = cls;
   if (text2 !== void 0) {
-    if (typeof text2 === "string") el2.textContent = text2;
-    else coreSetUIText(el2, "textContent", text2);
+    if (typeof text2 === "string") el3.textContent = text2;
+    else coreSetUIText(el3, "textContent", text2);
   }
-  return el2;
+  return el3;
 }
 function groupEl(index, label, items, soon = []) {
   const box = node("div", "rail-group");
@@ -2716,10 +2965,10 @@ function groupEl(index, label, items, soon = []) {
       indicators.setAttribute("aria-label", description);
       link.title = `${item.label} · ${description}`;
       link.setAttribute("aria-label", `${item.label}；${description}`);
-      const summary = node("span", "rail-signal rail-signal-summary");
-      summary.dataset.state = item.signals.some((one) => one.state === "warn") ? "warn" : item.signals.some((one) => one.state === "on") ? "on" : "off";
-      summary.setAttribute("aria-hidden", "true");
-      link.append(summary);
+      const summary2 = node("span", "rail-signal rail-signal-summary");
+      summary2.dataset.state = item.signals.some((one) => one.state === "warn") ? "warn" : item.signals.some((one) => one.state === "on") ? "on" : "off";
+      summary2.setAttribute("aria-hidden", "true");
+      link.append(summary2);
       for (const signal of item.signals) {
         const dot = node("span", "rail-signal");
         dot.dataset.state = signal.state;
@@ -2752,97 +3001,97 @@ function groupEl(index, label, items, soon = []) {
   }
   return box;
 }
-function gateIcon(button2) {
-  if (button2.querySelector(".gate-icons")) return;
+function gateIcon(button3) {
+  if (button3.querySelector(".gate-icons")) return;
   const group = node("span", "gate-icons");
   for (const name of ["wake", "wait"]) {
     const layer = node("span", "gate-" + name);
     layer.append(icon(name));
     group.append(layer);
   }
-  button2.replaceChildren(group);
+  button3.replaceChildren(group);
 }
-function gateBusy(button2) {
-  const busy = button2.dataset.busy === "true" || button2.dataset.starting === "yes";
-  button2.classList.toggle("busy", busy);
-  button2.setAttribute("aria-busy", String(busy));
-  button2.setAttribute("aria-disabled", String(busy));
+function gateBusy(button3) {
+  const busy = button3.dataset.busy === "true" || button3.dataset.starting === "yes";
+  button3.classList.toggle("busy", busy);
+  button3.setAttribute("aria-busy", String(busy));
+  button3.setAttribute("aria-disabled", String(busy));
 }
 var gateRevisions = /* @__PURE__ */ new WeakMap();
-function paintTheGate(button2, machine) {
+function paintTheGate(button3, machine) {
   if (typeof machine.stopped_by_hand !== "boolean") return false;
-  button2.dataset.stateKnown = "yes";
+  button3.dataset.stateKnown = "yes";
   const stopped = machine.stopped_by_hand === true;
   const dropped = Number(machine.dropped ?? 0);
   const local = String(machine.profile ?? "") === "Local";
-  button2.dataset.stopped = stopped ? "yes" : "no";
-  button2.dataset.path = local ? "b" : "a";
-  gateIcon(button2);
-  coreSetUIAttribute(button2, "aria-label", stopped ? corePhrase("唤醒：恢复处理") : corePhrase("静候：暂停新请求"));
+  button3.dataset.stopped = stopped ? "yes" : "no";
+  button3.dataset.path = local ? "b" : "a";
+  gateIcon(button3);
+  coreSetUIAttribute(button3, "aria-label", stopped ? corePhrase("唤醒：恢复处理") : corePhrase("静候：暂停新请求"));
   const note = String(machine.gate_note ?? "");
   if (machine.starting === true) {
-    button2.dataset.starting = "yes";
-    gateBusy(button2);
-    coreSetUIText(button2, "title", corePhrase("正在唤醒：本地服务就绪后恢复处理。"));
-    if (button2.dataset.polling !== "yes") {
-      button2.dataset.polling = "yes";
+    button3.dataset.starting = "yes";
+    gateBusy(button3);
+    coreSetUIText(button3, "title", corePhrase("正在唤醒：本地服务就绪后恢复处理。"));
+    if (button3.dataset.polling !== "yes") {
+      button3.dataset.polling = "yes";
       window.setTimeout(() => {
-        button2.dataset.polling = "no";
-        if (button2.isConnected) void loadTheGate(button2);
+        button3.dataset.polling = "no";
+        if (button3.isConnected) void loadTheGate(button3);
       }, 2e3);
     }
     return true;
   }
-  button2.dataset.starting = "no";
-  button2.dataset.polling = "no";
-  gateBusy(button2);
-  coreSetUIText(button2, "title", stopped ? [[corePhrase("唤醒：恢复处理。静候期间未发送 "), String(dropped)], corePhrase(" 条。")] : machine.model_available === false ? corePhrase("静候：暂停新请求。当前本地模型未响应。") : corePhrase("静候：暂停新请求；已开始的处理不受影响。"));
-  if (note !== "") button2.title = button2.title + " ｜ " + note;
+  button3.dataset.starting = "no";
+  button3.dataset.polling = "no";
+  gateBusy(button3);
+  coreSetUIText(button3, "title", stopped ? [[corePhrase("唤醒：恢复处理。静候期间未发送 "), String(dropped)], corePhrase(" 条。")] : machine.model_available === false ? corePhrase("静候：暂停新请求。当前本地模型未响应。") : corePhrase("静候：暂停新请求；已开始的处理不受影响。"));
+  if (note !== "") button3.title = button3.title + " ｜ " + note;
   return true;
 }
 function syncGateState(root, machine) {
-  const button2 = root.querySelector(".rail-run");
-  if (!button2 || button2.dataset.busy === "true" || !machine || typeof machine !== "object") return;
-  gateRevisions.set(button2, (gateRevisions.get(button2) ?? 0) + 1);
-  paintTheGate(button2, machine);
+  const button3 = root.querySelector(".rail-run");
+  if (!button3 || button3.dataset.busy === "true" || !machine || typeof machine !== "object") return;
+  gateRevisions.set(button3, (gateRevisions.get(button3) ?? 0) + 1);
+  paintTheGate(button3, machine);
 }
-async function loadTheGate(button2) {
-  const revision = (gateRevisions.get(button2) ?? 0) + 1;
-  gateRevisions.set(button2, revision);
+async function loadTheGate(button3) {
+  const revision = (gateRevisions.get(button3) ?? 0) + 1;
+  gateRevisions.set(button3, revision);
   try {
     const got = await pageFetch("/state");
     if (!got.ok) return false;
     const box = await got.json();
-    if (gateRevisions.get(button2) !== revision) return button2.dataset.stateKnown === "yes";
-    return paintTheGate(button2, box.machine ?? {});
+    if (gateRevisions.get(button3) !== revision) return button3.dataset.stateKnown === "yes";
+    return paintTheGate(button3, box.machine ?? {});
   } catch (why) {
     console.error("控制状态读取失败：", why);
     return false;
   }
 }
-async function pressTheGate(button2) {
-  if (button2.dataset.stateKnown !== "yes" || button2.dataset.busy === "true" || button2.dataset.starting === "yes") return;
-  gateRevisions.set(button2, (gateRevisions.get(button2) ?? 0) + 1);
-  const stopped = button2.dataset.stopped === "yes";
+async function pressTheGate(button3) {
+  if (button3.dataset.stateKnown !== "yes" || button3.dataset.busy === "true" || button3.dataset.starting === "yes") return;
+  gateRevisions.set(button3, (gateRevisions.get(button3) ?? 0) + 1);
+  const stopped = button3.dataset.stopped === "yes";
   const want = stopped ? "/run" : "/pause";
-  button2.dataset.busy = "true";
-  gateBusy(button2);
-  coreSetUIText(button2, "title", stopped ? corePhrase("正在唤醒……") : corePhrase("正在进入静候……"));
+  button3.dataset.busy = "true";
+  gateBusy(button3);
+  coreSetUIText(button3, "title", stopped ? corePhrase("正在唤醒……") : corePhrase("正在进入静候……"));
   try {
     const got = await pageFetch(want, { method: "POST" });
     if (!got.ok) {
       window.dispatchEvent(new CustomEvent("core-control-feedback", { detail: { text: "操作失败，请重试。" } }));
     } else {
-      const confirmed = await loadTheGate(button2);
-      const text2 = !confirmed ? "状态待确认，请检查连接" : button2.dataset.starting === "yes" ? "正在唤醒…" : button2.dataset.stopped === "yes" ? "已进入静候" : "已唤醒";
+      const confirmed = await loadTheGate(button3);
+      const text2 = !confirmed ? "状态待确认，请检查连接" : button3.dataset.starting === "yes" ? "正在唤醒…" : button3.dataset.stopped === "yes" ? "已进入静候" : "已唤醒";
       window.dispatchEvent(new CustomEvent("core-control-feedback", { detail: { text: text2 } }));
       window.dispatchEvent(new Event("core-control-refresh"));
     }
   } catch (why) {
     window.dispatchEvent(new CustomEvent("core-control-feedback", { detail: { text: "操作状态未确认，请检查连接。" } }));
   } finally {
-    button2.dataset.busy = "false";
-    gateBusy(button2);
+    button3.dataset.busy = "false";
+    gateBusy(button3);
   }
 }
 var RAIL_ACTIONS = [
@@ -2854,23 +3103,23 @@ var RAIL_ACTIONS = [
     title: "休止：结束当前服务"
   }
 ];
-async function shutItDown(button2) {
-  if (button2.dataset.busy === "true") return;
-  button2.dataset.busy = "true";
-  coreSetUIText(button2, "title", corePhrase("正在休止……"));
+async function shutItDown(button3) {
+  if (button3.dataset.busy === "true") return;
+  button3.dataset.busy = "true";
+  coreSetUIText(button3, "title", corePhrase("正在休止……"));
   try {
     const got = await pageFetch("/shutdown", { method: "POST" });
     if (!got.ok) {
-      button2.dataset.busy = "false";
-      coreSetUIText(button2, "title", [[corePhrase("休止未完成（HTTP "), got.status], corePhrase("）")]);
+      button3.dataset.busy = "false";
+      coreSetUIText(button3, "title", [[corePhrase("休止未完成（HTTP "), got.status], corePhrase("）")]);
       return;
     }
-    button2.classList.add("done");
-    coreSetUIText(button2, "title", got.status === 202 ? corePhrase("休止请求已接受，正在等待收尾") : corePhrase("服务已休止"));
+    button3.classList.add("done");
+    coreSetUIText(button3, "title", got.status === 202 ? corePhrase("休止请求已接受，正在等待收尾") : corePhrase("服务已休止"));
     window.close();
   } catch (why) {
-    button2.dataset.busy = "false";
-    coreSetUIText(button2, "title", [corePhrase("休止未完成："), String(why)]);
+    button3.dataset.busy = "false";
+    coreSetUIText(button3, "title", [corePhrase("休止未完成："), String(why)]);
     console.error("休止未完成：", why);
   }
 }
@@ -2894,10 +3143,10 @@ function paintAvatars() {
 }
 var avatarRead = 0;
 async function loadAvatar() {
-  const read2 = ++avatarRead;
+  const read4 = ++avatarRead;
   try {
     const answer = await fetch("/avatar", { cache: "no-store" });
-    if (read2 !== avatarRead) return;
+    if (read4 !== avatarRead) return;
     if (answer.status === 404) {
       if (avatarUrl !== null) URL.revokeObjectURL(avatarUrl);
       avatarUrl = null;
@@ -2906,7 +3155,7 @@ async function loadAvatar() {
     }
     if (!answer.ok) return;
     const blob = await answer.blob();
-    if (read2 !== avatarRead) return;
+    if (read4 !== avatarRead) return;
     if (avatarUrl !== null) {
       URL.revokeObjectURL(avatarUrl);
     }
@@ -2914,7 +3163,7 @@ async function loadAvatar() {
     paintAvatars();
   } catch {
   } finally {
-    if (read2 === avatarRead) {
+    if (read4 === avatarRead) {
       for (const face of thePictures()) face.removeAttribute("data-avatar-loading");
     }
   }
@@ -2982,47 +3231,47 @@ function railFoot() {
   void loadLook();
   const actions = node("div", "rail-actions");
   for (const { key: key2, title, glyph } of RAIL_ACTIONS) {
-    const button2 = node("button", `rail-action rail-${key2}`, glyph);
-    button2.title = title;
-    button2.setAttribute("aria-label", title);
-    if (key2 === "shutdown") button2.replaceChildren(icon("power"));
-    if (key2 === "settings") button2.replaceChildren(icon("settings"));
-    if (key2 === "run") gateIcon(button2);
+    const button3 = node("button", `rail-action rail-${key2}`, glyph);
+    button3.title = title;
+    button3.setAttribute("aria-label", title);
+    if (key2 === "shutdown") button3.replaceChildren(icon("power"));
+    if (key2 === "settings") button3.replaceChildren(icon("settings"));
+    if (key2 === "run") gateIcon(button3);
     if (key2 === "run") {
-      button2.addEventListener("click", () => {
-        void pressTheGate(button2);
+      button3.addEventListener("click", () => {
+        void pressTheGate(button3);
       });
-      button2.setAttribute("data-initial-loading", "true");
-      void loadTheGate(button2).finally(() => button2.removeAttribute("data-initial-loading"));
+      button3.setAttribute("data-initial-loading", "true");
+      void loadTheGate(button3).finally(() => button3.removeAttribute("data-initial-loading"));
     }
     if (key2 === "settings") {
-      button2.addEventListener("click", () => {
+      button3.addEventListener("click", () => {
         location.hash = "#/settings";
       });
     }
     if (key2 === "shutdown") {
-      button2.addEventListener("click", () => {
-        void shutItDown(button2);
+      button3.addEventListener("click", () => {
+        void shutItDown(button3);
       });
     }
-    actions.append(button2);
+    actions.append(button3);
   }
   foot.append(actions);
   return foot;
 }
 function topbar() {
   const bar2 = node("header", "topbar");
-  const summary = node("div", "topbar-summary");
+  const summary2 = node("div", "topbar-summary");
   const right = node("div", "topbar-right");
   right.append(
     node("span", "topbar-providerlabel", corePhrase("当前模型")),
     node("span", "topbar-model", "—"),
     providerChip()
   );
-  summary.append(node("div", "topbar-chips"), right);
+  summary2.append(node("div", "topbar-chips"), right);
   const row2 = node("div", "topbar-status");
   row2.append(node("span", "sdot"), node("span", "topbar-name", speaker()));
-  bar2.append(summary, row2);
+  bar2.append(summary2, row2);
   return bar2;
 }
 function providerChip() {
@@ -3127,7 +3376,7 @@ function createShell(root) {
   return { shell: shell2, topbar: shell2.bar };
 }
 
-// src/web/client/model-display.ts
+// maintenance/plugin-release-0547-20261125/source/core/src/web/client/model-display.ts
 function modelDisplayName(model) {
   const path = model.trim();
   const isFilePath = /^(?:[a-z]:[\\/]|\/|\\\\)/i.test(path);
@@ -3142,7 +3391,7 @@ function modelDisplayName(model) {
   return filename.replace(/\.gguf$/i, "");
 }
 
-// src/web/client/engine-events.ts
+// maintenance/plugin-release-0547-20261125/source/core/src/web/client/engine-events.ts
 var ENGINE_CHANGED = "engine-changed";
 function notifyEngineChanged() {
   if (typeof window !== "undefined" && typeof window.dispatchEvent === "function") {
@@ -3154,14 +3403,14 @@ function onEngineChanged(refresh2) {
   return () => window.removeEventListener(ENGINE_CHANGED, refresh2);
 }
 
-// src/web/client/qq-stickers.ts
+// maintenance/plugin-release-0547-20261125/source/core/src/web/client/qq-stickers.ts
 function qqStickers() {
   function element3(tag, text2 = "") {
     const e = document.createElement(tag);
     if (text2) e.textContent = text2;
     return e;
   }
-  function button2(text2, click) {
+  function button3(text2, click) {
     const b = element3("button", text2);
     b.type = "button";
     b.className = "infinity-action";
@@ -3266,7 +3515,7 @@ function qqStickers() {
     if (!busy) selectFile(e.dataTransfer?.files[0]);
   });
   let current2, bot = "", account = "", faces = [], busy = false;
-  let loaded = false;
+  let loaded2 = false;
   function edit(face) {
     current2 = face;
     releaseFile();
@@ -3351,15 +3600,15 @@ function qqStickers() {
       } else {
         preview.textContent = "暂无预览";
       }
-      const summary = element3("p", face.description || "暂无描述");
-      summary.className = "qq-sticker-summary";
+      const summary2 = element3("p", face.description || "暂无描述");
+      summary2.className = "qq-sticker-summary";
       const chips = element3("div");
       chips.className = "qq-sticker-tags";
       for (const tag of face.tags.slice(0, 3)) chips.append(element3("span", tag));
       if (face.tags.length > 3) chips.append(element3("small", "+" + (face.tags.length - 3)));
       const body = element3("div");
       body.className = "qq-sticker-body";
-      body.append(summary, chips);
+      body.append(summary2, chips);
       const top = element3("div");
       top.className = "qq-sticker-overview";
       top.append(preview, body);
@@ -3376,7 +3625,7 @@ function qqStickers() {
       details.append(fields);
       const actions = element3("div");
       actions.className = "qq-sticker-actions";
-      actions.append(button2("编辑", () => edit(face)), button2("删除", () => {
+      actions.append(button3("编辑", () => edit(face)), button3("删除", () => {
         if (!window.confirm("从当前 QQ 账号删除这张收藏表情？")) return;
         void run(async () => {
           await api({ action: "delete", id: face.id });
@@ -3410,7 +3659,7 @@ function qqStickers() {
     bot = data.bot;
     account = data.account;
     faces = data.items;
-    loaded = true;
+    loaded2 = true;
     notice.textContent = "";
     render2();
   }
@@ -3455,7 +3704,7 @@ function qqStickers() {
   });
   const formActions = element3("div");
   formActions.className = "qq-sticker-actions";
-  formActions.append(button2("取消", () => {
+  formActions.append(button3("取消", () => {
     releaseFile();
     editor.hidden = true;
     notice.textContent = "";
@@ -3463,15 +3712,15 @@ function qqStickers() {
   save.classList.add("qq-primary-action");
   editor.append(title, uploadArea, textFields, formActions);
   search.addEventListener("input", render2);
-  const add = button2("添加表情包", () => {
-    if (loaded) edit();
+  const add = button3("添加表情包", () => {
+    if (loaded2) edit();
     else void run(async () => {
       await load();
       edit();
     });
   });
   add.classList.add("qq-primary-action");
-  toolbar.append(search, button2("刷新", () => {
+  toolbar.append(search, button3("刷新", () => {
     void run(load);
   }), add);
   heading2.append(preference);
@@ -3482,13 +3731,13 @@ function qqStickers() {
   } };
 }
 
-// src/web/client/qq-voice-setup.ts
+// maintenance/plugin-release-0547-20261125/source/core/src/web/client/qq-voice-setup.ts
 function voiceSetup(kind, selection) {
   const section = document.createElement("details");
   section.className = "qq-voice-setup";
   section.setAttribute("aria-label", kind === "tts" ? "TTS 首次配置" : "ASR 首次配置");
-  const summary = document.createElement("summary");
-  summary.textContent = "首次配置";
+  const summary2 = document.createElement("summary");
+  summary2.textContent = "首次配置";
   const checklist = document.createElement("ol");
   const steps = kind === "tts" ? [
     "点击「下载推荐模型」自动安装模型、运行环境和默认参考音频；已有模型时点击「补全运行环境」。",
@@ -3513,8 +3762,8 @@ function voiceSetup(kind, selection) {
     guide.className = "qq-voice-install-guide";
     checklist.children[1].append(guide);
   }
-  const state = document.createElement("p");
-  state.className = "infinity-hint";
+  const state3 = document.createElement("p");
+  state3.className = "infinity-hint";
   const result = document.createElement("p");
   result.className = "infinity-hint";
   result.setAttribute("role", "status");
@@ -3573,20 +3822,20 @@ function voiceSetup(kind, selection) {
     actions.append(file, restore);
   }
   actions.append(check2);
-  section.append(summary, checklist, state, actions, result);
+  section.append(summary2, checklist, state3, actions, result);
   let passed = "";
-  let pending3 = false;
+  let pending5 = false;
   let blocked = false;
   const key2 = () => JSON.stringify(selection());
   check2.addEventListener("click", async () => {
-    if (pending3 || blocked || section.closest("fieldset")?.disabled) return;
+    if (pending5 || blocked || section.closest("fieldset")?.disabled) return;
     const selected = selection();
     const chosen = file.files?.[0];
     if (!selected.model || kind === "asr" && chosen && chosen.size > 15e5) {
       result.textContent = !selected.model ? "请先选择模型。" : "请选择不超过 1.5 MB 的短 WAV。";
       return;
     }
-    pending3 = check2.disabled = true;
+    pending5 = check2.disabled = true;
     passed = "";
     result.textContent = kind === "tts" ? "正在加载模型并合成测试语音…" : "正在检测人声并转写…";
     try {
@@ -3609,7 +3858,7 @@ function voiceSetup(kind, selection) {
     } catch (error) {
       result.textContent = error instanceof Error ? error.message : "语音自检失败。";
     } finally {
-      pending3 = false;
+      pending5 = false;
       check2.disabled = blocked;
     }
   });
@@ -3619,18 +3868,18 @@ function voiceSetup(kind, selection) {
     require: () => {
       section.open = true;
       result.textContent = "首次启用前请完成自检。";
-      summary.focus();
+      summary2.focus();
     },
     status(issue, unavailable = false) {
       blocked = unavailable;
-      check2.disabled = pending3 || blocked;
-      state.hidden = !issue;
-      state.textContent = issue;
+      check2.disabled = pending5 || blocked;
+      state3.hidden = !issue;
+      state3.textContent = issue;
     }
   };
 }
 
-// src/web/client/plugin-display-cache.ts
+// maintenance/plugin-release-0547-20261125/source/core/src/web/client/plugin-display-cache.ts
 var scope = null;
 onDisplayScopeReady((prefix2) => {
   scope = prefix2 + "plugin-page-display.v1:";
@@ -3716,24 +3965,24 @@ function clearPluginDisplay(name) {
 function pluginDisplayBridge(options) {
   return (event) => {
     if (event.source !== options.frame.contentWindow || !options.active()) return;
-    const request = event.data;
-    if (!request || request.type !== "telyincore:display:request" || typeof request.id !== "string" || !/^[0-9]{1,12}$/.test(request.id)) return;
+    const request2 = event.data;
+    if (!request2 || request2.type !== "telyincore:display:request" || typeof request2.id !== "string" || !/^[0-9]{1,12}$/.test(request2.id)) return;
     const frame = options.frame.contentWindow;
     const epoch = options.epoch();
     void (async () => {
       const ready2 = await readyPluginDisplay();
       if (!options.active() || epoch !== options.epoch() || frame !== options.frame.contentWindow) return;
-      const valid = ready2 && displayCacheCapability.slots.includes(request.slot);
+      const valid = ready2 && displayCacheCapability.slots.includes(request2.slot);
       let ok = false;
       let value = null;
-      if (valid && request.action === "read") {
-        value = readPluginDisplay(options.name, request.slot);
+      if (valid && request2.action === "read") {
+        value = readPluginDisplay(options.name, request2.slot);
         ok = true;
-      } else if (valid && request.action === "write") {
-        ok = writePluginDisplay(options.name, request.slot, request.value);
-        if (ok) value = readPluginDisplay(options.name, request.slot);
+      } else if (valid && request2.action === "write") {
+        ok = writePluginDisplay(options.name, request2.slot, request2.value);
+        if (ok) value = readPluginDisplay(options.name, request2.slot);
       }
-      frame?.postMessage({ type: "telyincore:display:result", id: request.id, ok, value }, "*");
+      frame?.postMessage({ type: "telyincore:display:result", id: request2.id, ok, value }, "*");
     })();
   };
 }
@@ -3766,7 +4015,7 @@ function fuzzyPluginMatch(name, id, query) {
   });
 }
 
-// src/web/client/qq-diagnostics.ts
+// maintenance/plugin-release-0547-20261125/source/core/src/web/client/qq-diagnostics.ts
 function element(tag, cls, text2) {
   const item = document.createElement(tag);
   item.className = cls;
@@ -4048,10 +4297,10 @@ function createQQEnvironment() {
     update(value) {
       if (editing) return;
       source.textContent = value?.source || "QQ 插件 · channel/qq.md";
-      const available = value?.status === "available";
-      coreSetUIText(badge, "textContent", available ? corePhrase("只读声明") : value?.status === "unconfigured" ? corePhrase("尚未声明") : value ? corePhrase("不可读取") : corePhrase("接口未提供"));
-      badge.dataset.state = available ? "neutral" : "warn";
-      const content = available ? value.text : value ? "当前没有可显示的 QQ 通道环境声明。" : "当前 Core 未提供环境声明读取接口。";
+      const available2 = value?.status === "available";
+      coreSetUIText(badge, "textContent", available2 ? corePhrase("只读声明") : value?.status === "unconfigured" ? corePhrase("尚未声明") : value ? corePhrase("不可读取") : corePhrase("接口未提供"));
+      badge.dataset.state = available2 ? "neutral" : "warn";
+      const content = available2 ? value.text : value ? "当前没有可显示的 QQ 通道环境声明。" : "当前 Core 未提供环境声明读取接口。";
       if (content !== previousText) {
         text2.replaceChildren();
         for (const paragraph of content.split(/\n\s*\n/)) text2.append(element("p", "", paragraph));
@@ -4068,7 +4317,7 @@ function createQQEnvironment() {
   };
 }
 
-// src/web/client/voice-corpus-panel.ts
+// maintenance/plugin-release-0547-20261125/source/core/src/web/client/voice-corpus-panel.ts
 function voiceCorpusPanel() {
   const root = document.createElement("details");
   root.className = "voice-corpus";
@@ -4089,16 +4338,16 @@ function voiceCorpusPanel() {
   for (const [value, label] of [["pending", "待评审"], ["approved", "已认可"], ["rejected", "已排除"]]) {
     filter.append(new Option(label, value));
   }
-  const button2 = (text2) => {
+  const button3 = (text2) => {
     const b = document.createElement("button");
     b.type = "button";
     b.className = "infinity-action";
     b.textContent = text2;
     return b;
   };
-  const refresh2 = button2("刷新");
-  const previous = button2("上一页");
-  const next = button2("下一页");
+  const refresh2 = button3("刷新");
+  const previous = button3("上一页");
+  const next = button3("下一页");
   const notice = document.createElement("p");
   notice.className = "infinity-hint";
   notice.setAttribute("role", "status");
@@ -4141,11 +4390,11 @@ function voiceCorpusPanel() {
   };
   let hasNext = false;
   const show = async () => {
-    const state = filter.value;
-    let data = await api({ action: "list", state, offset });
+    const state3 = filter.value;
+    let data = await api({ action: "list", state: state3, offset });
     if (!data.samples.length && offset > 0) {
-      offset = Math.max(0, Math.floor((data.counts[state] - 1) / 20) * 20);
-      data = await api({ action: "list", state, offset });
+      offset = Math.max(0, Math.floor((data.counts[state3] - 1) / 20) * 20);
+      data = await api({ action: "list", state: state3, offset });
     }
     ready2 = true;
     knownEnabled = data.enabled;
@@ -4169,7 +4418,7 @@ function voiceCorpusPanel() {
       audio.removeAttribute("src");
     }
     list.replaceChildren();
-    hasNext = offset + data.samples.length < data.counts[state];
+    hasNext = offset + data.samples.length < data.counts[state3];
     if (!data.samples.length) {
       const empty = document.createElement("p");
       empty.className = "infinity-hint";
@@ -4189,7 +4438,7 @@ function voiceCorpusPanel() {
       audio.hidden = true;
       const actions = document.createElement("div");
       actions.className = "voice-corpus-toolbar";
-      const play = button2("加载试听");
+      const play = button3("加载试听");
       play.addEventListener("click", () => {
         void run(async () => {
           const data2 = await api({ action: "audio", id: sample.id });
@@ -4199,12 +4448,12 @@ function voiceCorpusPanel() {
         });
       });
       actions.append(play);
-      for (const [state2, label] of [["approved", "认可"], ["rejected", "排除"], ["pending", "重新评审"]]) {
-        if (state2 === sample.state) continue;
-        const review = button2(label);
+      for (const [state4, label] of [["approved", "认可"], ["rejected", "排除"], ["pending", "重新评审"]]) {
+        if (state4 === sample.state) continue;
+        const review = button3(label);
         review.addEventListener("click", () => {
           void run(async () => {
-            await api({ action: "review", id: sample.id, state: state2 });
+            await api({ action: "review", id: sample.id, state: state4 });
             await show();
           });
         });
@@ -4279,13 +4528,13 @@ function voiceCorpusPanel() {
   });
 }
 
-// src/web/client/config-presentation.ts
-function configPresentation(root, state) {
-  root.setAttribute("data-config-state", state);
-  root.setAttribute("aria-busy", String(state === "loading"));
+// maintenance/plugin-release-0547-20261125/source/core/src/web/client/config-presentation.ts
+function configPresentation(root, state3) {
+  root.setAttribute("data-config-state", state3);
+  root.setAttribute("aria-busy", String(state3 === "loading"));
 }
 
-// src/web/client/qq-signals.ts
+// maintenance/plugin-release-0547-20261125/source/core/src/web/client/qq-signals.ts
 function serviceSignal(name, configured, running) {
   return {
     state: !configured ? "warn" : running ? "on" : "off",
@@ -4310,13 +4559,13 @@ function snowSignal(snow) {
   const running = protocol?.schema === "onebot-readonly-v1" ? protocol.pluginConnected === true : freshSnowSample(snow) && snow?.websocketVerified === true;
   return serviceSignal("SnowLuma", snow?.configured === true, running);
 }
-function qqSignals(value, loaded = false) {
+function qqSignals(value, loaded2 = false) {
   const marker = serviceSignal;
   return [
     marker(
       "QQ 插件",
       value?.plugin?.configured ?? value?.wired === true,
-      value?.plugin?.running ?? loaded
+      value?.plugin?.running ?? loaded2
     ),
     snowSignal(value?.snowluma),
     marker(
@@ -4332,7 +4581,7 @@ function qqSignals(value, loaded = false) {
   ];
 }
 
-// src/web/client/download-dialog.ts
+// maintenance/plugin-release-0547-20261125/source/core/src/web/client/download-dialog.ts
 async function chooseASRSource(kind = "ASR", preferredSource) {
   const opener = document.activeElement;
   const dialog = document.createElement("dialog");
@@ -4387,7 +4636,7 @@ async function chooseASRSource(kind = "ASR", preferredSource) {
   }
 }
 
-// src/web/client/infinity-controls.ts
+// maintenance/plugin-release-0547-20261125/source/core/src/web/client/infinity-controls.ts
 function infinityField(label, input2) {
   const box = document.createElement("label");
   box.className = "infinity-field";
@@ -4404,10 +4653,10 @@ function infinityToggle(label, input2) {
   box.append(input2, name);
   return box;
 }
-function infinityModelPicker(label, input2, button2) {
+function infinityModelPicker(label, input2, button3) {
   const row2 = document.createElement("div");
   row2.className = "infinity-model-picker";
-  row2.append(infinityField(label, input2), button2);
+  row2.append(infinityField(label, input2), button3);
   return row2;
 }
 function infinityVoiceHeading(title, download) {
@@ -4419,7 +4668,7 @@ function infinityVoiceHeading(title, download) {
   return row2;
 }
 
-// src/web/client/infinity-page.ts
+// maintenance/plugin-release-0547-20261125/source/core/src/web/client/infinity-page.ts
 function node2(tag, className, text2) {
   const element3 = document.createElement(tag);
   element3.className = className;
@@ -4456,7 +4705,7 @@ function infinityPage(shell2, pluginName = "") {
   const liveNotice = knownConfig ? node2("p", "plugins-note") : node2("span", "infinity-hint", "正在读取状态…");
   liveNotice.setAttribute("role", "status");
   head.append(liveNotice);
-  const summary = node2("div", "infinity-summary");
+  const summary2 = node2("div", "infinity-summary");
   const cards = node2("div", "infinity-cards");
   const message = node2("p", "infinity-message");
   const qqPanel = node2("section", "infinity-qq-panel");
@@ -4665,10 +4914,10 @@ function infinityPage(shell2, pluginName = "") {
   ownerChoices.id = "qq-confirmed-owner-accounts";
   proactiveTarget.setAttribute("list", ownerChoices.id);
   let ownerRouteKey = "";
-  const drawOwner = (state) => {
-    const route2 = state.routing.ownerRoute;
+  const drawOwner = (state3) => {
+    const route2 = state3.routing.ownerRoute;
     if (!route2) return;
-    const key2 = JSON.stringify([route2, state.routing.proactiveTarget]);
+    const key2 = JSON.stringify([route2, state3.routing.proactiveTarget]);
     if (ownerRouteKey !== key2) {
       ownerRouteKey = key2;
       ownerChoices.replaceChildren(...route2.accounts.map((account) => {
@@ -4679,7 +4928,7 @@ function infinityPage(shell2, pluginName = "") {
       proactiveTarget.value = route2.target;
       proactiveTarget.readOnly = route2.accounts.length <= 1;
     }
-    const hint = route2.unavailable ? "暂时无法读取身份绑定，主动投递已暂停。" : !route2.accounts.length ? "在人物画像里，把你的 QQ 画像与本机控制台画像确认为同一个人。" : !route2.target ? "你已关联多个 QQ，请选择用于接收主动消息的账号并保存会话路由。" : !state.routing.privates.includes(route2.target) ? "已确认主人的 QQ。将它加入上方允许的私聊名单后即可投递。" : "已关联主人的 QQ。是否主动开口、聊什么由 Bot 自己决定。";
+    const hint = route2.unavailable ? "暂时无法读取身份绑定，主动投递已暂停。" : !route2.accounts.length ? "在人物画像里，把你的 QQ 画像与本机控制台画像确认为同一个人。" : !route2.target ? "你已关联多个 QQ，请选择用于接收主动消息的账号并保存会话路由。" : !state3.routing.privates.includes(route2.target) ? "已确认主人的 QQ。将它加入上方允许的私聊名单后即可投递。" : "已关联主人的 QQ。是否主动开口、聊什么由 Bot 自己决定。";
     coreSetUIText(ownerHint, "textContent", corePhrase(hint));
     coreSetUIText(proactiveTarget, "title", corePhrase(hint));
   };
@@ -4952,11 +5201,11 @@ function infinityPage(shell2, pluginName = "") {
     feedback
   );
   qqPanel.hidden = !knownConfig;
-  summary.hidden = pluginName !== "";
+  summary2.hidden = pluginName !== "";
   cards.hidden = pluginName !== "";
   save.hidden = pluginName !== "core-infinity-qq";
   if (knownConfig) root.append(head, message, qqPanel);
-  else root.append(head, summary, cards, message, qqPanel);
+  else root.append(head, summary2, cards, message, qqPanel);
   shell2.content.replaceChildren(root);
   let requestId = 0;
   let currentQQ = null;
@@ -5043,38 +5292,38 @@ function infinityPage(shell2, pluginName = "") {
   } else {
     coreSetUIText(message, "textContent", corePhrase("正在读取插件列表…"));
   }
-  const updateLive = (state) => {
+  const updateLive = (state3) => {
     configFields.disabled = mutationPending || pluginMissing;
-    currentQQ = state;
-    const commandsLocked = mutationPending || !formFilled || state.snowluma.controlAvailable === false;
-    const connectionReady = freshProtocolSample(state.snowluma) && state.snowluma.protocolHealth?.pluginConnected === true;
-    const recoveryBusy = !!state.snowluma.recovery?.busy;
+    currentQQ = state3;
+    const commandsLocked = mutationPending || !formFilled || state3.snowluma.controlAvailable === false;
+    const connectionReady = freshProtocolSample(state3.snowluma) && state3.snowluma.protocolHealth?.pluginConnected === true;
+    const recoveryBusy = !!state3.snowluma.recovery?.busy;
     if (!recoveryBusy && connectionReady && !mutationPending && /^(恢复检测已提交；|加载确认已提交；)/.test(feedback.textContent || "")) {
       showFeedback(corePhrase("接入已完成：目标 QQ 在线、插件 WS 已连接。真实消息收发仍待验收。"));
     }
     for (const kind of ["tts", "asr"]) {
       const isTts = kind === "tts";
-      const button2 = isTts ? ttsDownload : asrDownload;
+      const button3 = isTts ? ttsDownload : asrDownload;
       const status = isTts ? ttsDownloadState : asrDownloadState;
       const progress2 = isTts ? ttsProgress : asrProgress;
-      const pending3 = isTts ? ttsDownloadPending : asrDownloadPending;
-      const voice = state[kind];
+      const pending5 = isTts ? ttsDownloadPending : asrDownloadPending;
+      const voice = state3[kind];
       const install = voice.install;
       const recommended = isTts ? "Fun-CosyVoice3-0.5B-2512" : "SenseVoiceSmall-onnx";
-      const installed = voice.models.includes(recommended);
+      const installed2 = voice.models.includes(recommended);
       const failed = install?.phase === "error" || install?.phase === "cleanup_failed";
       const busy = install?.busy === true;
-      const complete = installed && install?.runtimeReady !== false && !voice.runtimeIssue;
-      button2.hidden = complete && !busy;
-      button2.disabled = mutationPending || !formFilled || pending3 || !install || busy || complete;
+      const complete = installed2 && install?.runtimeReady !== false && !voice.runtimeIssue;
+      button3.hidden = complete && !busy;
+      button3.disabled = mutationPending || !formFilled || pending5 || !install || busy || complete;
       const paused = install?.phase === "paused";
       const partial = !complete && (paused || failed && (install?.downloaded || 0) > 0);
       const changing = ["pausing", "cancelling", "publishing"].includes(install?.phase || "");
       const controls = transfer[kind];
       controls.group.hidden = !install?.controls || !(busy || partial);
       controls.pause.hidden = !busy;
-      controls.pause.disabled = controls.cancel.disabled = pending3 || changing || mutationPending || !formFilled;
-      button2.textContent = partial ? "继续安装" : installed ? "补全运行环境" : "下载推荐模型 ↓";
+      controls.pause.disabled = controls.cancel.disabled = pending5 || changing || mutationPending || !formFilled;
+      button3.textContent = partial ? "继续安装" : installed2 ? "补全运行环境" : "下载推荐模型 ↓";
       progress2.hidden = !(busy || partial);
       progress2.value = Math.min(1, (install?.downloaded || 0) / (install?.total || 1));
       if (busy && ["environment", "selfcheck"].includes(install?.phase || "")) {
@@ -5088,47 +5337,47 @@ function infinityPage(shell2, pluginName = "") {
         status.textContent = `${phase} · ${source} · ${(progress2.value * 100).toFixed(1)}% · ${(install.downloaded / 1048576).toFixed(1)} MiB` + (rate ? " · " + speed : "");
       } else if (paused || install?.phase === "cancelled") {
         status.textContent = paused ? "已暂停 · 已保留 " + (install.downloaded / 1048576).toFixed(1) + " MiB" : "已取消下载";
-      } else if (pending3) {
+      } else if (pending5) {
         status.textContent = "正在准备下载…";
       } else if (complete) {
         status.textContent = install?.runtimeReady ? "模型与环境已就绪 · 自检通过" : "推荐模型已安装";
       } else if (downloadErrors[kind] || failed) {
         status.textContent = downloadErrors[kind] || install?.message || "下载失败，可以重试。";
       } else {
-        status.textContent = installed ? "模型已下载，请补全运行环境。" : !install ? "当前 Core 未提供模型下载。" : "推荐模型未安装";
+        status.textContent = installed2 ? "模型已下载，请补全运行环境。" : !install ? "当前 Core 未提供模型下载。" : "推荐模型未安装";
       }
-      status.dataset.state = !busy && !pending3 && !complete && (failed || downloadErrors[kind]) ? "warn" : "neutral";
+      status.dataset.state = !busy && !pending5 && !complete && (failed || downloadErrors[kind]) ? "warn" : "neutral";
     }
     const ttsNames = Array.from(ttsModel.options).map((option) => option.value).filter(Boolean);
-    if (JSON.stringify(ttsNames) !== JSON.stringify(state.tts.models)) {
-      const selected = ttsModel.value || state.tts.model;
-      fillSelect(ttsModel, state.tts.models, selected, true);
+    if (JSON.stringify(ttsNames) !== JSON.stringify(state3.tts.models)) {
+      const selected = ttsModel.value || state3.tts.model;
+      fillSelect(ttsModel, state3.tts.models, selected, true);
     }
     const asrNames = Array.from(asrModel.options).map((option) => option.value).filter(Boolean);
-    if (JSON.stringify(asrNames) !== JSON.stringify(state.asr.models)) {
-      fillSelect(asrModel, state.asr.models, asrModel.value || state.asr.model, false);
+    if (JSON.stringify(asrNames) !== JSON.stringify(state3.asr.models)) {
+      fillSelect(asrModel, state3.asr.models, asrModel.value || state3.asr.model, false);
     }
-    coreSetUIText(routeAccount, "textContent", state.snowluma.recovery?.targetUin ? [corePhrase("当前 Bot 的 QQ："), state.snowluma.recovery.targetUin, corePhrase(" · 名单只作用于这个 Bot。")] : corePhrase("尚未选择登录 QQ；可先保存会话名单，再到 SnowLuma 页完成账号接入。"));
+    coreSetUIText(routeAccount, "textContent", state3.snowluma.recovery?.targetUin ? [corePhrase("当前 Bot 的 QQ："), state3.snowluma.recovery.targetUin, corePhrase(" · 名单只作用于这个 Bot。")] : corePhrase("尚未选择登录 QQ；可先保存会话名单，再到 SnowLuma 页完成账号接入。"));
     if (!setupInitialStateApplied) {
-      setupDetails.open = !(state.plugin?.configured && (state.snowluma.recovery?.loginCompleted || freshProtocolSample(state.snowluma)));
+      setupDetails.open = !(state3.plugin?.configured && (state3.snowluma.recovery?.loginCompleted || freshProtocolSample(state3.snowluma)));
       setupInitialStateApplied = true;
     }
     snowProcess.hidden = false;
-    const serviceLabel = state.snowluma.managed ? "已启动" : state.snowluma.sharedService ? "共用服务" : state.snowluma.webuiRunning ? "端口可达" : "未启动";
+    const serviceLabel = state3.snowluma.managed ? "已启动" : state3.snowluma.sharedService ? "共用服务" : state3.snowluma.webuiRunning ? "端口可达" : "未启动";
     if (uiSource(serviceStatus) !== serviceLabel) {
       coreSetUIText(serviceStatus, "textContent", corePhrase(serviceLabel));
     }
-    const serviceColor = state.snowluma.webuiRunning ? "on" : "off";
+    const serviceColor = state3.snowluma.webuiRunning ? "on" : "off";
     if (serviceStatus.dataset.state !== serviceColor) serviceStatus.dataset.state = serviceColor;
-    controlStatus.hidden = state.snowluma.controlAvailable !== false;
-    controlStatus.title = state.snowluma.controlMessage || "";
-    snowProcess.dataset.mode = state.snowluma.sharedService ? "shared" : state.snowluma.managed || state.snowluma.canStopInstallation ? "stop" : "start";
-    const passwordChanged = state.snowluma.managementPasswordChanged;
-    const accountOnline = state.snowluma.localAccountOnline === true || freshProtocolSample(state.snowluma) || freshSnowSample(state.snowluma);
+    controlStatus.hidden = state3.snowluma.controlAvailable !== false;
+    controlStatus.title = state3.snowluma.controlMessage || "";
+    snowProcess.dataset.mode = state3.snowluma.sharedService ? "shared" : state3.snowluma.managed || state3.snowluma.canStopInstallation ? "stop" : "start";
+    const passwordChanged = state3.snowluma.managementPasswordChanged;
+    const accountOnline = state3.snowluma.localAccountOnline === true || freshProtocolSample(state3.snowluma) || freshSnowSample(state3.snowluma);
     const progress = [
       passwordChanged,
       accountOnline,
-      state.routing.privates.length > 0
+      state3.routing.privates.length > 0
     ];
     checks.forEach((badge, index) => {
       const value = progress[index];
@@ -5136,45 +5385,45 @@ function infinityPage(shell2, pluginName = "") {
       if (badge.textContent !== label) badge.textContent = label;
       badge.dataset.state = value === true ? "on" : "off";
     });
-    const installation = state.snowluma.installation;
+    const installation = state3.snowluma.installation;
     let guidance = "";
     if (installation?.ready === false) {
       guidance = "请从 Core 启动器完成 SnowLuma 运行环境自检。";
-    } else if (state.snowluma.webuiRunning && !connectionReady && !accountOnline && state.snowluma.waitingForDesktopExit === true) {
+    } else if (state3.snowluma.webuiRunning && !connectionReady && !accountOnline && state3.snowluma.waitingForDesktopExit === true) {
       guidance = "当前 QQ 需要正常退出一次。Core 正在等待桌面 QQ 退出，连接状态会自动更新。";
-    } else if (state.snowluma.webuiRunning && !state.snowluma.recovery?.targetUin) {
+    } else if (state3.snowluma.webuiRunning && !state3.snowluma.recovery?.targetUin) {
       guidance = "在 SnowLuma 管理页选择已登录的 QQ 并加载。识别成功后，Core 会保存目标 QQ。";
-    } else if (state.snowluma.webuiRunning && !connectionReady) {
-      const protocol = state.snowluma.protocolHealth;
-      const savedRoutes = state.routing.privates.length > 0 || state.routing.groups.length > 0;
+    } else if (state3.snowluma.webuiRunning && !connectionReady) {
+      const protocol = state3.snowluma.protocolHealth;
+      const savedRoutes = state3.routing.privates.length > 0 || state3.routing.groups.length > 0;
       if (accountOnline && !savedRoutes) {
         guidance = "QQ 已在线，请先到会话路由保存允许名单，再刷新连接状态。";
-      } else if (accountOnline && !state.plugin?.configured || protocol?.fresh && protocol.status === "auth_failed") {
+      } else if (accountOnline && !state3.plugin?.configured || protocol?.fresh && protocol.status === "auth_failed") {
         guidance = "请确认 SnowLuma 的 OneBot 地址和令牌，再点击「同步协议配置」。";
-      } else if (state.snowluma.localAccountOnline !== void 0 && state.plugin?.running && state.plugin.configured && !protocol?.pluginConnected && ["checking", "untrusted", "unavailable", "offline", "online"].includes(protocol?.status ?? "")) {
+      } else if (state3.snowluma.localAccountOnline !== void 0 && state3.plugin?.running && state3.plugin.configured && !protocol?.pluginConnected && ["checking", "untrusted", "unavailable", "offline", "online"].includes(protocol?.status ?? "")) {
         const waiting = "Core 正在等待 QQ 事件连接。已配置的 OneBot 服务就绪后会自动重连。";
-        const hookEvents = (state.snowluma.log ?? "").split("\n").filter((line) => line.includes("[Hook]"));
+        const hookEvents = (state3.snowluma.log ?? "").split("\n").filter((line) => line.includes("[Hook]"));
         guidance = !accountOnline && hookEvents.at(-1)?.includes("[COMPONENT_LOAD_FAILED]") ? "最近一次组件加载失败。" + waiting : waiting;
       }
     }
     setupHint.hidden = !guidance;
     if (setupHint.textContent !== guidance) setupHint.textContent = guidance;
-    snowSave.disabled = commandsLocked || !state.snowluma.recovery || !!state.snowluma.recovery.busy;
-    snowForget.disabled = commandsLocked || !state.snowluma.recovery?.hasCredentials || !!state.snowluma.recovery?.busy;
-    const credentialsSaved = state.snowluma.recovery?.hasCredentials === true;
+    snowSave.disabled = commandsLocked || !state3.snowluma.recovery || !!state3.snowluma.recovery.busy;
+    snowForget.disabled = commandsLocked || !state3.snowluma.recovery?.hasCredentials || !!state3.snowluma.recovery?.busy;
+    const credentialsSaved = state3.snowluma.recovery?.hasCredentials === true;
     snowCredential.dataset.state = credentialsSaved || passwordChanged ? "on" : "off";
-    coreSetUIText(snowCredential, "textContent", credentialsSaved ? corePhrase("管理密码已保存") : passwordChanged ? corePhrase("SL 已改密 · Core 尚未保存管理凭据") : state.snowluma.localAccountOnline ? corePhrase("本机协议可同步；管理密码按需保存") : corePhrase("管理密码未保存"));
+    coreSetUIText(snowCredential, "textContent", credentialsSaved ? corePhrase("管理密码已保存") : passwordChanged ? corePhrase("SL 已改密 · Core 尚未保存管理凭据") : state3.snowluma.localAccountOnline ? corePhrase("本机协议可同步；管理密码按需保存") : corePhrase("管理密码未保存"));
     coreSetUIText(snowPassword, "placeholder", credentialsSaved ? corePhrase("已设置；留空保持原值") : passwordChanged ? corePhrase("SL 已改密，按需填写以保存到 Core") : corePhrase("请输入 SnowLuma 管理密码"));
     snowManager.hidden = false;
-    const managerUrl = state.snowluma.managementUrl || "";
-    const managerAddress = state.snowluma.webuiRunning && /^http:\/\/127\.0\.0\.1:[0-9]{1,5}$/.test(managerUrl) ? `${managerUrl}/processes` : "#";
+    const managerUrl = state3.snowluma.managementUrl || "";
+    const managerAddress = state3.snowluma.webuiRunning && /^http:\/\/127\.0\.0\.1:[0-9]{1,5}$/.test(managerUrl) ? `${managerUrl}/processes` : "#";
     if (snowManager.getAttribute("href") !== managerAddress) snowManager.href = managerAddress;
     snowManager.setAttribute("aria-disabled", String(managerAddress === "#"));
     coreSetUIText(snowManager, "title", corePhrase("打开本机 SnowLuma 管理页"));
-    coreSetUIText(snowProcess, "textContent", state.snowluma.managed ? corePhrase("停止 SnowLuma") : state.snowluma.sharedService ? corePhrase("共享 SnowLuma 运行中") : state.snowluma.canStopInstallation ? corePhrase("停止此安装的 SnowLuma") : corePhrase("启动 SnowLuma"));
-    snowProcess.disabled = commandsLocked || state.snowluma.sharedService === true || (state.snowluma.transportReachable || state.snowluma.webuiRunning) && !state.snowluma.managed && !state.snowluma.canStopInstallation;
-    coreSetUIText(snowProcess, "title", state.snowluma.sharedService ? corePhrase("共享服务由其他实例管理；本页可恢复自己的 QQ，不允许停止其他 Bot 的协议服务。") : state.snowluma.managed || state.snowluma.canStopInstallation ? corePhrase("停止整个 SnowLuma 服务会断开使用它的所有 QQ 账号。") : corePhrase("启动 SnowLuma 并尝试恢复当前账号；不会跳过扫码或二次验证。"));
-    if (state.snowluma.recovery?.busy) {
+    coreSetUIText(snowProcess, "textContent", state3.snowluma.managed ? corePhrase("停止 SnowLuma") : state3.snowluma.sharedService ? corePhrase("共享 SnowLuma 运行中") : state3.snowluma.canStopInstallation ? corePhrase("停止此安装的 SnowLuma") : corePhrase("启动 SnowLuma"));
+    snowProcess.disabled = commandsLocked || state3.snowluma.sharedService === true || (state3.snowluma.transportReachable || state3.snowluma.webuiRunning) && !state3.snowluma.managed && !state3.snowluma.canStopInstallation;
+    coreSetUIText(snowProcess, "title", state3.snowluma.sharedService ? corePhrase("共享服务由其他实例管理；本页可恢复自己的 QQ，不允许停止其他 Bot 的协议服务。") : state3.snowluma.managed || state3.snowluma.canStopInstallation ? corePhrase("停止整个 SnowLuma 服务会断开使用它的所有 QQ 账号。") : corePhrase("启动 SnowLuma 并尝试恢复当前账号；不会跳过扫码或二次验证。"));
+    if (state3.snowluma.recovery?.busy) {
       coreSetUIText(snowProcess, "textContent", connectionReady ? corePhrase("已连接，正在收尾…") : corePhrase("正在验证并接入…"));
       snowProcess.disabled = true;
     }
@@ -5184,12 +5433,12 @@ function infinityPage(shell2, pluginName = "") {
     checkConnection.disabled = commandsLocked || checkPending;
     asrFolder.disabled = commandsLocked;
     ttsFolder.disabled = commandsLocked;
-    ttsVoiceFolder.disabled = commandsLocked || !state.tts.voiceFolderAvailable;
-    coreSetUIText(ttsVoiceFolder, "title", state.tts.voiceFolderAvailable ? voiceFolderTitle : state.tts.voiceFolderAvailable === false ? corePhrase("请先安装本机 TTS 环境") : corePhrase("重启 Core 后可打开本机音色文件夹"));
+    ttsVoiceFolder.disabled = commandsLocked || !state3.tts.voiceFolderAvailable;
+    coreSetUIText(ttsVoiceFolder, "title", state3.tts.voiceFolderAvailable ? voiceFolderTitle : state3.tts.voiceFolderAvailable === false ? corePhrase("请先安装本机 TTS 环境") : corePhrase("重启 Core 后可打开本机音色文件夹"));
     health.replaceChildren();
-    const voiceBlocked = state.tts.pluginEnabled === false;
-    const markers = qqSignals(state, pluginLoaded);
-    const pluginEnabled = state.tts.pluginEnabled;
+    const voiceBlocked = state3.tts.pluginEnabled === false;
+    const markers = qqSignals(state3, pluginLoaded);
+    const pluginEnabled = state3.tts.pluginEnabled;
     if (typeof pluginEnabled === "boolean") {
       const pluginStatus = node2("span", "qq-plugin-status");
       const badge = node2(
@@ -5212,20 +5461,20 @@ function infinityPage(shell2, pluginName = "") {
       badge.dataset.state = status;
       health.append(badge);
     }
-    coreSetUIText(asrState, "textContent", corePhrase(voiceBlocked ? "QQ 插件已停用 · 语音设置已保留" : state.asr.startError || (state.asr.running ? "ASR 模型已加载" : "ASR 已停止")));
-    const ttsStatus = voiceBlocked ? "QQ 插件已停用 · 语音设置已保留" : state.tts.startError || (state.tts.running ? state.tts.managed ? "TTS 服务已就绪" : "外部 TTS 服务已就绪" : state.tts.managed ? "正在加载 TTS 模型…" : "TTS 服务未启动");
+    coreSetUIText(asrState, "textContent", corePhrase(voiceBlocked ? "QQ 插件已停用 · 语音设置已保留" : state3.asr.startError || (state3.asr.running ? "ASR 模型已加载" : "ASR 已停止")));
+    const ttsStatus = voiceBlocked ? "QQ 插件已停用 · 语音设置已保留" : state3.tts.startError || (state3.tts.running ? state3.tts.managed ? "TTS 服务已就绪" : "外部 TTS 服务已就绪" : state3.tts.managed ? "正在加载 TTS 模型…" : "TTS 服务未启动");
     coreSetUIText(ttsState, "textContent", corePhrase(ttsStatus));
-    asrProcess.textContent = state.asr.running ? "停止 ASR" : "启动 ASR";
-    asrProcess.disabled = commandsLocked || voiceBlocked && !state.asr.running;
-    coreSetUIText(ttsProcess, "textContent", state.tts.managed || state.tts.running ? corePhrase("停止 TTS") : corePhrase("启动 TTS"));
-    asrSetup.status(voiceBlocked ? "启用 QQ 插件后才能运行自检。" : state.asr.runtimeIssue || "", voiceBlocked);
+    asrProcess.textContent = state3.asr.running ? "停止 ASR" : "启动 ASR";
+    asrProcess.disabled = commandsLocked || voiceBlocked && !state3.asr.running;
+    coreSetUIText(ttsProcess, "textContent", state3.tts.managed || state3.tts.running ? corePhrase("停止 TTS") : corePhrase("启动 TTS"));
+    asrSetup.status(voiceBlocked ? "启用 QQ 插件后才能运行自检。" : state3.asr.runtimeIssue || "", voiceBlocked);
     ttsSetup.status(voiceBlocked ? "启用 QQ 插件后才能运行自检。" : "", voiceBlocked);
-    const runtimeIssue = state.tts.running || state.tts.managed ? "" : state.tts.runtimeIssue || "";
+    const runtimeIssue = state3.tts.running || state3.tts.managed ? "" : state3.tts.runtimeIssue || "";
     ttsRuntimeIssue.hidden = !runtimeIssue;
     coreSetUIText(ttsRuntimeIssue, "textContent", corePhrase(runtimeIssue));
-    ttsProcess.disabled = commandsLocked || voiceBlocked && !state.tts.managed || state.tts.running && !state.tts.managed && !(state.tts.provider === "external" && state.tts.service);
-    ttsProcess.title = state.tts.running && !state.tts.managed && !(state.tts.provider === "external" && state.tts.service) ? "如需从 Core 停止外部 TTS，请选择外部服务并保存其系统服务名" : "";
-    ttsPreview.disabled = commandsLocked || voiceBlocked || previewPending || !state.tts.running || !state.tts.voices;
+    ttsProcess.disabled = commandsLocked || voiceBlocked && !state3.tts.managed || state3.tts.running && !state3.tts.managed && !(state3.tts.provider === "external" && state3.tts.service);
+    ttsProcess.title = state3.tts.running && !state3.tts.managed && !(state3.tts.provider === "external" && state3.tts.service) ? "如需从 Core 停止外部 TTS，请选择外部服务并保存其系统服务名" : "";
+    ttsPreview.disabled = commandsLocked || voiceBlocked || previewPending || !state3.tts.running || !state3.tts.voices;
   };
   const fillSelect = (select, names, selected, blank) => {
     select.replaceChildren();
@@ -5243,62 +5492,62 @@ function infinityPage(shell2, pluginName = "") {
     }
     select.value = selected;
   };
-  const fillQQForm = (state) => {
-    privateIds.value = state.routing.privates.join("\n");
-    groupIds.value = state.routing.groups.join("\n");
-    proactiveTarget.value = state.routing.proactiveTarget;
-    proactiveTarget.readOnly = Boolean(state.routing.sharingOwner && state.routing.sharingEnabled);
+  const fillQQForm = (state3) => {
+    privateIds.value = state3.routing.privates.join("\n");
+    groupIds.value = state3.routing.groups.join("\n");
+    proactiveTarget.value = state3.routing.proactiveTarget;
+    proactiveTarget.readOnly = Boolean(state3.routing.sharingOwner && state3.routing.sharingEnabled);
     coreSetUIText(proactiveTarget, "title", proactiveTarget.readOnly ? corePhrase("主动分享只发送给主人，收件人不可在这里更改") : corePhrase("未启用主人分享"));
-    backfillMinutes.value = String(state.routing.historyBackfillMinutes);
-    reactionWindow.value = String(state.routing.reactionWindowSeconds ?? 3);
-    snowUsername.value = state.snowluma.recovery?.username || "admin";
-    snowTarget.value = state.snowluma.recovery?.targetUin || "";
-    asrSwitch.checked = state.asr.enabled && state.asr.setupReady !== false;
-    asrLanguage.value = state.asr.language || "auto";
-    asrLanguage.disabled = !state.asr.language;
-    asrItn.checked = state.asr.useItn ?? true;
-    asrItn.disabled = state.asr.useItn === void 0;
-    asrThreads.value = String(state.asr.threads ?? 3);
-    asrThreads.disabled = state.asr.threads === void 0;
-    ttsSwitch.checked = state.tts.enabled;
-    asrAuto.checked = state.asr.autoStart ?? state.asr.enabled;
-    ttsAuto.checked = state.tts.autoStart ?? state.tts.enabled;
-    servicePort.value = String(state.tts.port ?? 18084);
-    ttsProvider.value = state.tts.provider ?? "builtin";
-    serviceName.value = state.tts.service || "";
+    backfillMinutes.value = String(state3.routing.historyBackfillMinutes);
+    reactionWindow.value = String(state3.routing.reactionWindowSeconds ?? 3);
+    snowUsername.value = state3.snowluma.recovery?.username || "admin";
+    snowTarget.value = state3.snowluma.recovery?.targetUin || "";
+    asrSwitch.checked = state3.asr.enabled && state3.asr.setupReady !== false;
+    asrLanguage.value = state3.asr.language || "auto";
+    asrLanguage.disabled = !state3.asr.language;
+    asrItn.checked = state3.asr.useItn ?? true;
+    asrItn.disabled = state3.asr.useItn === void 0;
+    asrThreads.value = String(state3.asr.threads ?? 3);
+    asrThreads.disabled = state3.asr.threads === void 0;
+    ttsSwitch.checked = state3.tts.enabled;
+    asrAuto.checked = state3.asr.autoStart ?? state3.asr.enabled;
+    ttsAuto.checked = state3.tts.autoStart ?? state3.tts.enabled;
+    servicePort.value = String(state3.tts.port ?? 18084);
+    ttsProvider.value = state3.tts.provider ?? "builtin";
+    serviceName.value = state3.tts.service || "";
     serviceField.hidden = ttsProvider.value !== "external";
-    fillSelect(asrModel, state.asr.models, state.asr.model, false);
-    fillSelect(ttsModel, state.tts.models, state.tts.model, true);
+    fillSelect(asrModel, state3.asr.models, state3.asr.model, false);
+    fillSelect(ttsModel, state3.tts.models, state3.tts.model, true);
     ttsVoice.replaceChildren();
-    for (const voice of state.tts.voices || [{ id: "default", label: "默认音色 · 通用" }]) {
+    for (const voice of state3.tts.voices || [{ id: "default", label: "默认音色 · 通用" }]) {
       const label = voice.id === "telyin" && ["特琳 · 仅本机", "特琳（本机）"].includes(voice.label) ? "Telyin.wav" : voice.label;
       ttsVoice.append(new Option(label, voice.id));
     }
-    ttsVoice.value = state.tts.voice || "default";
-    ttsVoice.disabled = !state.tts.voices;
-    ttsSendMode.value = state.tts.sendMode || "on_demand";
-    ttsSendMode.disabled = !state.tts.sendMode;
+    ttsVoice.value = state3.tts.voice || "default";
+    ttsVoice.disabled = !state3.tts.voices;
+    ttsSendMode.value = state3.tts.sendMode || "on_demand";
+    ttsSendMode.disabled = !state3.tts.sendMode;
     ttsSpeed.value = "1.0";
     if (!ttsPreviewText.value) {
-      const text2 = state.tts.previewText;
+      const text2 = state3.tts.previewText;
       ttsPreviewText.value = !text2 || text2 === "你好，我是特琳。欢迎来听一段语音。" ? defaultPreviewText : text2;
     }
-    ttsPreviewText.disabled = !state.tts.previewText;
+    ttsPreviewText.disabled = !state3.tts.previewText;
     coreSetUIText(ttsHint, "textContent", corePhrase("按需发送由 Bot 调用。选择回复附语音时，先发文字，再发语音。"));
   };
-  const drawQQ = (state) => {
-    drawOwner(state);
-    environmentView.update(state.environment);
-    terminalView.update(state.snowluma.log);
-    const boundTarget = state.snowluma.recovery?.targetUin || "";
+  const drawQQ = (state3) => {
+    drawOwner(state3);
+    environmentView.update(state3.environment);
+    terminalView.update(state3.snowluma.log);
+    const boundTarget = state3.snowluma.recovery?.targetUin || "";
     if (snowTarget.value === displayedTarget) snowTarget.value = boundTarget;
     displayedTarget = boundTarget;
-    currentQQ = state;
+    currentQQ = state3;
     if (knownConfig) qqPanel.hidden = pluginMissing;
-    updateLive(state);
+    updateLive(state3);
   };
   const draw = (answer) => {
-    summary.replaceChildren();
+    summary2.replaceChildren();
     cards.replaceChildren();
     message.textContent = "";
     if (answer === null) {
@@ -5329,16 +5578,16 @@ function infinityPage(shell2, pluginName = "") {
       return;
     }
     qqPanel.hidden = true;
-    const installed = plugins.filter((one) => one.installed !== false);
+    const installed2 = plugins.filter((one) => one.installed !== false);
     const metrics = [
-      ["运行中", installed.filter((one) => one.loaded).length],
-      ["已安装", installed.length],
+      ["运行中", installed2.filter((one) => one.loaded).length],
+      ["已安装", installed2.length],
       ["可安装", plugins.filter((one) => one.installed === false).length]
     ];
     for (const [label, count4] of metrics) {
       const metric = node2("div", "infinity-metric");
       metric.append(node2("strong", "", String(count4)), node2("span", "", label));
-      summary.append(metric);
+      summary2.append(metric);
     }
     if (plugins.length === 0) {
       coreSetUIText(message, "textContent", corePhrase("目前没有扩展。"));
@@ -5347,8 +5596,8 @@ function infinityPage(shell2, pluginName = "") {
       const card = node2("article", "infinity-card");
       const title = node2("div", "infinity-card-title");
       title.append(node2("h2", "", plugin.displayName || plugin.name));
-      const state = stateOf(plugin);
-      const badge = node2("span", "infinity-state", state);
+      const state3 = stateOf(plugin);
+      const badge = node2("span", "infinity-state", state3);
       badge.dataset.state = plugin.loaded ? "running" : plugin.installed === false ? "available" : "idle";
       title.append(badge);
       card.append(title);
@@ -5396,21 +5645,21 @@ function infinityPage(shell2, pluginName = "") {
     const statusRequest = /* @__PURE__ */ Symbol();
     qqStatusPending = statusRequest;
     try {
-      const state = await getStatusJson("/infinity/qq", 8e3);
+      const state3 = await getStatusJson("/infinity/qq", 8e3);
       if (mine !== requestId || root.hidden || mutationPending) return;
       const first = !formFilled;
-      currentQQ = state;
+      currentQQ = state3;
       qqLoaded = true;
       qqFailed = false;
       if (knownConfig) qqPanel.hidden = pluginMissing;
       if (first) {
-        fillQQForm(state);
+        fillQQForm(state3);
         formFilled = true;
         configPresentation(voiceGrid, "ready");
         if (uiSource(feedback).startsWith("正在读取 QQ 配置") || uiSource(feedback).startsWith("QQ 状态读取失败")) feedback.textContent = "";
       }
-      drawQQ(state);
-      if (manual) terminalView.update(state.snowluma.log, true);
+      drawQQ(state3);
+      if (manual) terminalView.update(state3.snowluma.log, true);
     } catch (error) {
       if (error instanceof Error && error.name === "StaleStatusError") return;
       if (mine !== requestId || root.hidden) return;
@@ -5514,10 +5763,10 @@ function infinityPage(shell2, pluginName = "") {
       }
     }
   });
-  const openModelFolder = async (kind, model, button2) => {
-    if (button2.disabled || currentQQ === null) return;
+  const openModelFolder = async (kind, model, button3) => {
+    if (button3.disabled || currentQQ === null) return;
     const mine = requestId;
-    button2.disabled = true;
+    button3.disabled = true;
     showFeedback(corePhrase("正在打开模型文件夹…"));
     try {
       const response = await fetch("/infinity/qq/model-folder", {
@@ -5569,7 +5818,7 @@ function infinityPage(shell2, pluginName = "") {
   });
   for (const kind of ["tts", "asr"]) {
     const isTts = kind === "tts";
-    const button2 = isTts ? ttsDownload : asrDownload;
+    const button3 = isTts ? ttsDownload : asrDownload;
     const setPending = (value) => {
       if (isTts) ttsDownloadPending = value;
       else asrDownloadPending = value;
@@ -5604,11 +5853,11 @@ function infinityPage(shell2, pluginName = "") {
         }
       });
     }
-    button2.addEventListener("click", async () => {
-      if (button2.disabled || !currentQQ) return;
+    button3.addEventListener("click", async () => {
+      if (button3.disabled || !currentQQ) return;
       const mine = requestId;
       setPending(true);
-      button2.disabled = true;
+      button3.disabled = true;
       try {
         const source = await chooseASRSource(isTts ? "TTS" : "ASR", currentQQ[kind].install?.source);
         if (!source || mine !== requestId || root.hidden) return;
@@ -5946,28 +6195,28 @@ function infinityPage(shell2, pluginName = "") {
   };
 }
 
-// src/web/client/plugin-page-bridge.ts
+// maintenance/plugin-release-0547-20261125/source/core/src/web/client/plugin-page-bridge.ts
 function pluginPageBridge(options) {
   let busy = false;
   return (event) => {
     if (!options.active() || event.source !== options.frame.contentWindow) return;
-    const request = event.data;
-    if (!request || typeof request !== "object") return;
-    if (request.type === "telyincore:page:overview") {
+    const request2 = event.data;
+    if (!request2 || typeof request2 !== "object") return;
+    if (request2.type === "telyincore:page:overview") {
       location.hash = "#/infinity";
       return;
     }
-    if (request.type !== "telyincore:page:request") return;
-    const state = options.current();
-    if (!state || typeof request.id !== "string" || !/^[0-9]{1,12}$/.test(request.id)) return;
+    if (request2.type !== "telyincore:page:request") return;
+    const state3 = options.current();
+    if (!state3 || typeof request2.id !== "string" || !/^[0-9]{1,12}$/.test(request2.id)) return;
     const frame = options.frame.contentWindow;
     const epoch = options.epoch();
-    const live2 = () => options.active() && options.current() === state && options.epoch() === epoch && options.frame.contentWindow === frame;
+    const live2 = () => options.active() && options.current() === state3 && options.epoch() === epoch && options.frame.contentWindow === frame;
     const reply = (value) => {
-      if (live2()) frame?.postMessage({ type: "telyincore:page:result", id: request.id, ...value }, "*");
+      if (live2()) frame?.postMessage({ type: "telyincore:page:result", id: request2.id, ...value }, "*");
     };
-    const rule = state.pageActions && Object.hasOwn(state.pageActions, request.action) ? state.pageActions[request.action] : null;
-    if (!rule || request.revision !== state.revision || !request.payload || typeof request.payload !== "object" || Array.isArray(request.payload) || busy) {
+    const rule = state3.pageActions && Object.hasOwn(state3.pageActions, request2.action) ? state3.pageActions[request2.action] : null;
+    if (!rule || request2.revision !== state3.revision || !request2.payload || typeof request2.payload !== "object" || Array.isArray(request2.payload) || busy) {
       reply({ ok: false, message: "页面请求无效、配置已变化或已有操作进行中；未执行新操作。" });
       return;
     }
@@ -5983,9 +6232,9 @@ function pluginPageBridge(options) {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            action: request.action,
-            payload: request.payload,
-            revision: state.revision,
+            action: request2.action,
+            payload: request2.payload,
+            revision: state3.revision,
             confirmed: rule.mutates
           })
         });
@@ -6001,27 +6250,27 @@ function pluginPageBridge(options) {
   };
 }
 
-// src/web/client/page-load.ts
+// maintenance/plugin-release-0547-20261125/source/core/src/web/client/page-load.ts
 function pageLoad(root, label, retry) {
   const note = document.createElement("p");
   note.className = "infinity-hint page-load-status";
   note.hidden = true;
   let hasContent = false;
   note.setAttribute("role", "status");
-  const button2 = document.createElement("button");
-  button2.type = "button";
-  button2.className = "infinity-text-link";
-  coreSetUIText(button2, "textContent", corePhrase("重试"));
-  button2.hidden = true;
-  note.append(button2);
+  const button3 = document.createElement("button");
+  button3.type = "button";
+  button3.className = "infinity-text-link";
+  coreSetUIText(button3, "textContent", corePhrase("重试"));
+  button3.hidden = true;
+  note.append(button3);
   root.append(note);
   const show = (text2, failed) => {
     note.textContent = text2;
-    button2.hidden = !failed;
-    note.append(button2);
+    button3.hidden = !failed;
+    note.append(button3);
     note.hidden = false;
   };
-  button2.addEventListener("click", retry);
+  button3.addEventListener("click", retry);
   return {
     start() {
       if (!hasContent) show(`正在读取${label}…`, false);
@@ -6036,12 +6285,12 @@ function pageLoad(root, label, retry) {
   };
 }
 
-// src/web/client/plugin-config-page.ts
+// maintenance/plugin-release-0547-20261125/source/core/src/web/client/plugin-config-page.ts
 function text(tag, className, value = "") {
-  const node5 = document.createElement(tag);
-  node5.className = className;
-  node5.textContent = value;
-  return node5;
+  const node6 = document.createElement(tag);
+  node6.className = className;
+  node6.textContent = value;
+  return node6;
 }
 function pluginConfigPage(shell2, name) {
   const root = text("section", "page-infinity page-world");
@@ -6068,17 +6317,23 @@ function pluginConfigPage(shell2, name) {
   reload.type = "button";
   const status = text("p", "infinity-hint");
   const url = "/infinity/plugin-config/" + encodeURIComponent(name);
-  let state = null;
+  let state3 = null;
   let busy = false;
   let generation = 0;
   let dirty = false;
   let editVersion = 0;
   let unprotect;
   let customOpened = false;
+  let integrated = false;
   let tabEdits = 0;
   let values = [];
   const draw = (answer) => {
-    state = answer;
+    integrated = false;
+    tabs.hidden = false;
+    reload.hidden = false;
+    status.hidden = false;
+    custom.style.height = "";
+    state3 = answer;
     dirty = false;
     values = [];
     form.replaceChildren();
@@ -6165,6 +6420,7 @@ function pluginConfigPage(shell2, name) {
         tab.type = "button";
         tab.setAttribute("aria-selected", String(!isCustom));
         tab.addEventListener("click", () => {
+          if (integrated) return;
           tabEdits++;
           writePluginTab(name, isCustom ? 1 : 0);
           if (isCustom) customOpened = true;
@@ -6173,16 +6429,16 @@ function pluginConfigPage(shell2, name) {
           save.hidden = isCustom;
           for (const item of tabs.children) item.setAttribute("aria-selected", "false");
           tab.setAttribute("aria-selected", "true");
-          if (isCustom && state) {
-            const { page: _, ...publicState } = state;
-            custom.contentWindow?.postMessage({ type: "telyincore:config:state", config: publicState, displayCache: displayCacheCapability, active: true }, "*");
+          if (isCustom && state3) {
+            const { page: _, ...publicState } = state3;
+            custom.contentWindow?.postMessage({ type: "telyincore:config:state", config: publicState, toolCatalog: true, displayCache: displayCacheCapability, active: true }, "*");
           }
         });
         tabs.append(tab);
       }
       const tabVersion = tabEdits;
       void readyPluginDisplay().then(() => {
-        if (!root.hidden && !dirty && state === answer && tabVersion === tabEdits && readPluginTab(name) === 1)
+        if (!integrated && !root.hidden && !dirty && state3 === answer && tabVersion === tabEdits && readPluginTab(name) === 1)
           tabs.children[1].click();
       });
     }
@@ -6228,12 +6484,12 @@ function pluginConfigPage(shell2, name) {
       if (!response.ok) throw new Error(answer.said || "保存失败");
       if (mine !== generation || root.hidden) return;
       if (edits !== editVersion) {
-        state = answer.config;
+        state3 = answer.config;
         coreSetUIText(status, "textContent", corePhrase("本次保存已完成，后续修改仍未保存。"));
       } else {
         if (custom.hidden) draw(answer.config);
         else {
-          state = answer.config;
+          state3 = answer.config;
           dirty = false;
         }
         status.textContent = answer.message;
@@ -6242,18 +6498,18 @@ function pluginConfigPage(shell2, name) {
     } finally {
       busy = false;
       reload.disabled = false;
-      save.disabled = !state?.fields.length;
+      save.disabled = !state3?.fields.length;
     }
   };
   save.addEventListener("click", () => {
-    if (!state || busy) return;
+    if (!state3 || busy) return;
     try {
       const changes = values.map((get2) => get2()).filter((one) => one !== null);
       if (!changes.length) {
         coreSetUIText(status, "textContent", corePhrase("没有需要保存的修改"));
         return;
       }
-      void persist(changes, state.revision).catch((error) => {
+      void persist(changes, state3.revision).catch((error) => {
         status.textContent = String(error);
       });
     } catch (error) {
@@ -6270,7 +6526,7 @@ function pluginConfigPage(shell2, name) {
   const operatorBridge = pluginPageBridge({
     name,
     frame: custom,
-    current: () => state,
+    current: () => state3,
     active: () => !root.hidden && !custom.hidden,
     epoch: () => generation
   });
@@ -6283,23 +6539,51 @@ function pluginConfigPage(shell2, name) {
   const bridge = (event) => {
     displayBridge(event);
     operatorBridge(event);
-    if (event.source !== custom.contentWindow || !state || root.hidden) return;
-    const request = event.data;
-    if (!request || typeof request !== "object") return;
+    if (event.source !== custom.contentWindow || !state3 || root.hidden) return;
+    const request2 = event.data;
+    if (!request2 || typeof request2 !== "object") return;
     const reply = (payload) => custom.contentWindow?.postMessage(payload, "*");
-    if (request.type === "telyincore:config:get") {
-      const { page: _, ...publicState } = state;
-      reply({ type: "telyincore:config:state", config: publicState, displayCache: displayCacheCapability, active: !custom.hidden });
+    if (request2.type === "telyincore:config:layout" && request2.mode === "integrated" && state3.page) {
+      integrated = true;
+      customOpened = true;
+      tabs.hidden = form.hidden = save.hidden = reload.hidden = status.hidden = true;
+      custom.hidden = false;
+      custom.style.height = "max(620px, calc(100dvh - 250px))";
+      const { page: _, ...publicState } = state3;
+      reply({
+        type: "telyincore:config:state",
+        config: publicState,
+        active: true,
+        toolCatalog: true,
+        displayCache: displayCacheCapability
+      });
     }
-    if (request.type === "telyincore:config:save" && Array.isArray(request.changes)) {
-      void persist(request.changes, request.revision).then(() => {
+    if (request2.type === "telyincore:config:dirty" && integrated && typeof request2.dirty === "boolean") {
+      dirty = request2.dirty;
+      editVersion++;
+    }
+    if (request2.type === "telyincore:tools:get" && !custom.hidden && Number.isSafeInteger(request2.id)) {
+      const epoch = generation;
+      const send = (catalog) => {
+        if (epoch === generation && !root.hidden && !custom.hidden)
+          reply({ type: "telyincore:tools:result", id: request2.id, catalog });
+      };
+      void getStatusJson("/infinity/plugin-tools/" + encodeURIComponent(name)).then(send, () => send(null));
+      return;
+    }
+    if (request2.type === "telyincore:config:get") {
+      const { page: _, ...publicState } = state3;
+      reply({ type: "telyincore:config:state", config: publicState, toolCatalog: true, displayCache: displayCacheCapability, active: !custom.hidden });
+    }
+    if (request2.type === "telyincore:config:save" && !custom.hidden && Array.isArray(request2.changes)) {
+      void persist(request2.changes, request2.revision).then(() => {
         reply({ type: "telyincore:config:saved", ok: true });
-      }).catch(() => {
-        reply({ type: "telyincore:config:saved", ok: false });
+      }).catch((error) => {
+        reply({ type: "telyincore:config:saved", ok: false, message: String(error) });
       });
     }
   };
-  root.append(title, info, tabs, message, form, custom, save, reload, status);
+  root.append(title, pluginUpdateNotice(name), info, tabs, message, form, custom, save, reload, status);
   shell2.content.replaceChildren(root);
   return { root, show() {
     root.hidden = false;
@@ -6315,7 +6599,7 @@ function pluginConfigPage(shell2, name) {
   } };
 }
 
-// src/web/client/plugin-ui-registry.ts
+// maintenance/plugin-release-0547-20261125/source/core/src/web/client/plugin-ui-registry.ts
 var adapters = /* @__PURE__ */ new Map();
 function registerPluginUI(name, adapter) {
   if (adapters.has(name)) throw new Error(`插件页面重复注册：${name}`);
@@ -6340,18 +6624,18 @@ function pluginIcon(plugin) {
   return plugin.icon && Object.hasOwn(ICONS, plugin.icon) ? plugin.icon : adapters.get(plugin.name)?.icon ?? "puzzle";
 }
 var snapshots = /* @__PURE__ */ new Map();
-var pending2 = /* @__PURE__ */ new Set();
+var pending4 = /* @__PURE__ */ new Set();
 async function refreshPluginHealth(plugins) {
   await Promise.all(plugins.map(async (plugin) => {
     const provider = adapters.get(plugin.name)?.health;
-    if (!provider || pending2.has(plugin.name)) return;
-    pending2.add(plugin.name);
+    if (!provider || pending4.has(plugin.name)) return;
+    pending4.add(plugin.name);
     try {
       snapshots.set(plugin.name, await getStatusJson(provider.endpoint, 5e3));
     } catch {
       snapshots.delete(plugin.name);
     } finally {
-      pending2.delete(plugin.name);
+      pending4.delete(plugin.name);
     }
   }));
 }
@@ -6361,7 +6645,7 @@ function pluginSignals(plugin) {
   return provider && value ? provider.signals(value, plugin) : lifecycle(plugin);
 }
 
-// src/web/client/engine.ts
+// maintenance/plugin-release-0547-20261125/source/core/src/web/client/engine.ts
 async function ask(url, init) {
   try {
     const resp = await pageFetch(url, init);
@@ -6428,11 +6712,11 @@ async function chatgptCommand(name, action) {
 }
 async function saveEngineDraft(asked, typed) {
   const target = { ...asked.profile };
-  const request = { ...asked, action: "save", profile: target };
+  const request2 = { ...asked, action: "save", profile: target };
   const wantsSecret = typed !== "" && target.auth !== "chatgpt" && !/^https?:\/\/(127\.0\.0\.1|localhost|\[::1\])(?::|\/|$)/i.test(
     String(target.base_url).trim()
   );
-  const profile = await engineCommand(request);
+  const profile = await engineCommand(request2);
   if (!profile.ok) return { profile };
   const saved = profile.data?.profile, binding = profile.data?.secret_binding;
   if (!saved || saved.name !== target.name || saved.kind !== target.kind || (saved.auth || "api_key") !== (target.auth || "api_key") || saved.base_url !== String(target.base_url).trim() || !binding || binding.profile_name !== saved.name || binding.secret !== saved.secret || typeof binding.revision !== "string" || binding.revision.trim() === "" || wantsSecret && (typeof saved.secret !== "string" || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(saved.secret))) {
@@ -6448,16 +6732,16 @@ async function saveEngineDraft(asked, typed) {
   return { profile, secret };
 }
 
-// src/web/client/engine-controls.ts
+// maintenance/plugin-release-0547-20261125/source/core/src/web/client/engine-controls.ts
 var selects = /* @__PURE__ */ new Map();
 var menus = /* @__PURE__ */ new Map();
 var serial = 0;
 var listening = false;
 function node3(tag, cls, text2 = "") {
-  const el2 = document.createElement(tag);
-  el2.className = cls;
-  el2.textContent = text2;
-  return el2;
+  const el3 = document.createElement(tag);
+  el3.className = cls;
+  el3.textContent = text2;
+  return el3;
 }
 function remember(box, close2) {
   menus.set(box, close2);
@@ -6638,7 +6922,7 @@ function selectControl(select, label) {
   return box;
 }
 
-// src/web/client/chatgpt-auth.ts
+// maintenance/plugin-release-0547-20261125/source/core/src/web/client/chatgpt-auth.ts
 function chatgptAuth(readName, backendReady = true) {
   const root = document.createElement("div");
   root.className = "engine-chatgpt";
@@ -6660,12 +6944,12 @@ function chatgptAuth(readName, backendReady = true) {
   const actions = document.createElement("div");
   actions.className = "engine-chatgpt-actions";
   const make = (text2, cls = "btn ghost") => {
-    const node5 = document.createElement("button");
-    node5.type = "button";
-    node5.className = cls;
-    node5.textContent = text2;
-    actions.append(node5);
-    return node5;
+    const node6 = document.createElement("button");
+    node6.type = "button";
+    node6.className = cls;
+    node6.textContent = text2;
+    actions.append(node6);
+    return node6;
   };
   const login = make("Continue with ChatGPT", "btn");
   const refresh2 = make("刷新状态");
@@ -6685,22 +6969,22 @@ function chatgptAuth(readName, backendReady = true) {
     authWindow = null;
     authName = "";
   };
-  let busy = false, state = null;
+  let busy = false, state3 = null;
   const clear = () => {
     if (timer !== void 0) clearTimeout(timer);
     timer = void 0;
   };
-  const paint2 = () => {
-    coreSetUIText(badge, "textContent", state?.pending ? corePhrase("等待授权") : state?.connected ? corePhrase("已登录") : corePhrase("未登录"));
-    badge.dataset.state = state?.connected ? "ok" : "";
-    const message = state?.connected && state.message.startsWith("尚未登录") ? "已从本机载入登录" : state?.message;
-    coreSetUIText(status, "textContent", !backendReady ? corePhrase("后端仍是旧版本，请重启 Core 后刷新此页。") : state ? [state.account, message].filter(Boolean).join(" · ") : corePhrase("正在读取登录状态…"));
-    coreSetUIText(security, "textContent", state ? [corePhrase("凭证仅保存在本机 · "), state.storage, corePhrase(" · 不读取 Codex 或浏览器的登录文件")] : corePhrase(""));
-    login.disabled = !backendReady || busy || !!state?.pending;
+  const paint4 = () => {
+    coreSetUIText(badge, "textContent", state3?.pending ? corePhrase("等待授权") : state3?.connected ? corePhrase("已登录") : corePhrase("未登录"));
+    badge.dataset.state = state3?.connected ? "ok" : "";
+    const message = state3?.connected && state3.message.startsWith("尚未登录") ? "已从本机载入登录" : state3?.message;
+    coreSetUIText(status, "textContent", !backendReady ? corePhrase("后端仍是旧版本，请重启 Core 后刷新此页。") : state3 ? [state3.account, message].filter(Boolean).join(" · ") : corePhrase("正在读取登录状态…"));
+    coreSetUIText(security, "textContent", state3 ? [corePhrase("凭证仅保存在本机 · "), state3.storage, corePhrase(" · 不读取 Codex 或浏览器的登录文件")] : corePhrase(""));
+    login.disabled = !backendReady || busy || !!state3?.pending;
     refresh2.disabled = !backendReady || busy;
-    cancel.hidden = !state?.pending;
+    cancel.hidden = !state3?.pending;
     cancel.disabled = busy;
-    logout.hidden = !state?.connected;
+    logout.hidden = !state3?.connected;
     logout.disabled = busy;
   };
   const run = async (action, popup) => {
@@ -6710,7 +6994,7 @@ function chatgptAuth(readName, backendReady = true) {
     }
     clear();
     busy = true;
-    paint2();
+    paint4();
     const current2 = ++epoch, name = readName();
     try {
       const got = await chatgptCommand(name, action);
@@ -6725,9 +7009,9 @@ function chatgptAuth(readName, backendReady = true) {
       }
       const next = { ...got.data, pending: got.data.pending || !!got.data.login_in_progress };
       const completed = next.login_completed === true;
-      state = next;
-      paint2();
-      if (authWindow && authName === name && !state.pending && (completed || action === "cancel" || action === "logout")) {
+      state3 = next;
+      paint4();
+      if (authWindow && authName === name && !state3.pending && (completed || action === "cancel" || action === "logout")) {
         const returned = completed && action !== "cancel" && action !== "logout";
         closeAuth();
         if (returned) {
@@ -6738,8 +7022,8 @@ function chatgptAuth(readName, backendReady = true) {
           coreSetUIText(status, "textContent", corePhrase("已登录，可以测试连通。"));
         }
       }
-      if (action === "start" && state.authorization_url) {
-        const url = new URL(state.authorization_url);
+      if (action === "start" && state3.authorization_url) {
+        const url = new URL(state3.authorization_url);
         if (url.origin !== "https://auth.openai.com" || url.pathname !== "/api/accounts/authorize") {
           popup?.close();
           coreSetUIText(status, "textContent", corePhrase("授权地址校验失败，未打开"));
@@ -6753,10 +7037,10 @@ function chatgptAuth(readName, backendReady = true) {
         } else {
           coreSetUIText(status, "textContent", corePhrase("浏览器阻止了授权窗口，请允许弹出窗口后重新登录。"));
           await chatgptCommand(name, "cancel");
-          state.pending = false;
+          state3.pending = false;
         }
       }
-      if (state.pending) timer = setTimeout(() => {
+      if (state3.pending) timer = setTimeout(() => {
         void run("status");
       }, 2e3);
     } catch {
@@ -6767,7 +7051,7 @@ function chatgptAuth(readName, backendReady = true) {
     } finally {
       if (!stopped && current2 === epoch) {
         busy = false;
-        login.disabled = !!state?.pending;
+        login.disabled = !!state3?.pending;
         refresh2.disabled = false;
         cancel.disabled = false;
         logout.disabled = false;
@@ -6803,7 +7087,7 @@ function chatgptAuth(readName, backendReady = true) {
       confirming = false;
     });
   });
-  paint2();
+  paint4();
   return {
     root,
     refresh: () => {
@@ -6818,7 +7102,7 @@ function chatgptAuth(readName, backendReady = true) {
   };
 }
 
-// src/web/client/engine-providers.ts
+// maintenance/plugin-release-0547-20261125/source/core/src/web/client/engine-providers.ts
 function isPlanProvider(preset) {
   return preset.auth === "chatgpt" || /\/api\/coding\/paas\/v4\/?$/.test(preset.base_url);
 }
@@ -6837,7 +7121,7 @@ function nextProviderName(base, names) {
   return name;
 }
 
-// src/web/client/engine-page.ts
+// maintenance/plugin-release-0547-20261125/source/core/src/web/client/engine-page.ts
 function readDrafts() {
   try {
     const stored = JSON.parse(readDisplaySession("engine-drafts") ?? "{}");
@@ -6851,7 +7135,7 @@ function hasEngineDraft() {
   return !!drafts.fresh || Object.keys(drafts.profiles).length > 0;
 }
 var SECTIONS = ["API 设置", "模型设置", "高级"];
-function el(tag, cls, text2) {
+function el2(tag, cls, text2) {
   const one = document.createElement(tag);
   if (cls !== void 0) one.className = cls;
   if (text2 !== void 0) {
@@ -6869,8 +7153,8 @@ function button(label, cls = "btn") {
 }
 var fieldId = 0;
 function row(label, cell, hint, required = false) {
-  const box = el("div", "engine-row");
-  const tag = el("label", "engine-label", label);
+  const box = el2("div", "engine-row");
+  const tag = el2("label", "engine-label", label);
   const control = cell.tagName === "DIV" ? cell.querySelector("input") : cell;
   if (control) {
     control.id = `engine-field-${++fieldId}`;
@@ -6878,12 +7162,12 @@ function row(label, cell, hint, required = false) {
     tag.setAttribute("for", cell.tagName === "SELECT" ? `${control.id}-button` : control.id);
   }
   if (required) {
-    const mark = el("span", "engine-required", "*");
+    const mark = el2("span", "engine-required", "*");
     tag.append(mark);
     cell.requiredMark = mark;
   }
   box.append(tag, cell.tagName === "SELECT" ? selectControl(cell, label) : cell);
-  box.append(el("span", "engine-hint", hint ?? ""));
+  box.append(el2("span", "engine-hint", hint ?? ""));
   return box;
 }
 function input(kind) {
@@ -6906,12 +7190,12 @@ function pick(choices) {
   return one;
 }
 function enginePage(shell2) {
-  const column = el("div", "page-engine");
-  const left = el("div", "engine-left");
-  const right = el("div", "engine-right");
-  const notice = el("p", "engine-notice");
+  const column = el2("div", "page-engine");
+  const left = el2("div", "engine-left");
+  const right = el2("div", "engine-right");
+  const notice = el2("p", "engine-notice");
   notice.setAttribute("role", "status");
-  const title = el("h1", "page-title", corePhrase("模型 · MODEL"));
+  const title = el2("h1", "page-title", corePhrase("模型 · MODEL"));
   column.append(title, left, right, notice);
   shell2.content.replaceChildren(column);
   let report = null;
@@ -7078,9 +7362,9 @@ function enginePage(shell2) {
   const isLocalService = (url) => /^https?:\/\/(127\.0\.0\.1|localhost|\[::1\])(?::|\/|$)/i.test(url.trim());
   function drawLeft(one) {
     left.replaceChildren();
-    const list = el("div", "engine-cards");
+    const list = el2("div", "engine-cards");
     for (const rowOne of one.data?.profiles ?? []) {
-      const cardEl = el("div", "engine-card");
+      const cardEl = el2("div", "engine-card");
       cardEl.setAttribute("role", "button");
       cardEl.setAttribute("tabindex", "0");
       coreSetUIAttribute(cardEl, "aria-label", [corePhrase("编辑 "), rowOne.name, corePhrase("")]);
@@ -7091,18 +7375,18 @@ function enginePage(shell2) {
         cardEl.classList.add("picked");
       }
       cardEl.title = rowOne.name;
-      cardEl.append(el("strong", "engine-card-name", rowOne.display_name || rowOne.name));
-      const pills = el("div", "engine-pills");
+      cardEl.append(el2("strong", "engine-card-name", rowOne.display_name || rowOne.name));
+      const pills = el2("div", "engine-pills");
       const shownModel = (one.data?.profiles ?? []).find((p) => p.name === rowOne.name)?.model_name || rowOne.model;
       for (const text2 of [rowOne.kind, shownModel || "（没选模型）", rowOne.base_url]) {
-        pills.append(el("span", "pill", text2));
+        pills.append(el2("span", "pill", text2));
       }
       cardEl.append(pills);
-      const marks = el("div", "engine-card-marks");
-      if (rowOne.name === one.data?.current) marks.append(el("span", "dot-mark", corePhrase("● 当前")));
+      const marks = el2("div", "engine-card-marks");
+      if (rowOne.name === one.data?.current) marks.append(el2("span", "dot-mark", corePhrase("● 当前")));
       const hasModel = one.data?.availability?.[rowOne.name];
       const missingKey = rowOne.auth !== "chatgpt" && !isLocalService(rowOne.base_url) && one.data?.secret?.[rowOne.secret] === "missing";
-      marks.append(el(
+      marks.append(el2(
         "span",
         hasModel && !missingKey ? "ok-mark" : "warn-mark",
         missingKey ? "待配置 API 密钥" : hasModel ? "模型已配置" : "还差一个模型"
@@ -7128,23 +7412,23 @@ function enginePage(shell2) {
     const make = button("+ 新建实例", "btn ghost");
     list.append(make);
     if (fresh || readDrafts().fresh) {
-      const draft = el("div", fresh ? "engine-card draft picked" : "engine-card draft");
+      const draft = el2("div", fresh ? "engine-card draft picked" : "engine-card draft");
       if (fresh) draft.setAttribute("aria-current", "true");
       const planned = readDrafts().fresh?.values?.displayName || spareName();
       const maybe = presetOf(planned);
-      draft.append(el("strong", "engine-card-name", planned || "未命名实例"));
-      const pills = el("div", "engine-pills");
+      draft.append(el2("strong", "engine-card-name", planned || "未命名实例"));
+      const pills = el2("div", "engine-pills");
       for (const text2 of [
         maybe?.kind || "kind",
         maybe?.model || "model —",
         maybe?.base_url || "baseUrl —"
       ]) {
-        pills.append(el("span", "pill", text2));
+        pills.append(el2("span", "pill", text2));
       }
       draft.append(pills);
-      const draftFoot = el("div", "engine-draft-foot");
-      draftFoot.append(el("span", "engine-draftmark", corePhrase("✎ 草稿")));
-      const giveUp = el("button", "engine-card-drop", "🗑");
+      const draftFoot = el2("div", "engine-draft-foot");
+      draftFoot.append(el2("span", "engine-draftmark", corePhrase("✎ 草稿")));
+      const giveUp = el2("button", "engine-card-drop", "🗑");
       coreSetUIText(giveUp, "title", corePhrase("丢掉这张草稿"));
       giveUp.addEventListener("click", (ev) => {
         ev.stopPropagation();
@@ -7198,11 +7482,11 @@ function enginePage(shell2) {
     }
     rememberedEffort = profile?.reasoning_effort ?? "";
     let modelsEpoch = 0;
-    const colLeft = el("div", "engine-col engine-connection");
-    const colRight = el("div", "engine-col");
+    const colLeft = el2("div", "engine-col engine-connection");
+    const colRight = el2("div", "engine-col");
     right.replaceChildren(colLeft, colRight);
-    const basic = el("div", "engine-section");
-    basic.append(el("h3", "engine-sub", corePhrase("基本信息")));
+    const basic = el2("div", "engine-section");
+    basic.append(el2("h3", "engine-sub", corePhrase("基本信息")));
     const preset = profile ? (one.data?.presets ?? []).find((p) => p.base_url === profile.base_url && p.kind === profile.kind && (p.auth ?? "api_key") === (profile.auth ?? "api_key")) : presetOf(spareName());
     const authIn = pick(["api_key", "chatgpt"]);
     coreSetUIText(authIn.options[0], "textContent", corePhrase("API 密钥认证"));
@@ -7248,8 +7532,8 @@ function enginePage(shell2) {
     basic.append(row("协议", kindIn));
     colLeft.append(basic);
     const kind = kindIn.value;
-    const flow = el("div", "engine-section engine-api");
-    flow.append(el("h3", "engine-sub", SECTIONS[0]));
+    const flow = el2("div", "engine-section engine-api");
+    flow.append(el2("h3", "engine-sub", SECTIONS[0]));
     const urlIn = input("url");
     urlIn.value = profile?.base_url || preset?.base_url || String(one.data?.keys?.base_url?.value ?? "");
     cells.base_url = urlIn;
@@ -7308,9 +7592,9 @@ function enginePage(shell2) {
     urlIn.addEventListener("input", applyKeyRow);
     const keyRow = row("API 密钥", secretIn, void 0, true);
     flow.append(keyRow);
-    const authSlot = el("div", "engine-chatgpt-slot");
+    const authSlot = el2("div", "engine-chatgpt-slot");
     flow.append(authSlot);
-    const planNote = el("p", "engine-chatgpt-note");
+    const planNote = el2("p", "engine-chatgpt-note");
     flow.append(planNote);
     let oauthIdentity = "";
     const syncDraft = () => {
@@ -7321,7 +7605,7 @@ function enginePage(shell2) {
       if (title2) title2.textContent = instanceNameIn.value.trim() || nameIn.value.trim() || "未命名实例";
       if (pills) {
         const model = cells.model?.value || "（没选模型）";
-        pills.replaceChildren(...[kindIn.value, model, urlIn.value || "（未填地址）"].map((value) => el("span", "pill", value)));
+        pills.replaceChildren(...[kindIn.value, model, urlIn.value || "（未填地址）"].map((value) => el2("span", "pill", value)));
       }
     };
     const rebindSecret = () => {
@@ -7431,7 +7715,7 @@ function enginePage(shell2) {
     }
     applyKeyRow();
     const tester = button("测试连通", "btn ghost");
-    const probeOut = el("p", "engine-hint", "");
+    const probeOut = el2("p", "engine-hint", "");
     probeOut.dataset.state = "";
     const admitProbeTarget = () => {
       if (isSubscription() && profile && (profile.auth !== "chatgpt" || profile.kind !== kindIn.value || profile.base_url !== urlIn.value.trim())) {
@@ -7479,8 +7763,8 @@ function enginePage(shell2) {
     });
     flow.append(tester, probeOut);
     colLeft.append(flow);
-    const gen = el("div", "engine-section");
-    gen.append(el("h3", "engine-sub", SECTIONS[1]));
+    const gen = el2("div", "engine-section");
+    gen.append(el2("h3", "engine-sub", SECTIONS[1]));
     for (const [field, label] of FIELD_ROWS) {
       const supported = accepts(kind, field, urlIn.value);
       const hint = void 0;
@@ -7513,11 +7797,11 @@ function enginePage(shell2) {
         const loadModels = () => {
           if (!admitProbeTarget()) return;
           if (grab.getAttribute("aria-busy") === "true") return;
-          const epoch = editEpoch, request = ++modelsEpoch;
+          const epoch = editEpoch, request2 = ++modelsEpoch;
           grab.setAttribute("aria-busy", "true");
           say("正在获取模型列表…");
           void probeEngine({ mode: "models", ...probeTarget() }).then((got) => {
-            if (column.hidden || request !== modelsEpoch || epoch !== editEpoch || cells.model !== modelIn) return;
+            if (column.hidden || request2 !== modelsEpoch || epoch !== editEpoch || cells.model !== modelIn) return;
             const names = got.ok && got.data?.ok ? got.data.models : null;
             if (!names || names.length === 0) {
               const why = got.data?.error ?? (got.data?.ok ? "上游没有返回可选模型" : `HTTP ${got.status}`);
@@ -7589,7 +7873,7 @@ function enginePage(shell2) {
       }
       gen.append(row(label, cell, hint));
       if (field === "max_tokens") {
-        const sees = el("button", "engine-switch");
+        const sees = el2("button", "engine-switch");
         sees.dataset.on = profile?.multimodal ? "yes" : "no";
         coreSetUIText(sees, "title", corePhrase("上游报了会自动开；也可以自己扳"));
         sees.addEventListener("click", () => {
@@ -7599,7 +7883,7 @@ function enginePage(shell2) {
         });
         cellsVision = sees;
         const visionRow = row("图片输入", sees);
-        visionHint = el("p", "engine-hint", "");
+        visionHint = el2("p", "engine-hint", "");
         visionRow.append(visionHint);
         gen.append(visionRow);
       }
@@ -7611,7 +7895,7 @@ function enginePage(shell2) {
         one2.title = WHY_NOT[field] ?? "";
       }
     }
-    const subscriptionNote = el(
+    const subscriptionNote = el2(
       "p",
       "engine-hint",
       corePhrase("温度由上游控制；输出值为本地预算。")
@@ -7692,9 +7976,9 @@ function enginePage(shell2) {
       one2?.addEventListener("input", refreshHandoffNote);
     }
     colRight.append(gen);
-    const act = el("div", "engine-section engine-actions");
+    const act = el2("div", "engine-section engine-actions");
     act.append(notice);
-    const actions = el("div", "engine-foot");
+    const actions = el2("div", "engine-foot");
     act.append(actions);
     colLeft.append(act);
     const drop = button("删除", "btn ghost");
@@ -7856,11 +8140,11 @@ function enginePage(shell2) {
   function skeleton() {
     left.replaceChildren();
     const bone = () => {
-      const col = el("div", "engine-col");
-      col.append(el("div", "engine-section"), el("div", "engine-section"));
+      const col = el2("div", "engine-col");
+      col.append(el2("div", "engine-section"), el2("div", "engine-section"));
       return col;
     };
-    right.replaceChildren(el("h2", "card-title", corePhrase("正在读…")), bone(), bone());
+    right.replaceChildren(el2("h2", "card-title", corePhrase("正在读…")), bone(), bone());
   }
   let readEpoch = 0;
   const readHint = pageLoad(column, "模型档案", () => {
@@ -7957,7 +8241,7 @@ function handoffNote(windowTokens, outTokens) {
   return ` 输入硬阈 ${hard}；软提醒 ${Math.floor(hard * SOFT_RATIO)}，余下 15% 为后续增长预留。`;
 }
 
-// src/web/client/composer-popovers.ts
+// maintenance/plugin-release-0547-20261125/source/core/src/web/client/composer-popovers.ts
 function popoverPosition(anchor, height, view2) {
   const edge = 12;
   const gap = 10;
@@ -8106,7 +8390,7 @@ function wireComposerPopovers(entries, refresh2) {
   }
 }
 
-// src/web/client/cache-view.ts
+// maintenance/plugin-release-0547-20261125/source/core/src/web/client/cache-view.ts
 var object = (value) => typeof value === "object" && value !== null ? value : {};
 var number = (value) => typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : null;
 var count = (value) => {
@@ -8235,34 +8519,34 @@ function latestCacheRead(fetcher) {
   };
 }
 
-// src/web/client/console-introduction.ts
+// maintenance/plugin-release-0547-20261125/source/core/src/web/client/console-introduction.ts
 function mountConsoleIntroduction(root, composer2) {
   const guide = document.createElement("section");
   guide.className = "console-introduction";
   guide.hidden = true;
   guide.setAttribute("aria-label", "首次见面");
   root.querySelector(".live-stream")?.before(guide);
-  const setPending = (pending3) => {
-    composer2.toggleAttribute("data-introducing", pending3);
+  const setPending = (pending5) => {
+    composer2.toggleAttribute("data-introducing", pending5);
   };
   const line = (text2) => {
-    const el2 = document.createElement("p");
-    el2.textContent = text2;
-    return el2;
+    const el3 = document.createElement("p");
+    el3.textContent = text2;
+    return el3;
   };
   async function load() {
     try {
       const response = await fetch("/console/introduction", { cache: "no-store" });
       if (response.status === 404) return;
       if (!response.ok) throw new Error();
-      const state = await response.json();
-      if (!state.pending) {
+      const state3 = await response.json();
+      if (!state3.pending) {
         guide.hidden = true;
         setPending(false);
         return;
       }
       const form = document.createElement("form");
-      const heading2 = line(String(state.bot) + " · 系统引导");
+      const heading2 = line(String(state3.bot) + " · 系统引导");
       const greeting = line("你好，初次见面！我该怎么称呼你？");
       const input2 = document.createElement("input");
       input2.name = "name";
@@ -8300,7 +8584,7 @@ function mountConsoleIntroduction(root, composer2) {
           const reply = await fetch("/console/introduction", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ bot: state.bot, name })
+            body: JSON.stringify({ bot: state3.bot, name })
           });
           const result = await reply.json();
           if (!reply.ok || result.pending !== false) {
@@ -8334,7 +8618,7 @@ function mountConsoleIntroduction(root, composer2) {
   void load();
 }
 
-// src/web/client/tool-activity.ts
+// maintenance/plugin-release-0547-20261125/source/core/src/web/client/tool-activity.ts
 function toolReceiptFailed(name, text2) {
   return name !== "handoff_note" && /^\s*\[tool failed\]/.test(text2 || "");
 }
@@ -8388,7 +8672,7 @@ function rememberToolTitles(result, titles) {
   if (knowledge && !/^(记录时间|修订来历|第\s*\d)/.test(knowledge[2])) titles.set(knowledge[1], knowledge[2]);
 }
 
-// src/web/client/history-feed.ts
+// maintenance/plugin-release-0547-20261125/source/core/src/web/client/history-feed.ts
 function mergeHistory(history, live2) {
   const result = [];
   const known = /* @__PURE__ */ new Set();
@@ -8469,7 +8753,7 @@ var HistoryFeed = class {
   }
 };
 
-// src/web/client/chat.ts
+// maintenance/plugin-release-0547-20261125/source/core/src/web/client/chat.ts
 var ME = "user";
 var OTHER = "bot";
 var A_BATCH = "batch";
@@ -8642,20 +8926,20 @@ function showTool(group) {
   caption.className = "tool-inspector-caption";
   caption.textContent = toolLabels[step.name] || "工具详情";
   identity.append(name, caption);
-  const state = document.createElement("span");
-  state.className = "tool-inspector-status" + (failed ? " has-error" : "");
-  coreSetUIText(state, "textContent", failed ? corePhrase("执行失败") : step.result ? step.call ? corePhrase("已返回") : corePhrase("仅有回执") : corePhrase("等待回执"));
+  const state3 = document.createElement("span");
+  state3.className = "tool-inspector-status" + (failed ? " has-error" : "");
+  coreSetUIText(state3, "textContent", failed ? corePhrase("执行失败") : step.result ? step.call ? corePhrase("已返回") : corePhrase("仅有回执") : corePhrase("等待回执"));
   const close2 = document.createElement("button");
   close2.className = "tool-inspector-close";
   close2.type = "button";
   coreSetUIAttribute(close2, "aria-label", corePhrase("收起工具详情"));
   close2.addEventListener("click", () => {
-    const button2 = group.selected?.element;
+    const button3 = group.selected?.element;
     group.selected = null;
     showTool(group);
-    button2?.focus();
+    button3?.focus();
   });
-  head.append(identity, state, close2);
+  head.append(identity, state3, close2);
   let parameters = step.call ? toolText(step.call) : "未记录对应调用参数。";
   if (step.call && step.call.text.trim() && step.call.text.trim() !== "{}") {
     try {
@@ -8726,8 +9010,8 @@ function appendTool(chat2, frame) {
   if (!group || chat2.children[chat2.children.length - 1] !== group.row) {
     const row2 = document.createElement("section");
     row2.className = "line tool tool-group";
-    const summary = document.createElement("div");
-    summary.className = "tool-head";
+    const summary2 = document.createElement("div");
+    summary2.className = "tool-head";
     const body = document.createElement("div");
     body.className = "tool-process";
     const inspector = document.createElement("section");
@@ -8735,8 +9019,8 @@ function appendTool(chat2, frame) {
     inspector.hidden = true;
     inspector.id = "tool-inspector-" + ++toolInspectorSerial;
     coreSetUIAttribute(inspector, "aria-label", corePhrase("工具用法与回执"));
-    row2.append(summary, body, inspector);
-    group = { row: row2, summary, body, inspector, selected: null, view: "result", steps: [] };
+    row2.append(summary2, body, inspector);
+    group = { row: row2, summary: summary2, body, inspector, selected: null, view: "result", steps: [] };
     toolGroups.set(chat2, group);
     chat2.append(row2);
   }
@@ -8745,8 +9029,8 @@ function appendTool(chat2, frame) {
   const stage = frame.stage === "result" ? "result" : "call";
   let step = ref ? group.steps.find((s) => s.ref === ref && s.name === name) : void 0;
   if (!ref && stage === "result") {
-    const pending3 = group.steps.filter((s) => s.name === name && s.call && !s.result && !s.ref);
-    if (pending3.length === 1) step = pending3[0];
+    const pending5 = group.steps.filter((s) => s.name === name && s.call && !s.result && !s.ref);
+    if (pending5.length === 1) step = pending5[0];
   }
   if (!step) {
     const element3 = document.createElement("button");
@@ -8801,17 +9085,17 @@ function appendTool(chat2, frame) {
   coreSetUIText(count4, "textContent", [[[calls, corePhrase(" 次调用 · ")], results], corePhrase(" 条回执")]);
   group.summary.append(title, count4);
   if (failures) {
-    const state = document.createElement("span");
-    state.className = "tool-group-status has-error";
-    coreSetUIText(state, "textContent", [failures, corePhrase(" 项失败")]);
-    group.summary.append(state);
+    const state3 = document.createElement("span");
+    state3.className = "tool-group-status has-error";
+    coreSetUIText(state3, "textContent", [failures, corePhrase(" 项失败")]);
+    group.summary.append(state3);
   }
   if (group.selected === step) showTool(group);
   return group.row;
 }
-function stickToTheBottom(el2) {
-  if (!el2) return;
-  for (let one = el2; one; one = one.parentElement) {
+function stickToTheBottom(el3) {
+  if (!el3) return;
+  for (let one = el3; one; one = one.parentElement) {
     if (one.scrollHeight > one.clientHeight + 1) {
       one.scrollTop = one.scrollHeight;
     }
@@ -8829,15 +9113,15 @@ function appendFrame(chat2, frame, theirs = NEUTRAL) {
   if (frame.kind === "system-notice") {
     const row2 = document.createElement("details");
     row2.className = "console-system-notice";
-    const summary = document.createElement("summary");
+    const summary2 = document.createElement("summary");
     const body = document.createElement("div");
     body.className = "console-system-detail";
     const text2 = frame.text.replace(/^\[system\]\s*/i, "");
     const heading2 = text2.split(/[。\n]/)[0];
-    coreSetUIText(summary, "textContent", [corePhrase("系统 · "), heading2.length > 48 ? [heading2.slice(0, 48), corePhrase("…")] : heading2]);
-    summary.title = frame.at || "展开系统事件详情";
+    coreSetUIText(summary2, "textContent", [corePhrase("系统 · "), heading2.length > 48 ? [heading2.slice(0, 48), corePhrase("…")] : heading2]);
+    summary2.title = frame.at || "展开系统事件详情";
     body.textContent = text2;
-    row2.append(summary, body);
+    row2.append(summary2, body);
     const handoff = /^交接完/.test(text2) ? handoffGroups.get(chat2) : void 0;
     if (handoff && chat2.contains(handoff.row)) {
       handoff.row.prepend(row2);
@@ -8905,7 +9189,7 @@ function mountChat(host) {
   host.replaceChildren(column);
   let theirs = speaker();
   let watcher = null;
-  const pending3 = [];
+  const pending5 = [];
   let intentSequence = 0;
   const view2 = {
     root: column,
@@ -8919,9 +9203,9 @@ function mountChat(host) {
     },
     append: (wire2) => {
       const frame = asFrame(wire2);
-      if (frame.kind === A_BATCH && pending3.length > 0) {
+      if (frame.kind === A_BATCH && pending5.length > 0) {
         const head = appendFrame(stream, frame, theirs);
-        stream.insertBefore(head, pending3[0].row);
+        stream.insertBefore(head, pending5[0].row);
         head.style.display = "";
         const batch = visibleBatches.get(stream);
         if (batch) batch.content = true;
@@ -8958,7 +9242,7 @@ function mountChat(host) {
     mine: (text2, images) => {
       const row2 = appendFrame(stream, { kind: A_MESSAGE, who: ME, at: null, text: text2 }, theirs);
       const id = String(++intentSequence);
-      pending3.push({ id, text: text2, row: row2 });
+      pending5.push({ id, text: text2, row: row2 });
       row2.setAttribute("data-delivery", "pending");
       const stamp = row2.querySelector(".msg-at");
       if (stamp) coreSetUIText(stamp, "textContent", corePhrase("发送中，尚未确认"));
@@ -8977,8 +9261,8 @@ function mountChat(host) {
       return id;
     },
     clearPending: (id) => {
-      const index = pending3.findIndex((item) => item.id === id);
-      if (index >= 0) pending3.splice(index, 1)[0].row.remove();
+      const index = pending5.findIndex((item) => item.id === id);
+      if (index >= 0) pending5.splice(index, 1)[0].row.remove();
     },
     note: (text2, action) => appendNote(stream, text2, action)
   };
@@ -8986,7 +9270,7 @@ function mountChat(host) {
   const feed = new HistoryFeed(directAppend, (frames) => {
     stream.replaceChildren();
     for (const frame of frames) directAppend(JSON.stringify(frame));
-    for (const item of pending3) stream.append(item.row);
+    for (const item of pending5) stream.append(item.row);
   });
   view2.append = (wire2) => feed.receive(wire2);
   view2.beginHistory = () => feed.begin();
@@ -8995,7 +9279,7 @@ function mountChat(host) {
   return view2;
 }
 
-// src/web/client/live.ts
+// maintenance/plugin-release-0547-20261125/source/core/src/web/client/live.ts
 var EXPORT_LABEL = "导出诊断";
 var SEND_LABEL = "▶";
 var HANDOFF_LABEL = "交接";
@@ -9271,9 +9555,9 @@ function composer(onSend, onNote, onStop, canSend = () => true) {
     const diagnostic = document.createElement("details");
     diagnostic.className = "cache-diagnostics";
     diagnostic.open = cacheDiagnosticOpen;
-    const summary = document.createElement("summary");
-    coreSetUIText(summary, "textContent", corePhrase("诊断"));
-    diagnostic.append(summary);
+    const summary2 = document.createElement("summary");
+    coreSetUIText(summary2, "textContent", corePhrase("诊断"));
+    diagnostic.append(summary2);
     for (const line of cache.diagnostics) {
       diagnostic.append(usageLine(line, "usage-note"));
     }
@@ -9561,37 +9845,37 @@ function chatPage(shell2) {
   let hasActiveModel = null;
   let activityRevision = 0;
   const readActivity = (event) => {
-    const state = event.detail;
-    if (!state || typeof state.processing !== "boolean") return;
-    if ("model" in state) hasActiveModel = typeof state.model === "string" && !!state.model.trim();
-    if (typeof state.stopped_by_hand === "boolean") gatePaused = state.stopped_by_hand;
-    if (wasProcessing !== state.processing || roundId !== (state.round_id ?? null)) activityRevision++;
-    roundId = state.round_id ?? null;
-    setProcessing(state.processing, state.interrupting === true);
-    if (state.processing) showActivity(state.interrupting ? "正在中断并收尾…" : state.yielding ? "正在收尾，随后转接…" : "正在处理…", true);
-    else if (state.activity?.background_running > 0) showActivity("正在整理…", true);
-    else if (state.activity?.local_observations?.uncertain > 0) showActivity("有本地输入的处理结果待核对，不会自动重试。");
-    else if (state.activity?.state === "paused") showActivity("静候中，新事件会保留。");
+    const state3 = event.detail;
+    if (!state3 || typeof state3.processing !== "boolean") return;
+    if ("model" in state3) hasActiveModel = typeof state3.model === "string" && !!state3.model.trim();
+    if (typeof state3.stopped_by_hand === "boolean") gatePaused = state3.stopped_by_hand;
+    if (wasProcessing !== state3.processing || roundId !== (state3.round_id ?? null)) activityRevision++;
+    roundId = state3.round_id ?? null;
+    setProcessing(state3.processing, state3.interrupting === true);
+    if (state3.processing) showActivity(state3.interrupting ? "正在中断并收尾…" : state3.yielding ? "正在收尾，随后转接…" : "正在处理…", true);
+    else if (state3.activity?.background_running > 0) showActivity("正在整理…", true);
+    else if (state3.activity?.local_observations?.uncertain > 0) showActivity("有本地输入的处理结果待核对，不会自动重试。");
+    else if (state3.activity?.state === "paused") showActivity("静候中，新事件会保留。");
     else if (wasProcessing) showActivity("");
-    wasProcessing = state.processing;
+    wasProcessing = state3.processing;
   };
   window.addEventListener("core-console-state", readActivity);
   window.addEventListener("core-control-feedback", (event) => {
     showActivity(event.detail?.text ?? "");
   });
   const stopCurrent = () => {
-    const requested = roundId;
-    if (!requested) return;
+    const requested3 = roundId;
+    if (!requested3) return;
     setProcessing(true, true);
     showActivity("正在停止，请稍候…", true);
     void pageFetch("/interrupt", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ round_id: requested })
+      body: JSON.stringify({ round_id: requested3 })
     }).then(async (response) => {
-      const state = await response.json();
-      if (roundId === requested && typeof state.processing === "boolean") {
-        readActivity(new CustomEvent("core-console-state", { detail: state }));
+      const state3 = await response.json();
+      if (roundId === requested3 && typeof state3.processing === "boolean") {
+        readActivity(new CustomEvent("core-console-state", { detail: state3 }));
       }
       if (!response.ok) showActivity(response.status === 409 ? "本轮已结束，请等待状态更新" : "停止状态未确认，请检查连接");
       window.dispatchEvent(new Event("core-control-refresh"));
@@ -9679,7 +9963,7 @@ function chatPage(shell2) {
   };
 }
 
-// src/web/client/persona-memory.ts
+// maintenance/plugin-release-0547-20261125/source/core/src/web/client/persona-memory.ts
 function personaMemoryTail() {
   const tail = document.createElement("footer");
   tail.className = "persona-memory-tail";
@@ -9687,7 +9971,7 @@ function personaMemoryTail() {
   return tail;
 }
 
-// src/web/client/persona-page.ts
+// maintenance/plugin-release-0547-20261125/source/core/src/web/client/persona-page.ts
 var BOUNDARY_LINE_SHORT = "写入那条路：这一页能改她是谁 —— 「只听回环」不等于已鉴权。";
 var A_STAMP = /^\d{8}-\d{6}$/;
 var REPORT_ROUTE = "/persona";
@@ -9798,13 +10082,13 @@ function draftOf(segment) {
   };
 }
 function node4(tag, cls, text2) {
-  const el2 = document.createElement(tag);
-  if (cls !== void 0) el2.className = cls;
-  if (text2 !== void 0) el2.textContent = text2;
-  return el2;
+  const el3 = document.createElement(tag);
+  if (cls !== void 0) el3.className = cls;
+  if (text2 !== void 0) el3.textContent = text2;
+  return el3;
 }
-function surfaceOf(el2) {
-  let one = el2;
+function surfaceOf(el3) {
+  let one = el3;
   for (let hops = 0; one !== null && one !== void 0 && hops < 8; hops += 1) {
     if (one.classList !== void 0 && one.classList.contains("persona-body")) {
       return one;
@@ -9916,13 +10200,13 @@ function personaPage(shell2, options = {}) {
   const conflictBox = node4("section", "persona-conflict");
   conflictBox.hidden = true;
   head.append(conflictBox);
-  const say = (line, state, detail = "") => {
+  const say = (line, state3, detail = "") => {
     const long = line.length > 100 || line.includes("\n");
     coreSetUIText(statusLine, "textContent", long ? corePhrase("操作未完成，请查看详情。") : line);
     receiptText.textContent = detail || (long ? line : "");
     receipt.hidden = receiptText.textContent === "";
     receipt.open = false;
-    status.dataset.state = state;
+    status.dataset.state = state3;
     status.hidden = line === "";
   };
   const refreshHead = () => {
@@ -9962,15 +10246,15 @@ function personaPage(shell2, options = {}) {
     }
   };
   const scrollerOf = () => {
-    const up = (node5) => node5.parentElement ?? node5.parent ?? null;
-    for (let node5 = up(column); node5 !== null; node5 = up(node5)) {
+    const up = (node6) => node6.parentElement ?? node6.parent ?? null;
+    for (let node6 = up(column); node6 !== null; node6 = up(node6)) {
       let flow = "";
       try {
-        flow = window.getComputedStyle(node5).overflowY;
+        flow = window.getComputedStyle(node6).overflowY;
       } catch {
         flow = "";
       }
-      if (flow === "auto" || flow === "scroll") return node5;
+      if (flow === "auto" || flow === "scroll") return node6;
     }
     return column;
   };
@@ -10340,9 +10624,9 @@ function personaPage(shell2, options = {}) {
     surface.addEventListener("mouseup", followCaret);
   };
   const flushFocused = () => {
-    const el2 = document.activeElement;
-    if (el2 === null || el2 === void 0) return;
-    const surface = surfaceOf(el2);
+    const el3 = document.activeElement;
+    if (el3 === null || el3 === void 0) return;
+    const surface = surfaceOf(el3);
     if (surface !== null) surface.blur();
   };
   const segmentRow = (segment) => {
@@ -10479,12 +10763,12 @@ function personaPage(shell2, options = {}) {
   const offerMerge = (name) => {
     conflictBox.replaceChildren();
     conflictBox.hidden = false;
-    const read2 = node4("button", "btn persona-merge-read", "读取新版供手动合并");
-    read2.setAttribute("type", "button");
-    conflictBox.append(node4("p", void 0, name + "：草稿保留，未自动刷新。"), read2);
-    read2.addEventListener("click", () => {
+    const read4 = node4("button", "btn persona-merge-read", "读取新版供手动合并");
+    read4.setAttribute("type", "button");
+    conflictBox.append(node4("p", void 0, name + "：草稿保留，未自动刷新。"), read4);
+    read4.addEventListener("click", () => {
       void (async () => {
-        read2.setAttribute("disabled", "true");
+        read4.setAttribute("disabled", "true");
         try {
           const response = await send(REPORT_ROUTE, { headers: { Accept: "application/json" } });
           if (!response.ok) throw new Error(`服务回 ${response.status}`);
@@ -10543,7 +10827,7 @@ function personaPage(shell2, options = {}) {
           });
         } catch (exc) {
           say(`读取合并依据失败：${exc.message}。草稿仍保留。`, "bad");
-          read2.removeAttribute("disabled");
+          read4.removeAttribute("disabled");
         }
       })();
     });
@@ -10725,7 +11009,7 @@ function personaPage(shell2, options = {}) {
   };
 }
 
-// src/web/client/display-date.ts
+// maintenance/plugin-release-0547-20261125/source/core/src/web/client/display-date.ts
 function displayDate(value) {
   if (!value) return "";
   if (!/^\d{4}-\d{2}-\d{2}T/.test(value)) return value;
@@ -10733,8 +11017,8 @@ function displayDate(value) {
   return Number.isNaN(date.getTime()) ? "日期未知" : `${date.getMonth() + 1} 月 ${date.getDate()} 日`;
 }
 
-// src/web/client/record-refresh.ts
-function recordRefresh(root, read2) {
+// maintenance/plugin-release-0547-20261125/source/core/src/web/client/record-refresh.ts
+function recordRefresh(root, read4) {
   let active2 = false;
   let running = false;
   let dirty = false;
@@ -10749,7 +11033,7 @@ function recordRefresh(root, read2) {
     }
     running = true;
     try {
-      await read2();
+      await read4();
     } finally {
       running = false;
       if (active2 && dirty) {
@@ -10784,7 +11068,7 @@ function recordRefresh(root, read2) {
   };
 }
 
-// src/web/client/memory-page.ts
+// maintenance/plugin-release-0547-20261125/source/core/src/web/client/memory-page.ts
 function recentPeople(everyone) {
   const recordedAt = (one) => {
     if (typeof one.recent_at === "number" && Number.isFinite(one.recent_at)) {
@@ -10846,16 +11130,16 @@ function memoryPage(shell2) {
   shell2.content.replaceChildren(root);
   const keepPosition = (render2) => {
     const parents = [];
-    for (let el2 = root; el2; el2 = el2.parentElement) parents.push([el2, el2.scrollTop, el2.scrollLeft]);
+    for (let el3 = root; el3; el3 = el3.parentElement) parents.push([el3, el3.scrollTop, el3.scrollLeft]);
     const x = window.scrollX, y = window.scrollY;
-    const inner = [...root.querySelectorAll(".memory-pull-content")].map((el2) => el2.scrollTop);
+    const inner = [...root.querySelectorAll(".memory-pull-content")].map((el3) => el3.scrollTop);
     render2();
-    root.querySelectorAll(".memory-pull-content").forEach((el2, i) => {
-      el2.scrollTop = inner[i] || 0;
+    root.querySelectorAll(".memory-pull-content").forEach((el3, i) => {
+      el3.scrollTop = inner[i] || 0;
     });
-    for (const [el2, top, left] of parents) {
-      el2.scrollTop = top;
-      el2.scrollLeft = left;
+    for (const [el3, top, left] of parents) {
+      el3.scrollTop = top;
+      el3.scrollLeft = left;
     }
     window.scrollTo(x, y);
   };
@@ -11044,10 +11328,10 @@ function memoryPage(shell2) {
         entry.className = "memory-entry";
         entry.id = "memory-entry-" + encodeURIComponent(kindOf2 + ":" + (each.proposal?.id || String(each.ts || "") + ":" + each.text.slice(0, 160)));
         entry.open = expanded.has(entry.id);
-        const summary = document.createElement("summary");
+        const summary2 = document.createElement("summary");
         const short = (value) => value.replace(/\s+/g, " ").slice(0, 160);
-        summary.textContent = each.proposal ? short(each.source + " · " + each.proposal.section + "：" + each.proposal.why) : short(String(each.text));
-        if (how > 1) summary.textContent += " ×" + String(how);
+        summary2.textContent = each.proposal ? short(each.source + " · " + each.proposal.section + "：" + each.proposal.why) : short(String(each.text));
+        if (how > 1) summary2.textContent += " ×" + String(how);
         const body = document.createElement("div");
         body.className = "memory-entry-detail";
         const said = document.createElement("p");
@@ -11057,10 +11341,10 @@ function memoryPage(shell2) {
           const original = document.createElement("p");
           coreSetUIText(original, "textContent", [corePhrase("原文\n"), each.proposal.before]);
           body.append(original);
-          const state = document.createElement("p");
-          state.className = "when";
-          coreSetUIText(state, "textContent", corePhrase("尚未落定 · 请在对话中交流，由她决定修改、保留或暂缓。"));
-          body.append(state);
+          const state3 = document.createElement("p");
+          state3.className = "when";
+          coreSetUIText(state3, "textContent", corePhrase("尚未落定 · 请在对话中交流，由她决定修改、保留或暂缓。"));
+          body.append(state3);
         }
         if (each.ts) {
           const when = document.createElement("p");
@@ -11068,7 +11352,7 @@ function memoryPage(shell2) {
           when.textContent = String(each.ts);
           body.append(when);
         }
-        entry.append(summary, body);
+        entry.append(summary2, body);
         entries.append(entry);
       }
       if (latest.length > shown.length) {
@@ -11195,7 +11479,7 @@ function memoryPage(shell2) {
   const drawSkillsContents = (answer) => {
     latestSkills = answer;
     if (composing) return;
-    const opened = new Set([...skillsBox.querySelectorAll("details[data-section]")].filter((el2) => el2.open).map((el2) => el2.dataset.section));
+    const opened = new Set([...skillsBox.querySelectorAll("details[data-section]")].filter((el3) => el3.open).map((el3) => el3.dataset.section));
     for (const child of [...skillsBox.children]) if (child !== toolbar) child.remove();
     const head2 = document.createElement("h2");
     head2.className = "memory-document-title";
@@ -11224,8 +11508,8 @@ function memoryPage(shell2) {
     const status = answer.status ?? { state: "unknown" };
     const runline = document.createElement("p");
     runline.className = "memory-quiet";
-    const pending3 = Number(status.recovery_pending ?? 0);
-    coreSetUIText(runline, "textContent", [[status.state === "unknown" && (answer.active_count ?? answer.active?.length ?? 0) === 0 ? corePhrase("尚无整理记录") : [corePhrase("整理状态："), stateName(String(status.state))], pending3 > 0 ? [[corePhrase("（"), String(pending3)], corePhrase(" 笔停在半路）")] : corePhrase("")], status.why && status.state !== "unknown" ? [corePhrase(" —— "), String(status.why)] : corePhrase("")]);
+    const pending5 = Number(status.recovery_pending ?? 0);
+    coreSetUIText(runline, "textContent", [[status.state === "unknown" && (answer.active_count ?? answer.active?.length ?? 0) === 0 ? corePhrase("尚无整理记录") : [corePhrase("整理状态："), stateName(String(status.state))], pending5 > 0 ? [[corePhrase("（"), String(pending5)], corePhrase(" 笔停在半路）")] : corePhrase("")], status.why && status.state !== "unknown" ? [corePhrase(" —— "), String(status.why)] : corePhrase("")]);
     maintenance.append(runline);
     const index = answer.index_status;
     if (index) {
@@ -11327,7 +11611,7 @@ function memoryPage(shell2) {
         more.addEventListener("click", () => {
           visibleLimits.set(said, limit + pageSize);
           drawSkills(latestSkills);
-          const updated = [...skillsBox.querySelectorAll(".memory-skill-section")].find((el2) => el2.querySelector("h3")?.textContent === said);
+          const updated = [...skillsBox.querySelectorAll(".memory-skill-section")].find((el3) => el3.querySelector("h3")?.textContent === said);
           const next = updated?.querySelectorAll("summary")[limit];
           next?.focus();
         });
@@ -11456,859 +11740,796 @@ function memoryPage(shell2) {
   };
 }
 
-// src/web/client/plugin-guide-version.ts
-var PLUGIN_GUIDE_VERSION = true ? "v1.17" : "";
-
-// src/web/client/plugins-page.ts
-var NONE_YET = "还没有装任何插件。";
-var READ_FAILED2 = "读不到插件那一格。";
-var MARKET_NOT_WIRED = "这次没拉到 GitHub。";
-var FILTERED_OUT = "筛过之后一个都没有。";
-function repoOf(one, from) {
-  if (from === "market") {
-    const full = one.full || "";
-    return full ? `https://github.com/${full}` : "";
-  }
-  const url = one.origin?.url || "";
-  const cut = /^https:\/\/github\.com\/([^/]+\/[^/]+)\//.exec(url);
-  return cut ? `https://github.com/${cut[1]}` : "";
+// maintenance/plugin-release-0547-20261125/source/core/src/web/client/plugin-operation.ts
+var state2;
+var continuation;
+var pluginOperation = () => state2;
+var update = (phase, text2, busy = true) => {
+  if (state2) state2 = { ...state2, phase, text: text2, busy };
+  window.dispatchEvent(new Event("plugin-operation-changed"));
+};
+var sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+async function read3() {
+  const r = await pageFetch("/plugins", {}, 4e3);
+  if (!r.ok) throw Error("无法读取插件状态");
+  const data = await r.json();
+  if (!data.wired || !Array.isArray(data.plugins)) throw Error("插件状态未接入");
+  acceptPluginRuntime(data.plugins);
+  return data;
 }
-var MARKET_FAILED = "市场那一格没答上来。";
-var REFRESH_FAILED = "列表刷新失败，当前显示可能不是最新。";
-function showVersion(said) {
-  const one = (said || "").trim();
-  if (!one) {
-    return "（没写版本）";
-  }
-  return /^[0-9]/.test(one) ? `v${one}` : one;
+var find = (data, name) => data.plugins.find((p) => p.name === name && p.installed !== false);
+function samePackage(before, after) {
+  if (before.package_id && after.package_id) return before.package_id === after.package_id;
+  return before.version === after.version && before.where === after.where;
 }
-function pluginsPage(shell2) {
-  const root = document.createElement("section");
-  root.className = "plugins page-plugin";
-  const title = document.createElement("h1");
-  title.className = "plugins-title";
-  coreSetUIText(title, "textContent", corePhrase("已安装 · INSTALLED"));
-  const whereChip = document.createElement("span");
-  whereChip.className = "plugins-where";
-  const titleRow = document.createElement("div");
-  titleRow.className = "plugins-title-row";
-  titleRow.append(title, whereChip);
-  const note = document.createElement("p");
-  note.className = "plugins-note";
-  note.textContent = "";
-  const installedBox = document.createElement("div");
-  installedBox.className = "plugins-box plugins-installed-box";
-  const marketTitle = document.createElement("h1");
-  marketTitle.className = "plugins-title";
-  coreSetUIText(marketTitle, "textContent", corePhrase("插件市场 · MARKETPLACE"));
-  const marketTitleRow = document.createElement("div");
-  marketTitleRow.className = "plugins-title-row plugins-market-row";
-  const developmentGuide = document.createElement("a");
-  developmentGuide.className = "infinity-text-link";
-  coreSetUIText(developmentGuide, "textContent", [[corePhrase("插件开发规范 "), PLUGIN_GUIDE_VERSION], corePhrase(" ↗")]);
-  developmentGuide.href = assetUrl("infinity-plugin-spec.html");
-  developmentGuide.target = "_blank";
-  developmentGuide.rel = "noopener noreferrer";
-  const marketNote = document.createElement("p");
-  marketNote.className = "plugins-note plugins-market-note";
-  marketNote.textContent = "";
-  const marketBox = document.createElement("div");
-  marketBox.className = "plugins-box plugins-market-box";
-  const detail = document.createElement("div");
-  detail.className = "plugins-detail";
-  detail.hidden = true;
-  const detailCard = document.createElement("div");
-  detailCard.className = "plugins-detail-card";
-  detail.append(detailCard);
-  detail.addEventListener("click", (ev) => {
-    if (ev.target === detail) {
-      detail.hidden = true;
-    }
-  });
-  const findIn = (hint) => {
-    const it = document.createElement("input");
-    it.type = "search";
-    it.className = "plugins-find";
-    it.placeholder = hint;
-    it.setAttribute("aria-label", hint);
-    return it;
-  };
-  const installedFind = findIn("筛选：插件名、描述、作者");
-  const marketFind = findIn("筛选：插件名、描述、作者");
-  const searchField = (input2, name) => {
-    const field = document.createElement("label");
-    field.className = "plugins-search";
-    input2.setAttribute("aria-label", name);
-    field.append(icon("search"), input2);
-    return field;
-  };
-  const perSelect = () => {
-    const box = document.createElement("label");
-    box.className = "plugins-perlabel";
-    box.append(coreUITextNode(corePhrase("每页显示")));
-    const it = document.createElement("select");
-    it.className = "plugins-per";
-    for (const n of [6, 12, 24]) {
-      const one = document.createElement("option");
-      one.value = String(n);
-      one.textContent = `${n}`;
-      it.append(one);
-    }
-    it.value = "6";
-    box.append(it);
-    box.dataset.for = "plugins";
-    return it;
-  };
-  const installedPer = perSelect();
-  const marketPer = perSelect();
-  const againBtn = (said, what) => {
-    const it = document.createElement("button");
-    it.type = "button";
-    it.className = "btn ghost plugins-again";
-    it.textContent = said;
-    it.addEventListener("click", what);
-    return it;
-  };
-  const installedRow = document.createElement("div");
-  installedRow.className = "plugins-toolbar";
-  installedRow.append(
-    searchField(installedFind, "筛选已安装插件"),
-    installedPer.parentElement,
-    againBtn("↻ 刷新", () => {
-      void refresh2();
-    })
-  );
-  const marketRow = document.createElement("div");
-  marketRow.className = "plugins-toolbar";
-  marketRow.append(
-    searchField(marketFind, "筛选插件市场"),
-    marketPer.parentElement
-  );
-  const hideBox = document.createElement("label");
-  hideBox.className = "plugins-hide";
-  const hideTick = document.createElement("input");
-  hideTick.type = "checkbox";
-  hideTick.checked = true;
-  hideTick.className = "plugins-hide-tick";
-  const hideSay = document.createElement("span");
-  coreSetUIText(hideSay, "textContent", corePhrase("隐藏已安装"));
-  hideBox.append(hideTick, hideSay);
-  marketRow.append(againBtn("↻ 刷新", () => {
-    void refreshMarket();
-  }));
-  marketTitleRow.append(marketTitle, developmentGuide, hideBox);
-  root.append(
-    titleRow,
-    note,
-    installedRow,
-    installedBox,
-    marketTitleRow,
-    marketNote,
-    marketRow,
-    marketBox,
-    detail
-  );
-  let haveInstalled = /* @__PURE__ */ new Set();
-  let lastInstalled = null;
-  let lastMarket = null;
-  let installedRead = 0;
-  let marketRead = 0;
-  let viewEpoch = 0;
-  let mutationEpoch = 0;
-  let mutationBusy = false;
-  const stillCurrent = (view2, mutation) => root.hidden !== true && view2 === viewEpoch && mutation === mutationEpoch;
-  const notifyPluginsChanged = () => {
-    if (typeof window.dispatchEvent === "function" && typeof Event !== "undefined") {
-      window.dispatchEvent(new Event("plugins-changed"));
-    }
-  };
-  const withRefreshFailed = (failure, fresh) => {
-    const line = failure.trim();
-    if (fresh.installed && fresh.market) {
-      return line;
-    }
-    return line ? `${line} ${REFRESH_FAILED}` : REFRESH_FAILED;
-  };
-  const hits = (hay, query) => {
-    const q = query.trim().toLowerCase();
-    if (!q) {
-      return true;
-    }
-    return hay.map((one) => (one || "").toLowerCase()).join(" ").includes(q);
-  };
-  installedFind.addEventListener("input", () => {
-    pageIn = 1;
-    if (lastInstalled) draw(lastInstalled);
-  });
-  marketFind.addEventListener("input", () => {
-    pageOut = 1;
-    if (lastMarket) drawMarket(lastMarket);
-  });
-  let pageIn = 1;
-  let pageOut = 1;
-  async function confirmUninstall(one) {
-    return confirmAction(
-      "卸载插件",
-      "此安装包由所有档案共享。确认后将先在各档案停用并卸载插件，但不会删除配置和缓存。保留的数据不会自动清理。",
-      "确认卸载",
-      false,
-      { className: "plugin-uninstall-dialog", detail: one.displayName || one.name }
-    );
+function sameBot(before, after) {
+  if (!after?.instance || before.bot !== after.bot) throw Error("连接到了不同的 Bot，操作已停止，请核对服务。");
+}
+var RejectedOperation = class extends Error {
+};
+async function post(path, body, instance) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 1e4);
+  try {
+    const response = await pageFetch(path, { method: "POST", headers: { "Content-Type": "application/json", ...instance ? { "X-Telyin-Shutdown-Instance": instance } : {} }, body: JSON.stringify(body), signal: controller.signal });
+    const answer = await response.json();
+    if (!response.ok) throw new RejectedOperation(answer.said || answer.error || `请求失败（${response.status}）`);
+    return answer;
+  } finally {
+    clearTimeout(timer);
   }
-  function uninstallButton(button2, one, go) {
-    let busy = false;
-    button2.addEventListener("click", () => {
-      if (busy) return;
-      busy = true;
-      button2.disabled = true;
-      void (async () => {
-        if (await confirmUninstall(one)) await go();
-      })().catch((error) => {
-        console.error("卸载插件未完成", error);
-      }).finally(() => {
-        busy = false;
-        button2.disabled = false;
-      });
-    });
+}
+function finish(data, name, action) {
+  const p = find(data, name);
+  if (action === "remove") {
+    if (p) throw Error("插件仍在安装列表中，卸载尚未完成。");
+    update("complete", "已卸载，配置和缓存按原有规则保留。", false);
+  } else {
+    if (!p) throw Error("插件已不在安装列表中，请检查是否被其他页面更改。");
+    if (p.lifecycle_error) throw Error(p.lifecycle_error);
+    if (p.restart_required) throw Error("插件仍有待生效更改，不能确认操作完成。");
+    if (action === "enable" && (!p.enabled || !p.loaded)) throw Error("插件尚未正常运行，请打开配置查看缺失项或错误。");
+    if (action === "disable" && (p.enabled || p.loaded || p.tracked)) throw Error("插件尚未完全停用，实例仍需清理。");
+    if (action === "apply" && p.enabled && !p.loaded) throw Error("重启后插件未正常运行，请检查配置和日志。");
+    update("complete", action === "disable" ? "已停用。" : action === "enable" ? "已启用，插件正常运行。" : "重启完成，更改已生效。", false);
   }
-  function twoStep(btn, plain, hot, calm, go) {
-    let armed = false;
-    let busy = false;
-    let timer;
-    const reset = () => {
-      armed = false;
-      if (timer !== void 0) {
-        window.clearTimeout(timer);
-        timer = void 0;
-      }
-      uiLabel(btn, plain);
-      btn.className = calm;
-      btn.disabled = false;
-    };
-    btn.addEventListener("click", () => {
-      if (busy) {
-        return;
-      }
-      if (!armed) {
-        armed = true;
-        uiLabel(btn, hot);
-        btn.className = "btn danger";
-        timer = window.setTimeout(() => {
-          timer = void 0;
-          if (!busy) {
-            reset();
-          }
-        }, 5e3);
-        return;
-      }
-      if (timer !== void 0) {
-        window.clearTimeout(timer);
-        timer = void 0;
-      }
-      armed = false;
-      busy = true;
-      btn.disabled = true;
-      void Promise.resolve().then(go).catch((exc) => {
-        console.error("插件操作没走完：", exc);
-      }).finally(() => {
-        busy = false;
-        reset();
-      });
-    });
-  }
-  const runMutation = async (path, payload, target, fallback) => {
-    if (mutationBusy) {
-      return { ok: false, fresh: { installed: false, market: false } };
-    }
-    mutationBusy = true;
-    const token = ++mutationEpoch;
-    const view2 = viewEpoch;
-    installedRead += 1;
-    marketRead += 1;
-    let failure = "";
-    let ok = false;
+  continuation = void 0;
+  window.dispatchEvent(new Event("plugins-changed"));
+}
+async function afterRestart(before, p, action) {
+  const old = before.runtime;
+  const deadline = Date.now() + 18e4;
+  update("reconnecting", "等待 Bot 服务重新连接，当前页面会保留。");
+  while (Date.now() < deadline) {
+    let next;
     try {
+      next = await read3();
+    } catch {
+      await sleep(1200);
+      continue;
+    }
+    sameBot(old, next.runtime);
+    if (next.runtime.instance === old.instance) {
+      await sleep(1200);
+      continue;
+    }
+    const current2 = find(next, p.name);
+    if (!current2) {
+      if (action === "remove") {
+        finish(next, p.name, action);
+        return;
+      }
+      throw Error("重启后找不到此插件。");
+    }
+    if (!samePackage(p, current2)) throw Error("重启期间插件安装包发生变化，已停止后续操作。");
+    update("verifying", "已重新连接，正在核对插件实际状态…");
+    if (action === "remove") {
+      if (current2.enabled || current2.loaded || current2.tracked || current2.restart_required) throw Error("重启后插件尚未完全停止，已保留安装包。");
+      update("removing", "插件已停止，正在完成卸载…");
       try {
-        const got = await pageFetch(path, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload)
-        });
-        if (!got.ok) {
-          failure = (await got.text()).trim() || fallback;
-        } else {
-          const back = await got.json();
-          if (back.ok === false) {
-            failure = back.said || fallback;
-          } else {
-            ok = true;
-          }
-        }
-      } catch (exc) {
-        failure = fallback;
-        console.error("插件操作没走到服务：", exc);
+        const answer = await post("/plugins/remove", { name: p.name, confirm_shared: true }, next.runtime.instance);
+        if (!answer.ok) throw new RejectedOperation(answer.said || "卸载尚未完成，安装包已保留。");
+      } catch (error) {
+        if (error instanceof RejectedOperation) throw error;
+        const observed = await read3();
+        sameBot(old, observed.runtime);
+        if (find(observed, p.name)) throw Error("卸载结果尚未确认，安装列表中仍有此插件；没有重复提交。");
       }
-      notifyPluginsChanged();
-      if (root.hidden) {
-        return { ok, fresh: { installed: false, market: false } };
-      }
-      const fresh = await refresh2();
-      if (stillCurrent(view2, token)) {
-        const line = withRefreshFailed(failure, fresh);
-        if (line) {
-          target.textContent = line;
-        }
-      }
-      return { ok, fresh };
-    } finally {
-      mutationBusy = false;
+      next = await read3();
+      sameBot(old, next.runtime);
     }
-  };
-  function pager(pages, now, go) {
-    const bar2 = document.createElement("div");
-    bar2.className = "plugins-pager";
-    if (pages <= 1) {
-      return bar2;
-    }
-    const back = document.createElement("button");
-    back.type = "button";
-    back.className = "btn ghost plugins-turn";
-    coreSetUIText(back, "textContent", corePhrase("上一页"));
-    back.disabled = now <= 1;
-    back.addEventListener("click", () => {
-      go(now - 1);
-    });
-    const where = document.createElement("span");
-    where.className = "plugins-where";
-    coreSetUIText(where, "textContent", [corePhrase("第 "), now, corePhrase(" / "), pages, corePhrase(" 页")]);
-    const next = document.createElement("button");
-    next.type = "button";
-    next.className = "btn ghost plugins-turn";
-    coreSetUIText(next, "textContent", corePhrase("下一页"));
-    next.disabled = now >= pages;
-    next.addEventListener("click", () => {
-      go(now + 1);
-    });
-    bar2.append(back, where, next);
-    return bar2;
+    finish(next, p.name, action);
+    return;
   }
-  installedPer.addEventListener("change", () => {
-    pageIn = 1;
-    if (lastInstalled) {
-      draw(lastInstalled);
+  update("uncertain", "尚未确认 Bot 已重新启动。页面和操作记录已保留，可继续检查；不会重复发送重启请求。", false);
+}
+async function continuePluginOperation() {
+  if (state2?.busy || !continuation) return;
+  try {
+    await continuation();
+  } catch (e) {
+    update("failed", e instanceof Error ? e.message : String(e), false);
+  }
+}
+async function runPluginOperation(name, action) {
+  if (state2?.busy) throw Error("请等待当前插件操作完成。");
+  continuation = void 0;
+  state2 = { name, action, phase: "changing", text: "正在读取并核对插件状态…", busy: true };
+  update("changing", state2.text);
+  try {
+    const before = await read3();
+    const p = find(before, name);
+    if (!p) throw Error("插件未安装，请刷新列表。");
+    let next = before;
+    const predictableRestart = action === "apply" && p.restart_required || p.reload_mode === "restart" && (action === "enable" ? !p.loaded : action === "disable" || action === "remove" ? p.loaded || p.tracked || p.restart_action === "disable" : false);
+    if (predictableRestart && !before.runtime?.restart_supported) throw Error(before.runtime?.restart_reason || "当前启动器不支持页面内重启，请先更新并重启启动器。");
+    if (action !== "apply") {
+      update("changing", action === "remove" ? "正在停止插件并检查卸载条件…" : action === "enable" ? "正在启用插件…" : "正在停用插件…");
+      let answer;
+      try {
+        answer = await post(action === "remove" ? "/plugins/remove" : "/plugins/switch", action === "remove" ? { name, confirm_shared: true } : { name, on: action === "enable" }, before.runtime?.instance);
+      } catch (error) {
+        if (error instanceof RejectedOperation) throw error;
+        const observed = await read3();
+        const actual = find(observed, name);
+        const saved = action === "remove" ? !actual || !actual.enabled && actual.restart_action === "disable" : actual?.enabled === (action === "enable");
+        if (!saved) throw Error("操作结果未能确认，请检查当前插件状态；没有重复提交请求。");
+        answer = { ok: true };
+      }
+      if (answer.restart_required && answer.restart_local === false) throw Error(answer.said || "其他 Bot 仍需重启，安装包已保留。");
+      if (answer.ok === false && !answer.restart_required) throw Error(answer.said || "操作未完成");
+      next = await read3();
+      if (before.runtime) {
+        sameBot(before.runtime, next.runtime);
+        if (next.runtime.instance !== before.runtime.instance) throw Error("操作期间服务已变化，请重新核对状态。");
+      }
     }
-  });
-  marketPer.addEventListener("change", () => {
-    pageOut = 1;
-    if (lastMarket) {
-      drawMarket(lastMarket);
-    }
-  });
-  window.addEventListener("keydown", (ev) => {
-    if (ev.key === "Escape") {
-      detail.hidden = true;
-    }
-  });
-  const count4 = document.createElement("p");
-  count4.className = "plugins-note plugins-count";
-  const marketCount = document.createElement("p");
-  marketCount.className = "plugins-note plugins-count";
-  hideTick.addEventListener("change", () => {
-    void refreshMarket();
-  });
-  shell2.content.replaceChildren(root);
-  const draw = (answer) => {
-    installedBox.replaceChildren();
-    for (const old of root.querySelectorAll(".plugins-warn")) old.remove();
-    if (answer === null) {
-      note.textContent = READ_FAILED2;
+    const current2 = find(next, name);
+    if (current2 && !samePackage(p, current2)) throw Error("插件包已变化，操作已停止。");
+    if (!current2?.restart_required) {
+      finish(next, name, action);
       return;
     }
-    if (!answer.wired) {
-      note.textContent = READ_FAILED2;
-      return;
-    }
-    haveInstalled = new Set(answer.plugins.filter((one) => one.installed !== false).map((one) => one.name));
-    lastInstalled = answer;
-    if (answer.plugins.length === 0) {
-      note.textContent = NONE_YET;
-      installedFind.hidden = true;
-      return;
-    }
-    installedFind.hidden = false;
-    const shown = answer.plugins.filter((one) => hits(
-      [one.name, one.displayName, one.description, one.author, one.kind],
-      installedFind.value
-    ));
-    if (shown.length === 0) {
-      note.textContent = FILTERED_OUT;
-      coreSetUIText(count4, "textContent", corePhrase("共0个已安装，共0个已启用。"));
-      installedBox.append(count4);
-      return;
-    }
-    coreSetUIText(whereChip, "textContent", answer.where ? [corePhrase("安装位置："), answer.where, corePhrase("")] : corePhrase(""));
-    whereChip.hidden = !answer.where;
-    note.textContent = "";
-    if (answer.broken?.length) {
-      coreSetUIText(note, "textContent", [[corePhrase("插件目录读取失败："), answer.broken.join("、")], corePhrase("。请检查各目录的 package.json；安装位置见上方。")]);
-    }
-    const list = document.createElement("ul");
-    list.className = "plugins-row";
-    const every = Math.max(1, Number(installedPer.value) || 6);
-    const pages = Math.max(1, Math.ceil(shown.length / every));
-    if (pageIn > pages) {
-      pageIn = pages;
-    }
-    const from = (pageIn - 1) * every;
-    const slice = shown.slice(from, from + every);
-    for (const one of slice) {
-      const item = document.createElement("li");
-      const inactive = one.installed === false || one.builtin && !one.enabled;
-      item.className = inactive ? "plugins-card plugins-inactive" : "plugins-card";
-      if (one.installed === false) {
-        item.classList.add("plugins-gone");
-      }
-      const head = document.createElement("div");
-      head.className = "plugins-head";
-      const names = document.createElement("div");
-      names.className = "plugins-names";
-      const who = document.createElement("strong");
-      who.className = "plugins-name";
-      who.textContent = one.name;
-      const meta = document.createElement("span");
-      meta.className = "plugins-meta";
-      coreSetUIText(meta, "textContent", [[corePhrase("版本："), showVersion(one.version || ""), corePhrase("")], [corePhrase("　作者："), one.author || "（没写）", corePhrase("")]]);
-      names.append(who, meta);
-      const tag = document.createElement("span");
-      tag.className = one.enabled ? "plugins-tag on" : "plugins-tag";
-      coreSetUIText(tag, "textContent", one.enabled ? corePhrase("启用") : corePhrase("停用"));
-      head.append(names, tag);
-      item.append(head);
-      if (one.description) {
-        const line = document.createElement("p");
-        line.className = "plugins-said";
-        line.textContent = one.description;
-        item.append(line);
-      }
-      const foot = document.createElement("div");
-      foot.className = "plugins-foot-line";
-      item.append(foot);
-      const flip = document.createElement("button");
-      flip.type = "button";
-      flip.className = "btn ghost plugins-flip";
-      coreSetUIText(flip, "textContent", one.enabled ? corePhrase("停用") : corePhrase("启用"));
-      let flipBusy = false;
-      const doFlip = async () => {
-        if (flipBusy) {
-          return;
-        }
-        flipBusy = true;
-        flip.disabled = true;
-        try {
-          await runMutation(
-            "/plugins/switch",
-            { name: one.name, on: !one.enabled },
-            note,
-            READ_FAILED2
-          );
-        } finally {
-          flipBusy = false;
-          flip.disabled = false;
-        }
-      };
-      twoStep(
-        flip,
-        one.enabled ? "停用" : "启用",
-        one.enabled ? "确认停用" : "确认启用",
-        "btn ghost plugins-flip",
-        doFlip
-      );
-      const drop = document.createElement("button");
-      drop.type = "button";
-      const goneNow = one.installed === false;
-      drop.className = goneNow ? "btn plugins-act put" : "btn plugins-act drop";
-      coreSetUIText(drop, "textContent", goneNow ? corePhrase("安装") : corePhrase("卸载"));
-      if (goneNow) {
-        twoStep(
-          drop,
-          "安装",
-          "确认安装",
-          "btn plugins-act put",
-          () => runMutation(
-            "/market/install",
-            { from: one.where || "" },
-            note,
-            READ_FAILED2
-          )
-        );
-      } else {
-        uninstallButton(
-          drop,
-          one,
-          () => runMutation("/plugins/remove", { name: one.name, confirm_shared: true }, note, READ_FAILED2)
-        );
-      }
-      const look = document.createElement("button");
-      look.type = "button";
-      look.className = "btn ghost plugins-look";
-      coreSetUIText(look, "textContent", corePhrase("详情"));
-      look.addEventListener("click", () => {
-        openDetail(one, "installed");
-      });
-      const right = document.createElement("div");
-      right.className = "plugins-acts";
-      if (goneNow) {
-        right.append(drop);
-      } else {
-        right.append(flip, drop);
-      }
-      const actions = document.createElement("div");
-      actions.className = "plugins-actions";
-      actions.append(look, right);
-      item.append(actions);
-      if (one.contract) {
-        const warn = document.createElement("p");
-        warn.className = "plugins-warn";
-        warn.textContent = one.contract;
-        item.append(warn);
-      }
-      list.append(item);
-    }
-    installedBox.replaceChildren(list);
-    const here = shown.filter((one) => one.installed !== false).length;
-    const on = shown.filter((one) => one.enabled).length;
-    const goneCount = shown.length - here;
-    coreSetUIText(count4, "textContent", [[[[corePhrase("共"), here, corePhrase("个已安装，共"), on, corePhrase("个已启用")], [corePhrase("（本页显示 "), slice.length ? from + 1 : 0, corePhrase("-"), from + slice.length, corePhrase("")]], goneCount ? [corePhrase("，"), goneCount, corePhrase(" 个内置插件未安装")] : corePhrase("")], corePhrase("）。")]);
-    installedBox.append(count4);
-    installedBox.append(pager(pages, pageIn, (n) => {
-      pageIn = n;
-      draw(answer);
-    }));
-  };
-  const openDetail = (one, from) => {
-    const mid = "name" in one ? one.name : "";
-    const row2 = (k, v) => {
-      const line = document.createElement("div");
-      line.className = "plugins-kv";
-      const key2 = document.createElement("span");
-      key2.className = "plugins-kv-key";
-      key2.textContent = k;
-      const val = document.createElement("span");
-      val.className = "plugins-kv-val";
-      val.textContent = v;
-      line.append(key2, val);
-      return line;
-    };
-    const head = document.createElement("h3");
-    head.className = "plugins-detail-head";
-    head.textContent = one.name;
-    const shut = document.createElement("button");
-    shut.type = "button";
-    shut.className = "btn ghost plugins-detail-shut";
-    coreSetUIText(shut, "textContent", corePhrase("× 关闭"));
-    shut.addEventListener("click", () => {
-      detail.hidden = true;
-    });
-    const bar2 = document.createElement("div");
-    bar2.className = "plugins-detail-bar";
-    bar2.append(head, shut);
-    const say = document.createElement("p");
-    say.className = "plugins-detail-said";
-    say.textContent = one.description || "（这一份没写简介）";
-    const info = document.createElement("div");
-    info.className = "plugins-kv-box";
-    if (from === "installed") {
-      const box = one;
-      info.append(
-        row2("插件名", box.name),
-        row2("作者", box.author || "（没写）"),
-        row2("版本", showVersion(box.version || "")),
-        row2(box.installed === false ? "内置源目录" : "安装位置", box.where || ""),
-        row2("入口", box.entry || "index.py"),
-        row2("许可证", box.license || "（没写）"),
-        row2("体积", `${box.bytes ?? 0} 字节（${box.files ?? 0} 个文件）`),
-        row2("关键字", (box.keywords || []).join("　") || "（没写）"),
-        // 内置插件（含未安装的源）来源写“核心”；第三方继续按 origin 如实显示。
-        row2("来源", box.builtin === true ? "核心" : box.origin?.url ? `${box.origin.source || "网址"} · ${box.origin.url}` : "-"),
-        // 2026-10-05 作者："浮窗内的 状态 改成 启用或是停用"
-        row2("状态", box.enabled ? "启用" : "停用"),
-        row2("契约", box.api === null ? "（没写契约号）" : `infinity · api ${box.api}`)
-      );
-      if (box.contract) {
-        const warn = document.createElement("p");
-        warn.className = "plugins-warn";
-        warn.textContent = box.contract;
-        info.append(warn);
-      }
-    } else {
-      const box = one;
-      info.append(
-        row2("插件名", box.name),
-        row2("作者", box.author || "（没写）"),
-        row2("版本", showVersion(box.version || "")),
-        row2("仓库", box.full || ""),
-        row2("更新于", box.date || "（没写）"),
-        row2("关键字", (box.keywords || []).join("　") || "（没写）"),
-        row2("来源", box.source || ""),
-        row2("归档链接", box.url || "")
-      );
-    }
-    const acts = document.createElement("div");
-    acts.className = "plugins-actions";
-    const close2 = document.createElement("button");
-    close2.type = "button";
-    close2.className = "btn ghost";
-    coreSetUIText(close2, "textContent", corePhrase("关闭"));
-    close2.addEventListener("click", () => {
-      detail.hidden = true;
-    });
-    const last2 = document.createElement("button");
-    last2.type = "button";
-    const removedBuiltin = from === "installed" && one.installed === false;
-    const removing = from === "installed" && !removedBuiltin;
-    const action = removing ? "卸载" : "安装";
-    last2.className = removing ? "btn plugins-act drop" : "btn plugins-act put";
-    last2.textContent = action;
-    const fail = document.createElement("p");
-    fail.className = "plugins-warn";
-    fail.hidden = true;
-    const goLast = async () => {
-      fail.hidden = true;
-      fail.textContent = "";
-      const path = removing ? "/plugins/remove" : "/market/install";
-      const body = removing ? { name: mid, confirm_shared: true } : removedBuiltin ? { from: one.where || "" } : { url: one.url };
-      const detailView = viewEpoch;
-      const done = await runMutation(
-        path,
-        body,
-        fail,
-        removing ? READ_FAILED2 : MARKET_FAILED
-      );
-      if (!root.hidden && detailView === viewEpoch) {
-        if (done.fresh.installed) {
-          if (fail.textContent) {
-            (from === "installed" ? note : marketNote).textContent = fail.textContent;
-          }
-          detail.hidden = true;
-        } else {
-          fail.hidden = fail.textContent === "";
-        }
-      }
-    };
-    if (removing) uninstallButton(last2, one, goLast);
-    else twoStep(last2, action, "确认" + action, "btn plugins-act put", goLast);
-    const repo = repoOf(one, from);
-    if (repo) {
-      const go = document.createElement("a");
-      go.className = "btn ghost plugins-repo";
-      go.href = repo;
-      go.target = "_blank";
-      go.rel = "noreferrer";
-      coreSetUIText(go, "textContent", corePhrase("源代码仓库"));
-      acts.append(go);
-    }
-    const rightP = document.createElement("div");
-    rightP.className = "plugins-acts";
-    rightP.append(close2, last2);
-    acts.append(rightP);
-    detailCard.replaceChildren(bar2, say, info, fail, acts);
-    detail.hidden = false;
-    detailCard.scrollTop = 0;
-  };
-  const installedReadFailed = () => {
-    if (lastInstalled !== null) {
-      note.textContent = `${READ_FAILED2} ${REFRESH_FAILED}`;
-      return;
-    }
-    draw(null);
-  };
-  const marketReadFailed = () => {
-    if (lastMarket !== null) {
-      marketNote.textContent = `${MARKET_FAILED} ${REFRESH_FAILED}`;
-      return;
-    }
-    drawMarket(null);
-  };
-  const refreshMarket = async (view2 = viewEpoch, mutation = mutationEpoch, response) => {
-    if (!stillCurrent(view2, mutation)) {
-      return false;
-    }
-    const ask2 = ++marketRead;
+    if (!next.runtime?.restart_supported) throw Error(next.runtime?.restart_reason || "设置已保存，当前启动器不支持页面内重启。");
+    const restartAction = action === "apply" ? current2.restart_action === "config" ? "config" : current2.restart_action : action;
+    update("restarting", "设置已保存，正在请求 Bot 安全退出并重新启动…");
+    continuation = () => afterRestart(next, p, action);
     try {
-      const got = await (response ?? pageFetch("/market", { cache: "no-store" }));
-      if (got.ok) {
-        const answer = await got.json();
-        if (stillCurrent(view2, mutation) && ask2 === marketRead) {
-          drawMarket(answer);
-        }
-        return true;
-      }
-    } catch {
+      await post("/plugins/restart", { name, action: restartAction }, next.runtime.instance);
+    } catch (e) {
+      if (e instanceof RejectedOperation) throw e;
     }
-    if (stillCurrent(view2, mutation) && ask2 === marketRead) {
-      marketReadFailed();
-    }
-    return false;
-  };
-  const refresh2 = async () => {
-    const view2 = viewEpoch;
-    const mutation = mutationEpoch;
-    const ask2 = ++installedRead;
-    let installed = false;
-    const marketResponse = pageFetch("/market", { cache: "no-store" });
-    void marketResponse.catch(() => {
-    });
-    try {
-      const got = await pageFetch("/plugins", { cache: "no-store" });
-      if (got.ok) {
-        const answer = await got.json();
-        if (stillCurrent(view2, mutation) && ask2 === installedRead) {
-          draw(answer);
-        }
-        installed = true;
-      } else if (stillCurrent(view2, mutation) && ask2 === installedRead) {
-        installedReadFailed();
-      }
-    } catch {
-      if (stillCurrent(view2, mutation) && ask2 === installedRead) {
-        installedReadFailed();
-      }
-    }
-    const market = await refreshMarket(view2, mutation, marketResponse);
-    return { installed, market };
-  };
-  const drawMarket = (answer) => {
-    marketBox.replaceChildren();
-    if (answer === null) {
-      marketNote.textContent = MARKET_FAILED;
-      return;
-    }
-    if (!answer.wired) {
-      marketNote.textContent = answer.said || MARKET_NOT_WIRED;
-      return;
-    }
-    coreSetUIText(marketNote, "textContent", answer.stale ? [corePhrase("当前显示上次缓存的插件列表。"), answer.error || "正在后台刷新，请稍后点击刷新查看结果。", corePhrase("")] : corePhrase(""));
-    lastMarket = answer;
-    const afterHide = answer.found.filter(
-      (one) => !(hideTick.checked && haveInstalled.has(one.name))
-    );
-    const rows = afterHide.filter((one) => hits(
-      [one.name, one.description, one.author, one.full, one.source],
-      marketFind.value
-    ));
-    if (rows.length === 0) {
-      coreSetUIText(marketCount, "textContent", marketFind.value.trim() ? corePhrase("共0个可装（ 筛过之后一个都没有）。") : answer.stale ? corePhrase("共0个可装（ 这是上次问到的，正在重问）。") : corePhrase("共0个可装。"));
-      marketBox.append(marketCount);
-      return;
-    }
-    const list = document.createElement("ul");
-    list.className = "plugins-row plugins-market-row";
-    const everyOut = Math.max(1, Number(marketPer.value) || 6);
-    const pagesOut = Math.max(1, Math.ceil(rows.length / everyOut));
-    if (pageOut > pagesOut) {
-      pageOut = pagesOut;
-    }
-    const fromOut = (pageOut - 1) * everyOut;
-    const sliceOut = rows.slice(fromOut, fromOut + everyOut);
-    for (const one of sliceOut) {
-      const item = document.createElement("li");
-      item.className = "plugins-card";
-      const head = document.createElement("div");
-      head.className = "plugins-head";
-      const names = document.createElement("div");
-      names.className = "plugins-names";
-      const who = document.createElement("strong");
-      who.className = "plugins-name";
-      who.textContent = one.name;
-      const meta = document.createElement("span");
-      meta.className = "plugins-meta";
-      coreSetUIText(meta, "textContent", [[corePhrase("版本："), showVersion(one.version || ""), corePhrase("")], [corePhrase("　作者："), one.author || "（没写）", corePhrase("")]]);
-      names.append(who, meta);
-      const tag = document.createElement("span");
-      tag.className = "plugins-tag";
-      tag.textContent = one.source === "github" ? "GitHub" : one.source || "来源不明";
-      head.append(names, tag);
-      item.append(head);
-      if (one.description) {
-        const line = document.createElement("p");
-        line.className = "plugins-said";
-        line.textContent = one.description;
-        item.append(line);
-      }
-      if (one.date) {
-        const chips = document.createElement("div");
-        chips.className = "plugins-chips";
-        const when = document.createElement("span");
-        when.className = "plugins-chip";
-        when.textContent = one.date;
-        chips.append(when);
-        item.append(chips);
-      }
-      const foot2 = document.createElement("div");
-      foot2.className = "plugins-foot-line";
-      item.append(foot2);
-      const put2 = document.createElement("button");
-      put2.type = "button";
-      put2.className = "btn plugins-act put";
-      coreSetUIText(put2, "textContent", corePhrase("安装"));
-      let putBusy = false;
-      put2.addEventListener("click", async () => {
-        if (putBusy) {
-          return;
-        }
-        putBusy = true;
-        put2.disabled = true;
-        try {
-          const box = one.url ? { url: one.url } : { name: one.name };
-          await runMutation("/market/install", box, marketNote, MARKET_FAILED);
-        } finally {
-          putBusy = false;
-          put2.disabled = false;
-        }
-      });
-      const look2 = document.createElement("button");
-      look2.type = "button";
-      look2.className = "btn ghost plugins-look";
-      coreSetUIText(look2, "textContent", corePhrase("详情"));
-      look2.addEventListener("click", () => {
-        openDetail(one, "market");
-      });
-      const right2 = document.createElement("div");
-      right2.className = "plugins-acts";
-      right2.append(put2);
-      const actions2 = document.createElement("div");
-      actions2.className = "plugins-actions";
-      actions2.append(look2, right2);
-      item.append(actions2);
-      list.append(item);
-    }
-    marketBox.replaceChildren(list);
-    coreSetUIText(marketCount, "textContent", [[[corePhrase("共"), rows.length, corePhrase("个可装")], [corePhrase("（本页显示 "), sliceOut.length ? fromOut + 1 : 0, corePhrase("-"), fromOut + sliceOut.length, corePhrase("）")]], answer.stale ? corePhrase("（ 这是上次问到的，正在重问）。") : corePhrase("。")]);
-    marketBox.append(marketCount);
-    marketBox.append(pager(pagesOut, pageOut, (n) => {
-      pageOut = n;
-      drawMarket(answer);
-    }));
-  };
-  return {
-    root,
-    draw,
-    drawMarket,
-    show() {
-      root.hidden = false;
-      viewEpoch += 1;
-      void refresh2();
-    },
-    stop() {
-      root.hidden = true;
-      viewEpoch += 1;
-      installedRead += 1;
-      marketRead += 1;
-    }
-  };
+    await continuation();
+  } catch (e) {
+    continuation = void 0;
+    update("failed", e instanceof Error ? e.message : String(e), false);
+  } finally {
+    window.dispatchEvent(new Event("plugins-changed"));
+  }
 }
 
-// src/web/client/infinity-plugin-page.ts
+// maintenance/plugin-release-0547-20261125/source/core/src/web/client/plugin-guide-version.ts
+var PLUGIN_GUIDE_VERSION = true ? "v1.18" : "";
+
+// maintenance/plugin-release-0547-20261125/source/core/src/web/client/plugin-catalog.ts
+var pluginCategories = [
+  ["all", "全部"],
+  ["communication", "通讯接入"],
+  ["creation", "内容创作"],
+  ["information", "信息查询"],
+  ["automation", "自动任务"],
+  ["interaction", "互动体验"],
+  ["uncategorized", "未分类"]
+];
+var reviewed = {
+  "ar15mod3/infinity-comfyui": "creation",
+  "ar15mod3/core-infinity-wavesuid": "information",
+  "yluow/core-infinity-chaofan": "automation",
+  "yluow/jingjing-town": "interaction"
+};
+function pluginCategory(one) {
+  const declared = pluginCategories.filter(([id]) => id !== "all" && one.keywords?.includes(`category-${id}`));
+  if (declared.length === 1) return declared[0][0];
+  if (declared.length > 1) return "uncategorized";
+  return reviewed[(one.full || "").toLowerCase()] || "uncategorized";
+}
+function pluginCategoryLabel(one) {
+  return pluginCategories.find(([id]) => id === pluginCategory(one))[1];
+}
+function pluginRequirement(one) {
+  return (one.full || "").toLowerCase() === "ar15mod3/infinity-comfyui" ? "需启用 QQ 连接" : "";
+}
+
+// maintenance/plugin-release-0547-20261125/source/core/src/web/client/plugin-platforms.ts
+var platformNames = { windows: "Windows", linux: "Linux", macos: "macOS" };
+function pluginPlatforms(one) {
+  const supported = Object.keys(platformNames).filter((id) => one.keywords?.includes(`platform-${id}`));
+  if (supported.length) return { supported, conditional: [], note: "来自作者的平台标签；未声明的平台不代表可用。" };
+  if (one.repository.toLowerCase() === "https://github.com/ar15mod3/infinity-comfyui" && one.version?.replace(/^v/, "") === "0.2.4") return {
+    supported: ["windows"],
+    conditional: ["linux"],
+    note: "Windows 支持本机部署。Linux 仅连接 Windows 上的 ComfyUI；生图服务必须使用 Windows 秋叶整合包。macOS 未声明。",
+    source: one.repository + "#运行环境"
+  };
+  return { supported: [], conditional: [], note: "作者尚未声明该版本的运行平台。安装前请查看项目说明，确认系统和依赖要求。" };
+}
+function platformSummary(info) {
+  const values = [...info.supported.map((id) => platformNames[id]), ...info.conditional.map((id) => platformNames[id] + "（有条件）")];
+  return values.length ? values.join(" / ") : "平台未声明";
+}
+
+// maintenance/plugin-release-0547-20261125/source/core/src/web/client/plugin-workspace.ts
+var node5 = (tag, cls = "", text2 = "") => {
+  const n = document.createElement(tag);
+  n.className = cls;
+  n.textContent = text2;
+  return n;
+};
+var button2 = (text2, action, cls = "") => {
+  const b = node5("button", "pw-button " + cls, text2);
+  b.type = "button";
+  b.onclick = action;
+  return b;
+};
+var installed = (p) => !!p && p.installed !== false;
+var runtime = (p) => {
+  const operation = pluginOperation();
+  if (operation?.busy && operation.name === p.name) return { enable: "正在启用", disable: "正在停用", remove: "正在卸载", apply: "正在应用更改" }[operation.action];
+  return p.installed === false ? "未安装" : p.contract ? "不兼容" : p.lifecycle_error ? "运行异常" : p.restart_required ? p.loaded ? p.restart_action === "config" ? "运行中 · 配置待重启" : "仍在运行 · 重启后停用" : p.restart_action === "enable" ? "重启后启用" : "重启后完成停用" : p.loaded ? "运行中" : p.enabled ? "已启用 · 未运行" : "已停用";
+};
+var repo = (entry) => {
+  if (entry.local?.builtin) return "https://github.com/AR15MOD3/TelyinCore";
+  if (entry.market?.full && /^[\w.-]+\/[\w.-]+$/.test(entry.market.full)) return "https://github.com/" + entry.market.full;
+  const url = entry.local?.origin?.url || "";
+  const match = /^https:\/\/github\.com\/([\w.-]+\/[\w.-]+?)(?:\.git)?(?:\/|$)/.exec(url);
+  if (match) return "https://github.com/" + match[1];
+  const remote = updateFor(entry.name)?.repository;
+  return remote && /^[\w.-]+\/[\w.-]+$/.test(remote) ? "https://github.com/" + remote : "";
+};
+var originGroup = (entry) => entry.local?.builtin ? "Core" : repo(entry) ? "GitHub" : "本地导入";
+var originOrder = (entry) => ({ Core: 0, GitHub: 1, "本地导入": 2 })[originGroup(entry)];
+var platforms = (entry) => pluginPlatforms({ repository: repo(entry), version: entry.local?.version || entry.market?.version, keywords: entry.local?.keywords || entry.market?.keywords });
+function pluginWorkspace(shell2, view2 = "local") {
+  const root = node5("section", "plugin-workspace page-world");
+  root.dataset.pluginView = view2;
+  const header = node5("header", "pw-header");
+  const heading2 = node5("div", "pw-heading");
+  heading2.append(node5("h1", "page-title", view2 === "local" ? "插件总览 · PLUGIN OVERVIEW" : "插件市场 · PLUGIN MARKETPLACE"));
+  if (view2 === "discover") {
+    const guide = node5("a", "pw-guide", "开发规范手册 ↗");
+    guide.href = assetUrl("infinity-plugin-spec.html");
+    guide.target = "_blank";
+    guide.rel = "noopener noreferrer";
+    guide.title = "插件开发规范 " + PLUGIN_GUIDE_VERSION;
+    heading2.append(guide);
+  }
+  header.append(heading2);
+  const scope2 = node5("div", "pw-scope");
+  const scopeTitle = node5("h2", "", view2 === "local" ? "内置 & 已安装" : "浏览插件");
+  const scopeCount = node5("span", "pw-scope-count");
+  scope2.append(scopeTitle, scopeCount);
+  const body = node5("div", "pw-body");
+  const browse = node5("section", "pw-browser");
+  browse.setAttribute("aria-label", "插件列表");
+  const toolbar = node5("div", "pw-searchbar");
+  const search = node5("input");
+  search.type = "search";
+  search.placeholder = "搜索插件";
+  search.setAttribute("aria-label", "搜索插件");
+  toolbar.append(icon("search"), search);
+  const controls = node5("div", "pw-filters");
+  controls.setAttribute("role", "group");
+  controls.setAttribute("aria-label", "筛选插件");
+  const refresh2 = button2("刷新", () => {
+    void read4();
+  }, "pw-quiet");
+  const searchActions = node5("div", "pw-search-actions");
+  searchActions.append(refresh2);
+  const navigation = node5("div", "pw-navigation");
+  navigation.append(scope2, searchActions);
+  const searchRow = node5("div", "pw-search-row");
+  searchRow.append(toolbar);
+  const searchTools = node5("section", "pw-search-tools");
+  searchTools.setAttribute("aria-label", "插件搜索与标签");
+  searchTools.append(searchRow, controls);
+  const feedback = node5("p", "pw-feedback");
+  feedback.setAttribute("role", "status");
+  const list = node5("div", "pw-list");
+  const footer = node5("div", "pw-list-footer");
+  browse.append(searchTools, feedback, list, footer);
+  const detail = node5("section", "pw-detail");
+  detail.setAttribute("aria-label", "插件详情");
+  const restartSummary = node5("div", "pw-restart-summary");
+  restartSummary.setAttribute("role", "status");
+  restartSummary.hidden = true;
+  const progress = node5("section", "pw-operation-progress");
+  progress.setAttribute("role", "status");
+  progress.setAttribute("aria-live", "polite");
+  progress.hidden = true;
+  body.append(browse, detail);
+  root.append(header, navigation, progress, restartSummary, body);
+  shell2.content.replaceChildren(root);
+  let selected = "", locals = [], market = [], alive = false, epoch = 0, busy = false;
+  let localLoaded = false, marketLoaded = false, localError = "", marketError = "", operationError = "", page2 = 1;
+  let lastDetail = "", lastList = "";
+  let filterValue = "all";
+  let checkingUpdates = false;
+  let requestedName;
+  const filterButtons = /* @__PURE__ */ new Map();
+  function setFilters() {
+    filterValue = "all";
+    controls.replaceChildren();
+    filterButtons.clear();
+    search.placeholder = view2 === "discover" ? "搜索插件、作者或 #标签" : "搜索插件、作者或标签";
+    const values = view2 === "discover" ? pluginCategories : [["all", "全部"], ["running", "运行中"], ["disabled", "已停用"], ["available", "可更新"]];
+    for (const [value, label] of values) {
+      const chip = button2(label, () => {
+        if (busy || pluginOperation()?.busy) return;
+        filterValue = filterValue === value ? "all" : value;
+        page2 = 1;
+        lastList = "";
+        render2();
+      }, "pw-filter-tag");
+      chip.dataset.value = value;
+      filterButtons.set(value, chip);
+      controls.append(chip);
+    }
+  }
+  function discoverable() {
+    return localLoaded ? market.filter((m) => !locals.some((p) => p.name === m.name && (p.builtin || installed(p)))) : [];
+  }
+  function entries() {
+    const all = view2 === "discover" ? discoverable().map((m) => ({ name: m.name, market: m, local: locals.find((p) => p.name === m.name) })) : locals.map((p) => ({ name: p.name, local: p, market: market.find((m) => m.name === p.name) }));
+    return all.filter((e) => {
+      const tags = [...e.local?.keywords || [], ...e.market?.keywords || [], ...e.market ? [pluginCategory(e.market), pluginCategoryLabel(e.market)] : []].map((tag) => tag.toLowerCase());
+      const searchable = [e.name, e.local?.displayName, e.local?.description, e.market?.description, e.local?.author, e.market?.author, ...tags].join(" ").toLowerCase();
+      const terms = search.value.trim().toLowerCase().split(/\s+/).filter(Boolean);
+      if (!terms.every((term) => term.startsWith("#") ? term.length === 1 || tags.some((tag) => tag === term.slice(1)) : searchable.includes(term))) return false;
+      const f = filterValue;
+      if (f === "all") return true;
+      if (view2 === "discover") return !!e.market && pluginCategory(e.market) === f;
+      if (f === "available") return installed(e.local) && !e.local?.builtin && updateFor(e.name)?.status === "available";
+      return f === "running" ? !!e.local?.loaded : installed(e.local) && !e.local?.enabled && !e.local?.loaded && !e.local?.tracked && !e.local?.restart_required;
+    }).sort((a, b) => view2 === "discover" ? 0 : originOrder(a) - originOrder(b) || Number(updateFor(b.name)?.status === "available") - Number(updateFor(a.name)?.status === "available") || a.name.localeCompare(b.name));
+  }
+  search.oninput = () => {
+    page2 = 1;
+    lastList = "";
+    render2();
+  };
+  function render2() {
+    if (!alive) return;
+    const op = pluginOperation();
+    progress.hidden = !op;
+    progress.replaceChildren();
+    if (op) {
+      progress.dataset.phase = op.phase;
+      progress.setAttribute("aria-busy", String(op.busy));
+      progress.append(node5("strong", "", { enable: "启用插件", disable: "停用插件", remove: "卸载插件", apply: "应用更改" }[op.action] + " · " + (locals.find((p) => p.name === op.name)?.displayName || op.name)), node5("p", "", op.text));
+      if (op.phase === "uncertain") progress.append(button2("继续检查", () => {
+        void continuePluginOperation();
+      }));
+    }
+    const pending5 = locals.filter((p) => installed(p) && p.restart_required);
+    restartSummary.hidden = view2 !== "local" || !pending5.length || !!op?.busy;
+    restartSummary.replaceChildren();
+    if (pending5.length) {
+      restartSummary.append(node5("span", "", `${pending5.length} 个插件有待生效的更改。可在详情中重启并应用，当前页面会保留。`), button2("查看待生效", () => {
+        filterValue = "all";
+        search.value = "";
+        page2 = 1;
+        requestedName = pending5[0].name;
+        lastList = lastDetail = "";
+        render2();
+      }));
+    }
+    const counts = { local: locals.filter(installed).length, discover: discoverable().length, updates: locals.filter((p) => installed(p) && !p.builtin && updateFor(p.name)?.status === "available").length };
+    search.disabled = busy || !!pluginOperation()?.busy;
+    scopeCount.textContent = !localLoaded || view2 === "discover" && !marketLoaded ? "正在读取…" : view2 === "local" ? `${counts.local} 个插件 · ${locals.filter((p) => installed(p) && p.loaded).length} 个运行中` : "";
+    refresh2.textContent = busy ? "处理中…" : "刷新";
+    refresh2.disabled = busy || !!pluginOperation()?.busy;
+    for (const [value, chip] of filterButtons) {
+      chip.disabled = busy || !!pluginOperation()?.busy;
+      chip.setAttribute("aria-pressed", String(value === filterValue));
+      if (value === "available") chip.textContent = `可更新 ${counts.updates}`;
+    }
+    const status = pluginUpdateSnapshot();
+    feedback.textContent = view2 === "discover" ? [localError, marketError].filter(Boolean).join(" ") : [localError, status.error, status.checking ? "正在后台检查更新…" : status.message].filter(Boolean).join(" ");
+    const rows = entries();
+    const pages = Math.max(1, Math.ceil(rows.length / 30));
+    if (view2 === "discover" && localLoaded && marketLoaded) scopeCount.textContent = `搜索到 ${rows.length} 个插件`;
+    if (requestedName) {
+      const index = rows.findIndex((e) => e.name === requestedName);
+      if (index >= 0) {
+        selected = requestedName;
+        page2 = Math.floor(index / 30) + 1;
+        requestedName = void 0;
+        requestAnimationFrame(() => {
+          if (alive) detail.querySelector(".pw-update-note")?.scrollIntoView({ block: "nearest" });
+        });
+      } else if (localLoaded) requestedName = void 0;
+    }
+    page2 = Math.min(page2, pages);
+    const shown = rows.slice((page2 - 1) * 30, page2 * 30);
+    if (!shown.some((e) => e.name === selected)) {
+      selected = shown[0]?.name || "";
+      lastDetail = "";
+    }
+    const listKey = JSON.stringify([view2, shown, selected, busy, pluginOperation(), localLoaded, marketLoaded, localError, marketError, search.value, filterValue, shown.map((e) => updateFor(e.name))]);
+    if (listKey !== lastList) {
+      lastList = listKey;
+      list.replaceChildren();
+      let group = "";
+      if (!shown.length) {
+        const waiting = !localLoaded || view2 === "discover" && !marketLoaded;
+        const failed = !localLoaded && localError || view2 === "discover" && !marketLoaded && marketError;
+        list.append(node5("p", "pw-empty", waiting ? failed ? "暂时无法列出插件，请刷新重试。" : "正在读取插件…" : !search.value && filterValue === "available" ? "暂无可更新的插件" : search.value || filterValue !== "all" ? "没有匹配的插件" : view2 === "discover" ? "暂无未安装的插件" : "暂无插件"));
+      }
+      for (const e of shown) {
+        if (view2 === "local" && originGroup(e) !== group) {
+          group = originGroup(e);
+          const label = node5("h3", "pw-group", group);
+          label.append(node5("span", "", String(rows.filter((row2) => originGroup(row2) === group).length)));
+          list.append(label);
+        }
+        const item = button2("", () => {
+          operationError = "";
+          selected = e.name;
+          lastDetail = "";
+          render2();
+        }, "pw-entry");
+        item.disabled = busy || !!pluginOperation()?.busy;
+        item.dataset.name = e.name;
+        item.setAttribute("aria-pressed", String(e.name === selected));
+        const mark = node5("span", "pw-mark");
+        mark.append(icon(e.local?.builtin ? "grid" : "puzzle"));
+        const copy = node5("span", "pw-entry-copy");
+        copy.append(node5("strong", "", e.local?.displayName || e.name));
+        const text2 = filterValue === "available" && updateFor(e.name) ? updateText(updateFor(e.name)) : e.local?.description || e.market?.description || e.name;
+        copy.append(node5("span", "pw-entry-summary", text2));
+        const state3 = node5("span", "pw-entry-state");
+        const update2 = updateFor(e.name);
+        if (update2?.status === "available" && installed(e.local)) {
+          state3.textContent = `${runtime(e.local)} · 可更新`;
+          state3.dataset.tone = "update";
+        } else if (e.local) {
+          state3.textContent = (e.local.builtin ? "内置 · " : "") + runtime(e.local);
+          state3.dataset.tone = e.local.loaded ? "on" : "off";
+        } else state3.textContent = e.market ? pluginCategoryLabel(e.market) : "";
+        copy.append(state3);
+        if (view2 === "discover") copy.append(node5("span", "pw-entry-platform", platformSummary(platforms(e))));
+        item.append(mark, copy);
+        list.append(item);
+      }
+    }
+    footer.replaceChildren(node5("span", "", `${rows.length} 个插件`));
+    if (pages > 1) {
+      const back = button2("上一页", () => {
+        page2--;
+        lastList = "";
+        render2();
+      });
+      back.disabled = page2 === 1;
+      const next = button2("下一页", () => {
+        page2++;
+        lastList = "";
+        render2();
+      });
+      next.disabled = page2 === pages;
+      footer.append(back, node5("span", "", `${page2}/${pages}`), next);
+    }
+    const entry = shown.find((e) => e.name === selected);
+    const detailKey = JSON.stringify([entry, view2, entry && updateFor(entry.name), operationError, busy, pluginOperation(), checkingUpdates, status.checking]);
+    if (detailKey !== lastDetail) {
+      lastDetail = detailKey;
+      drawDetail(entry);
+    }
+  }
+  function drawDetail(e) {
+    detail.replaceChildren();
+    if (!e) {
+      detail.append(node5("div", "pw-detail-empty", "选择一个插件，查看详情与管理选项"));
+      return;
+    }
+    const p = e.local, m = e.market, exists = installed(p), u = updateFor(e.name);
+    const hero = node5("header", "pw-hero");
+    const mark = node5("div", "pw-mark pw-mark-large");
+    mark.append(icon(p?.builtin ? "grid" : "puzzle"));
+    const title = node5("div", "pw-identity");
+    title.append(node5("div", "pw-eyebrow", p?.builtin ? "CORE 内置" : m ? pluginCategoryLabel(m) : "本地插件"), node5("h2", "", p?.displayName || e.name), node5("p", "pw-package", e.name));
+    hero.append(mark, title);
+    detail.append(hero);
+    const metadata = node5("div", "pw-metadata");
+    metadata.append(node5("span", "", `版本 ${p?.version || m?.version || "未声明"}`), node5("span", "", p?.author || m?.author || "未声明作者"));
+    if (p?.license) metadata.append(node5("span", "", p.license));
+    detail.append(metadata);
+    let compatibilityBox;
+    if (!p?.builtin) {
+      const compatibility = platforms(e);
+      const box = node5("section", "pw-compatibility");
+      box.append(node5("h3", "", "运行平台"));
+      const badges = node5("div", "pw-platforms");
+      for (const [id, label] of Object.entries(platformNames)) {
+        const support = compatibility.supported.some((value) => value === id) ? "supported" : compatibility.conditional.some((value) => value === id) ? "conditional" : "unknown";
+        const badge = node5("div", "pw-platform");
+        badge.dataset.support = support;
+        badge.append(node5("strong", "", label), node5("span", "", support === "supported" ? "已声明支持" : support === "conditional" ? "有条件支持" : "未声明"));
+        badges.append(badge);
+      }
+      box.append(badges, node5("p", "", compatibility.note));
+      if (compatibility.source) {
+        const link = node5("a", "pw-source", "平台说明 ↗");
+        link.href = compatibility.source;
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+        box.append(link);
+      }
+      compatibilityBox = box;
+    }
+    const actions = node5("div", "pw-actions");
+    actions.setAttribute("role", "group");
+    actions.setAttribute("aria-label", "插件操作");
+    if (exists) {
+      const configure = node5("a", "pw-button pw-primary", "打开配置");
+      configure.href = `#/infinity/${encodeURIComponent(e.name)}`;
+      if (busy) {
+        configure.removeAttribute("href");
+        configure.setAttribute("aria-disabled", "true");
+      }
+      actions.append(configure);
+      const toggle = button2(p.restart_required && p.restart_action !== "config" ? p.enabled ? "撤销启用" : "撤销停用" : p.enabled ? "停用插件" : "启用插件", () => {
+        void mutate(e, "switch");
+      });
+      toggle.disabled = busy || !!pluginOperation()?.busy;
+      actions.append(toggle);
+      const status = node5("span", "pw-runtime", runtime(p));
+      status.dataset.tone = p.loaded ? "on" : "off";
+      metadata.append(status);
+    } else {
+      const install = button2(p?.builtin ? "恢复安装" : "安装插件", () => {
+        void mutate(e, "install");
+      }, "pw-primary");
+      install.disabled = busy || !!pluginOperation()?.busy || !p?.builtin && !m?.url;
+      actions.append(install);
+    }
+    if (exists && p?.builtin) {
+      const check2 = node5("a", "pw-button", "检查 Core 更新 ↗");
+      check2.href = "#/settings";
+      actions.append(check2);
+    } else if (exists) {
+      const check2 = button2(checkingUpdates || pluginUpdateSnapshot().checking ? "检查中…" : "检查更新", () => {
+        void checkUpdates();
+      });
+      check2.disabled = busy || !!pluginOperation()?.busy || checkingUpdates || pluginUpdateSnapshot().checking;
+      actions.append(check2);
+    }
+    const source = repo(e);
+    if (source) {
+      const link = node5("a", "pw-button", "GitHub 源代码 ↗");
+      link.href = source;
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      actions.append(link);
+    }
+    if (exists) {
+      const remove = button2("卸载插件", () => {
+        void mutate(e, "remove");
+      }, "pw-remove");
+      remove.disabled = busy || !!pluginOperation()?.busy || p?.can_remove === false;
+      actions.append(remove);
+    }
+    if (exists && p?.restart_required) {
+      const apply = button2("重启并应用", () => {
+        void mutate(e, "apply");
+      });
+      apply.disabled = busy || !!pluginOperation()?.busy;
+      actions.append(apply);
+    }
+    detail.append(actions);
+    const result = node5("p", "pw-operation", operationError);
+    result.setAttribute("role", "status");
+    detail.append(result);
+    if (p?.restart_required) {
+      const note = node5("section", "pw-restart-note");
+      note.append(node5("h3", "", "重启后生效"), node5("p", "", p.restart_reason || "设置已保存，重启当前 Bot 的 Core 服务后生效。"), node5("p", "", p.loaded ? "插件当前仍在运行，任务结束后再重启服务。刷新网页不会使此更改生效。" : "点击“重启并应用”后，页面将显示重启进度并核对生效结果。"));
+      detail.append(note);
+    }
+    if (p?.lifecycle_error) detail.append(node5("p", "pw-operation", p.lifecycle_error));
+    if (compatibilityBox) detail.append(compatibilityBox);
+    if (u && exists && !p?.builtin) {
+      const update2 = node5("section", "pw-update-note");
+      update2.append(node5("h3", "", u.status === "available" ? "有新版本可用" : "版本检查"), node5("p", "", updateText(u)));
+      if (u.checkedAt) update2.append(node5("small", "", `上次成功检查 ${new Date(u.checkedAt * 1e3).toLocaleString()}`));
+      if (u.error) update2.append(node5("p", "", u.error));
+      if (u.status === "available") {
+        const instructions = node5("details");
+        instructions.append(node5("summary", "", "查看升级步骤"), node5("p", "", "等待任务结束并备份自定义文件。卸载旧包后在「插件市场」安装新版，安装前核对市场版本。卸载将停用所有 Bot 共用的该插件，配置和缓存保留；重新安装后检查配置并按需启用。"));
+        update2.append(instructions);
+      }
+      detail.append(update2);
+    }
+    const about = node5("section", "pw-about");
+    about.append(node5("h3", "", "关于插件"), node5("p", "", p?.description || m?.description || "作者尚未提供简介。"));
+    const requirement = m && pluginRequirement(m);
+    if (requirement) about.append(node5("p", "pw-requirement", requirement));
+    if (p?.contract) about.append(node5("p", "pw-operation", p.contract));
+    detail.append(about);
+    const info = node5("section", "pw-info");
+    info.append(node5("h3", "", "安装信息"));
+    const fields = node5("dl");
+    const field = (label, value) => {
+      fields.append(node5("dt", "", label), node5("dd", "", value || "未声明"));
+    };
+    field("来源", p?.builtin ? "Core 内置" : p?.origin?.source === "github" ? "GitHub" : p ? "本地导入" : m?.source || "GitHub");
+    field("安装状态", exists ? "已安装" : p?.builtin ? "可从 Core 恢复" : "尚未安装");
+    if (p?.where) field("安装位置", p.where);
+    if (p?.api !== void 0) field("兼容接口", `Infinity API ${p.api ?? "未声明"}`);
+    if (m?.date) field("仓库更新", m.date);
+    if (p?.builtin) field("更新方式", "随 Core 更新");
+    if (p?.reload_mode) field("生效方式", p.reload_mode === "restart" ? "启用和停用需重启 Core 服务" : p.reload_mode === "hot" ? "支持热加载" : "声明无效");
+    info.append(fields);
+    detail.append(info);
+  }
+  async function checkUpdates() {
+    if (checkingUpdates || busy) return;
+    checkingUpdates = true;
+    render2();
+    try {
+      await checkPluginUpdates(true);
+    } finally {
+      checkingUpdates = false;
+      render2();
+    }
+  }
+  async function mutate(e, action) {
+    if (busy || pluginOperation()?.busy || !alive) return;
+    busy = true;
+    operationError = "";
+    const startedEpoch = ++epoch;
+    render2();
+    try {
+      const label = action === "apply" ? "重启并应用" : action === "remove" ? "卸载插件" : action === "install" ? e.local?.builtin ? "恢复安装" : "安装插件" : e.local?.enabled ? "停用插件" : "启用插件";
+      let message = action === "apply" ? "重启当前 Bot 服务并应用更改。页面会保留并显示进度。" : action === "remove" ? "该安装包由所有 Bot 共用。卸载将先在各 Bot 停用插件，保留配置和缓存。" : action === "install" ? "安装插件程序，完成后再配置并启用。" + (e.local?.builtin ? "" : ` 运行平台：${platformSummary(platforms(e))}。${platforms(e).note}`) : `确认${e.local?.enabled ? "停用" : "启用"}当前 Bot 的这个插件？`;
+      if (action === "switch" && e.local?.reload_mode === "restart") message = e.local.restart_required && e.local.restart_action !== "config" ? "撤销尚未生效的切换，恢复之前的启用设置。" : "如果插件需要重启，将在保存设置后自动重启当前 Bot 服务。页面会保留并显示进度。";
+      if (action === "remove" && e.local?.reload_mode === "restart") message += " 如当前 Bot 需要重启，页面会等待重连后继续完成卸载。其他 Bot 仍占用时会保留安装包并说明原因。";
+      const accepted = await confirmAction(label, message, label, false, { className: "pw-confirm", detail: e.local?.displayName || e.name });
+      if (!accepted || !alive || epoch !== startedEpoch) return;
+      if (action !== "install") {
+        await runPluginOperation(e.name, action === "switch" ? e.local?.enabled ? "disable" : "enable" : action);
+        epoch++;
+        await readLocal(epoch);
+        if (view2 === "discover") await readMarket(epoch);
+        return;
+      }
+      const path = "/market/install";
+      const payload = e.local?.builtin ? { from: e.local.where } : { url: e.market?.url };
+      try {
+        const response = await pageFetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+        if (!response.ok) throw new Error((await response.text()).trim() || `${label}失败`);
+        const answer = await response.json();
+        if (answer.ok === false) throw new Error(answer.said || `${label}失败`);
+      } catch (error) {
+        operationError = error instanceof Error ? error.message : `${label}失败`;
+      }
+      epoch++;
+      await readLocal(epoch);
+      if (view2 === "discover") await readMarket(epoch);
+      window.dispatchEvent(new Event("plugins-changed"));
+      if (localError) operationError = [operationError, "操作后未能刷新安装状态，请重新刷新。"].filter(Boolean).join(" ");
+    } finally {
+      busy = false;
+      lastList = lastDetail = "";
+      render2();
+      requested3();
+    }
+  }
+  async function readLocal(token) {
+    try {
+      const response = await pageFetch("/plugins", { cache: "no-store" });
+      if (!response.ok) throw Error();
+      const data = await response.json();
+      if (!data.wired || !Array.isArray(data.plugins)) throw Error();
+      if (alive && epoch === token) {
+        locals = data.plugins;
+        acceptPluginRuntime(locals);
+        localLoaded = true;
+        localError = data.broken?.length ? "部分插件清单读取失败：" + data.broken.join("、") : "";
+      }
+    } catch {
+      if (alive && epoch === token) localError = localLoaded ? "无法刷新，当前显示上次读取的本机插件。" : "无法读取本机插件，请重试。";
+    }
+    render2();
+  }
+  let marketRequest = 0;
+  async function readMarket(token) {
+    const request2 = ++marketRequest;
+    try {
+      const response = await pageFetch("/market", { cache: "no-store" });
+      if (!response.ok) throw Error();
+      const data = await response.json();
+      if (!data.wired || !Array.isArray(data.found)) throw Error(data.said);
+      if (alive && epoch === token && request2 === marketRequest) {
+        market = data.found;
+        marketLoaded = true;
+        marketError = data.stale ? data.error || "显示上次缓存，市场正在后台刷新。" : "";
+      }
+    } catch {
+      if (alive && epoch === token) marketError = marketLoaded ? "市场暂时无法刷新，保留上次结果。" : "无法读取插件市场，请重试。";
+    } finally {
+      render2();
+    }
+  }
+  async function read4() {
+    if (busy || !alive) return;
+    const token = ++epoch;
+    await Promise.allSettled([readLocal(token), view2 === "discover" ? readMarket(token) : Promise.resolve()]);
+  }
+  function requested3() {
+    if (busy || !alive || view2 !== "local") return;
+    const request2 = takePluginUpdateRequest();
+    if (request2) {
+      search.value = "";
+      page2 = 1;
+      selected = "";
+      operationError = "";
+      filterValue = request2.name && updateFor(request2.name)?.status !== "available" ? "all" : "available";
+      requestedName = request2.name || pluginUpdateSnapshot().rows.find((row2) => row2.status === "available")?.name;
+      lastList = lastDetail = "";
+      render2();
+    }
+  }
+  function restartRequested() {
+    if (busy || !alive || view2 !== "local") return;
+    const name = takePluginRestartRequest();
+    if (name) {
+      filterValue = "all";
+      search.value = "";
+      page2 = 1;
+      requestedName = name;
+      lastList = lastDetail = "";
+      render2();
+    }
+  }
+  const updateChanged = () => render2();
+  const pluginsChanged = () => {
+    if (!busy) void read4();
+  };
+  let timer;
+  setFilters();
+  return { root, show() {
+    alive = true;
+    root.hidden = false;
+    window.addEventListener("plugin-updates-changed", updateChanged);
+    window.addEventListener("plugin-operation-changed", updateChanged);
+    window.addEventListener("plugin-updates-open", requested3);
+    window.addEventListener("plugin-restart-open", restartRequested);
+    window.addEventListener("plugins-changed", pluginsChanged);
+    requested3();
+    restartRequested();
+    render2();
+    void read4();
+    timer = window.setInterval(() => {
+      if (!document.hidden && view2 === "local" && !busy) void read4();
+    }, 3e4);
+  }, stop() {
+    alive = false;
+    epoch++;
+    root.hidden = true;
+    clearInterval(timer);
+    window.removeEventListener("plugin-updates-changed", updateChanged);
+    window.removeEventListener("plugin-operation-changed", updateChanged);
+    window.removeEventListener("plugin-updates-open", requested3);
+    window.removeEventListener("plugin-restart-open", restartRequested);
+    window.removeEventListener("plugins-changed", pluginsChanged);
+  } };
+}
+
+// maintenance/plugin-release-0547-20261125/source/core/src/web/client/plugin-market-page.ts
+function pluginMarketPage(shell2) {
+  return pluginWorkspace(shell2, "discover");
+}
+
+// maintenance/plugin-release-0547-20261125/source/core/src/web/client/infinity-plugin-page.ts
 function infinityPluginPage(shell2) {
   const route2 = location.hash.replace(/^#\/?infinity\//, "");
   let name = "";
@@ -12320,8 +12541,8 @@ function infinityPluginPage(shell2) {
   return pluginPage(shell2, name);
 }
 
-// src/web/client/knowledge-page.ts
-var READ_FAILED3 = "读不到知识库那一格。";
+// maintenance/plugin-release-0547-20261125/source/core/src/web/client/knowledge-page.ts
+var READ_FAILED2 = "读不到知识库那一格。";
 var NOT_WIRED2 = "知识库这一层没接上读法。";
 var NOTHING_YET = "知识库里还没有东西 —— 定下来的事写进那儿，这里就看得见。";
 var stripComments = (one) => one.replace(/<!--[\s\S]*?-->/g, "");
@@ -12340,8 +12561,8 @@ function knowledgePage(shell2) {
   head.className = "head";
   const title = document.createElement("h1");
   coreSetUIText(title, "textContent", corePhrase("知识库 · KNOWLEDGE"));
-  const find = searchBox("按名称筛选…");
-  head.append(title, find.element);
+  const find2 = searchBox("按名称筛选…");
+  head.append(title, find2.element);
   root.append(head);
   const book = document.createElement("div");
   book.className = "book";
@@ -12361,7 +12582,7 @@ function knowledgePage(shell2) {
     tail.replaceChildren();
     if (answer === null || answer.wired === false) {
       const prose = line("div", "prose");
-      prose.append(line("p", "fade", answer === null ? READ_FAILED3 : NOT_WIRED2));
+      prose.append(line("p", "fade", answer === null ? READ_FAILED2 : NOT_WIRED2));
       body.append(prose);
       return;
     }
@@ -12396,8 +12617,8 @@ function knowledgePage(shell2) {
     };
     const pick2 = (index) => {
       at = index;
-      for (const el2 of toc.querySelectorAll(".one")) {
-        el2.classList.toggle("on", el2.dataset.at === String(index));
+      for (const el3 of toc.querySelectorAll(".one")) {
+        el3.classList.toggle("on", el3.dataset.at === String(index));
       }
       showBody(index);
     };
@@ -12458,7 +12679,7 @@ function knowledgePage(shell2) {
   };
   let requestId = 0;
   const readHint = pageLoad(root, "知识库", () => {
-    void refresh2(find.input.value.trim());
+    void refresh2(find2.input.value.trim());
   });
   const refresh2 = async (q) => {
     const mine = ++requestId;
@@ -12479,14 +12700,14 @@ function knowledgePage(shell2) {
       readHint.fail();
     }
   };
-  find.onAsk((q) => {
+  find2.onAsk((q) => {
     void refresh2(q);
   });
   return {
     root,
     show() {
       root.hidden = false;
-      void refresh2(find.input.value.trim());
+      void refresh2(find2.input.value.trim());
     },
     stop() {
       requestId += 1;
@@ -12495,7 +12716,7 @@ function knowledgePage(shell2) {
   };
 }
 
-// src/web/client/portrait-display.ts
+// maintenance/plugin-release-0547-20261125/source/core/src/web/client/portrait-display.ts
 function portraitOrigin(raw) {
   const group = /^group:qq:(\d+)\|sender=qq:(\d+)$/.exec(raw);
   if (group) return `QQ 群 ${group[1]} · 发言者 ${group[2]}`;
@@ -12505,8 +12726,8 @@ function portraitOrigin(raw) {
   return raw;
 }
 
-// src/web/client/people-page.ts
-var READ_FAILED4 = "读不到画像那一格。";
+// maintenance/plugin-release-0547-20261125/source/core/src/web/client/people-page.ts
+var READ_FAILED3 = "读不到画像那一格。";
 var NOT_WIRED3 = "画像这一层没接上读法。";
 var NOBODY_YET = "她还没记过谁 —— 她记下来的时候，这里就有第一条。";
 var ROSTER_EMPTY = "还没有别人 —— 她记下一个人的时候，名字会出现在这儿。";
@@ -12519,8 +12740,8 @@ function peoplePage(shell2) {
   head.className = "head";
   const title = document.createElement("h1");
   coreSetUIText(title, "textContent", corePhrase("画像 · PROFILE"));
-  const find = searchBox("按用户名筛选…");
-  head.append(title, find.element);
+  const find2 = searchBox("按用户名筛选…");
+  head.append(title, find2.element);
   root.append(head);
   const faces = document.createElement("div");
   faces.className = "faces";
@@ -12565,7 +12786,7 @@ function peoplePage(shell2) {
       shade.remove();
       document.removeEventListener("keydown", onKey);
       if (opener instanceof HTMLElement && opener.isConnected) opener.focus();
-      else find.input.focus();
+      else find2.input.focus();
     };
     const onKey = (event) => {
       if (event.key === "Escape") {
@@ -12672,7 +12893,7 @@ function peoplePage(shell2) {
     face.replaceChildren();
     tail.replaceChildren();
     if (answer === null || answer.wired === false) {
-      const said = line("p", "gist void", answer === null ? READ_FAILED4 : NOT_WIRED3);
+      const said = line("p", "gist void", answer === null ? READ_FAILED3 : NOT_WIRED3);
       face.append(said);
       return;
     }
@@ -12766,7 +12987,7 @@ function peoplePage(shell2) {
         "来话昵称仅供界面辨认，不会自动绑定或合并身份。要向 BOT 介绍某个人，请在对话里说明。"
       ));
       const status = line("p", "identity-status");
-      const update = async (body) => {
+      const update2 = async (body) => {
         try {
           const got = await pageFetch("/people/identity", {
             method: "POST",
@@ -12778,7 +12999,7 @@ function peoplePage(shell2) {
           if (!got.ok || result.ok !== true) {
             return result.said || "操作没有完成。";
           }
-          await refresh2(find.input.value.trim());
+          await refresh2(find2.input.value.trim());
           return null;
         } catch (why) {
           console.error("身份绑定操作失败：", why);
@@ -12791,8 +13012,8 @@ function peoplePage(shell2) {
         return zone;
       }
       const advanced = document.createElement("details");
-      const summary = line("summary", "", "高级：手动账号与解绑");
-      advanced.append(summary);
+      const summary2 = line("summary", "", "高级：手动账号与解绑");
+      advanced.append(summary2);
       if (association) {
         zone.append(line(
           "p",
@@ -12827,7 +13048,7 @@ function peoplePage(shell2) {
             profiles.join(" 与 "),
             "将关联画像：" + profiles.join("、") + "。账号：" + (accounts.join("、") || "暂无") + "。旧内容保留、关联读取；不开放其他群聊历史，不把私聊带进群里。本机控制台仅代表入口，请核对实际使用者。",
             "确认关联",
-            () => update({
+            () => update2({
               action: "associate",
               profile_keys: participants.map((r) => r.who).sort(),
               expected_profiles: profiles,
@@ -12851,7 +13072,7 @@ function peoplePage(shell2) {
               one.who,
               "保留这份画像的原内容，并移到独立身份。随它分开的账号：" + (accounts.join("、") || "无") + "。其余关联保留。",
               "确认分开",
-              () => update({
+              () => update2({
                 action: "separate",
                 profile_key: one.who,
                 expected_accounts: accounts,
@@ -12873,7 +13094,7 @@ function peoplePage(shell2) {
             one.who,
             "只为这份画像建立身份记录。不会自动合并其他画像，也不会迁移旧消息。",
             "确认建立",
-            () => update({ action: "create", profile_key: one.who })
+            () => update2({ action: "create", profile_key: one.who })
           );
         });
         advanced.append(create);
@@ -12897,7 +13118,7 @@ function peoplePage(shell2) {
             label,
             "已绑定的私人入口会使用这个称呼。",
             "保存称呼",
-            () => update({
+            () => update2({
               action: "rename",
               person_id: identity.id,
               revision: association.revision,
@@ -12929,7 +13150,7 @@ function peoplePage(shell2) {
               account2,
               "解除这个账号与当前身份的关联。已有画像和历史消息不会被改写。",
               "确认解绑",
-              () => update(expected)
+              () => update2(expected)
             );
           });
           row2.append(remove);
@@ -12959,7 +13180,7 @@ function peoplePage(shell2) {
             key2,
             "请核对这个账号与「" + one.who + "」属于同一人。确认后，下一次私人请求才会使用这条关联。",
             "确认绑定",
-            () => update({ action: "bind", person_id: identity.id, account: key2 })
+            () => update2({ action: "bind", person_id: identity.id, account: key2 })
           );
         });
         add.append(account, bind2);
@@ -12977,8 +13198,8 @@ function peoplePage(shell2) {
     const pick2 = (index) => {
       at = index;
       selectedWho = rows[index].who;
-      for (const [i, el2] of [...roster.querySelectorAll(".one")].entries()) {
-        el2.classList.toggle("on", i === index);
+      for (const [i, el3] of [...roster.querySelectorAll(".one")].entries()) {
+        el3.classList.toggle("on", i === index);
       }
       showFace(index);
     };
@@ -13006,7 +13227,7 @@ function peoplePage(shell2) {
   let selectedWho = "";
   let requestId = 0;
   const readHint = pageLoad(root, "画像", () => {
-    void refresh2(find.input.value.trim());
+    void refresh2(find2.input.value.trim());
   });
   const refresh2 = async (q) => {
     const mine = ++requestId;
@@ -13027,14 +13248,14 @@ function peoplePage(shell2) {
       readHint.fail();
     }
   };
-  find.onAsk((q) => {
+  find2.onAsk((q) => {
     void refresh2(q);
   });
   return {
     root,
     show() {
       root.hidden = false;
-      void refresh2(find.input.value.trim());
+      void refresh2(find2.input.value.trim());
     },
     stop() {
       requestId += 1;
@@ -13043,8 +13264,8 @@ function peoplePage(shell2) {
   };
 }
 
-// src/web/client/experience-page.ts
-var READ_FAILED5 = "读不到经历那一格。";
+// maintenance/plugin-release-0547-20261125/source/core/src/web/client/experience-page.ts
+var READ_FAILED4 = "读不到经历那一格。";
 var NOT_WIRED4 = "经历这一层没接上读法。";
 var NOTHING_YET2 = "还没有经历记下来 —— 说过的话、写过的一段，都会落到这儿。";
 var SHOWN = 4;
@@ -13176,8 +13397,8 @@ function experiencePage(shell2) {
   head.className = "head";
   const title = document.createElement("h1");
   coreSetUIText(title, "textContent", corePhrase("经历 · EXPERIENCE"));
-  const find = searchBox("关键词或日期…");
-  head.append(title, find.element);
+  const find2 = searchBox("关键词或日期…");
+  head.append(title, find2.element);
   root.append(head);
   const axis = line("div", "axis");
   root.append(axis);
@@ -13207,11 +13428,11 @@ function experiencePage(shell2) {
     if (open) body.setAttribute("tabindex", "0");
     body.addEventListener("scroll", () => dayScroll.set(key2, body.scrollTop));
     const toggle = (caption) => {
-      const button2 = line("button", "fold-toggle", caption);
-      button2.setAttribute("type", "button");
-      button2.setAttribute("aria-expanded", String(open));
-      button2.setAttribute("aria-controls", body.id);
-      button2.addEventListener("click", () => {
+      const button3 = line("button", "fold-toggle", caption);
+      button3.setAttribute("type", "button");
+      button3.setAttribute("aria-expanded", String(open));
+      button3.setAttribute("aria-controls", body.id);
+      button3.addEventListener("click", () => {
         if (open) {
           unfoldedDays.delete(key2);
           dayScroll.delete(key2);
@@ -13221,7 +13442,7 @@ function experiencePage(shell2) {
         const updated = [...axis.querySelectorAll(".stamp")].find((item) => item.dataset.dayKey === key2);
         updated?.querySelector(open ? ".fold-toggle" : ".stamp-meta .fold-toggle")?.focus({ preventScroll: true });
       });
-      return button2;
+      return button3;
     };
     const meta = line("div", "stamp-meta");
     meta.append(line("span", "n", String(rows.length) + " 条"));
@@ -13326,7 +13547,7 @@ function experiencePage(shell2) {
     asked = q;
     if (answer === null || answer.wired === false) {
       const prose = line("div", "prose");
-      prose.append(line("p", "fade", answer === null ? READ_FAILED5 : NOT_WIRED4));
+      prose.append(line("p", "fade", answer === null ? READ_FAILED4 : NOT_WIRED4));
       axis.append(prose);
       return;
     }
@@ -13412,7 +13633,7 @@ function experiencePage(shell2) {
       const snapshot2 = JSON.stringify(answer);
       if (snapshot2 !== previousSnapshot) {
         previousSnapshot = snapshot2;
-        draw(answer, find.input.value.trim());
+        draw(answer, find2.input.value.trim());
       }
       readHint.ready();
     } catch (why) {
@@ -13425,7 +13646,7 @@ function experiencePage(shell2) {
       readHint.fail();
     }
   };
-  find.onAsk((q) => {
+  find2.onAsk((q) => {
     if (mine !== null) draw(mine, q);
   });
   const collapseOpen = () => {
@@ -13455,7 +13676,7 @@ function experiencePage(shell2) {
       const epoch = requestId;
       void Promise.all([learnChannels(), loadSpeaker()]).then(() => {
         if (epoch === requestId && !root.hidden && mine !== null) {
-          draw(mine, find.input.value.trim());
+          draw(mine, find2.input.value.trim());
         }
       });
     },
@@ -13467,12 +13688,12 @@ function experiencePage(shell2) {
   };
 }
 
-// src/web/client/plugin-storage-settings.ts
+// maintenance/plugin-release-0547-20261125/source/core/src/web/client/plugin-storage-settings.ts
 var element2 = (tag, cls, label) => {
-  const el2 = document.createElement(tag);
-  el2.className = cls;
-  if (label) uiLabel(el2, label);
-  return el2;
+  const el3 = document.createElement(tag);
+  el3.className = cls;
+  if (label) uiLabel(el3, label);
+  return el3;
 };
 function pluginStorageSettings() {
   const root = element2("section", "settings-card plugin-storage");
@@ -13529,7 +13750,7 @@ function pluginStorageSettings() {
       name.textContent = plugin.displayName || plugin.name;
       name.title = plugin.name;
       identity.append(icon2, name);
-      const state = element2("span", "pcs-type", cache ? "页面状态" : "无缓存");
+      const state3 = element2("span", "pcs-type", cache ? "页面状态" : "无缓存");
       const size = element2("span", "pcs-size");
       size.textContent = cache ? `${cache.bytes} B` : "—";
       const clean = element2("button", "pcs-clean", "清理");
@@ -13541,7 +13762,7 @@ function pluginStorageSettings() {
         uiLabel(message, clearPluginDisplay(plugin.name) ? "已清理显示缓存；配置和未保存内容保持不变。" : "未清理：缓存不可用或有内容需要保护。");
         draw();
       };
-      row2.append(identity, state, size, clean);
+      row2.append(identity, state3, size, clean);
       rows.append(row2);
     }
     if (!selected.length) rows.append(element2("p", "pcs-empty", ready2 ? "没有匹配的插件页面缓存。" : "正在读取…"));
@@ -13551,16 +13772,16 @@ function pluginStorageSettings() {
     next.disabled = (page2 + 1) * 8 >= selected.length;
   };
   for (const [value, label] of [["all", "全部"], ["cached", "有缓存"], ["empty", "无缓存"]]) {
-    const button2 = element2("button", "", label);
-    button2.type = "button";
-    button2.setAttribute("aria-pressed", String(value === filter));
-    button2.onclick = () => {
+    const button3 = element2("button", "", label);
+    button3.type = "button";
+    button3.setAttribute("aria-pressed", String(value === filter));
+    button3.onclick = () => {
       filter = value;
       page2 = 0;
-      for (const child of filters.children) child.setAttribute("aria-pressed", String(child === button2));
+      for (const child of filters.children) child.setAttribute("aria-pressed", String(child === button3));
       draw();
     };
-    filters.append(button2);
+    filters.append(button3);
   }
   search.oncompositionstart = () => {
     composing = true;
@@ -13633,10 +13854,10 @@ function snowlumaSessionSettings() {
     try {
       const response = await fetch("/infinity/qq/management-session", { cache: "no-store" });
       if (!response.ok) throw new Error();
-      const state = await response.json();
-      active2 = typeof state.active === "string" ? state.active : "";
-      clear.disabled = !(active2 && state.available === true && state.hasSession === true);
-      uiLabel(status, state.available !== true ? "当前运行方式不支持会话清理。" : state.hasSession === true ? "已保存登录会话" : "没有已保存的登录会话");
+      const state3 = await response.json();
+      active2 = typeof state3.active === "string" ? state3.active : "";
+      clear.disabled = !(active2 && state3.available === true && state3.hasSession === true);
+      uiLabel(status, state3.available !== true ? "当前运行方式不支持会话清理。" : state3.hasSession === true ? "已保存登录会话" : "没有已保存的登录会话");
     } catch {
       uiLabel(status, "暂时无法读取 SnowLuma 登录会话状态。");
     }
@@ -13670,7 +13891,7 @@ function snowlumaSessionSettings() {
   return root;
 }
 
-// src/web/client/model-proxy-settings.ts
+// maintenance/plugin-release-0547-20261125/source/core/src/web/client/model-proxy-settings.ts
 var PROVIDERS = [
   ["openai", "OpenAI / ChatGPT"],
   ["google", "Google Gemini"],
@@ -13682,13 +13903,13 @@ function modelProxySettings() {
   root.className = "settings-card model-proxy-settings";
   configPresentation(root, "loading");
   const h = document.createElement("h3");
-  coreSetUIText(h, "textContent", corePhrase("网络代理"));
+  coreSetUIText(h, "textContent", corePhrase("网络与下载"));
   const note = document.createElement("p");
   note.className = "set-note";
   coreSetUIText(
     note,
     "textContent",
-    corePhrase("国内镜像始终直连。切换到官方源时，按下方用途使用代理。")
+    corePhrase("先选择下载源，再决定官方连接方式。镜像始终直连，模型 API 单独控制。")
   );
   const enabledLabel = document.createElement("label");
   enabledLabel.className = "model-proxy-toggle";
@@ -13702,7 +13923,7 @@ function modelProxySettings() {
   const address = document.createElement("input");
   address.type = "url";
   address.className = "engine-input engine-input-wide";
-  coreSetUIAttribute(address, "aria-label", corePhrase("模型代理地址"));
+  coreSetUIAttribute(address, "aria-label", corePhrase("共用代理地址"));
   address.placeholder = "http://127.0.0.1:7891";
   address.autocomplete = "off";
   address.spellcheck = false;
@@ -13726,24 +13947,49 @@ function modelProxySettings() {
     targets.append(row2);
     return { id, input: input2 };
   });
-  const uses = document.createElement("fieldset");
-  uses.className = "model-proxy-targets";
-  const usesTitle = document.createElement("legend");
-  coreSetUIText(usesTitle, "textContent", corePhrase("其他用途"));
-  uses.append(usesTitle);
-  const extraBoxes = [
-    ["market_enabled", "插件市场（GitHub 搜索与下载）"],
-    ["downloads_enabled", "下载（模型、运行环境和 Core 更新）"]
-  ].map(([id, name]) => {
-    const label2 = document.createElement("label");
-    label2.className = "model-proxy-provider";
-    const input2 = document.createElement("input");
-    input2.type = "checkbox";
-    label2.append(input2, coreUITextNode(corePhrase(name)));
-    uses.append(label2);
-    return { id, input: input2 };
+  const uses = document.createElement("div");
+  uses.className = "public-network-policies";
+  const select = (label2, entries) => {
+    const box = document.createElement("label");
+    box.className = "public-network-field";
+    box.append(label2);
+    const input2 = document.createElement("select");
+    input2.setAttribute("aria-label", label2);
+    for (const [value, text2] of entries) input2.add(new Option(text2, value));
+    box.append(input2);
+    return { box, input: input2 };
+  };
+  const policies = ["downloads", "market"].map((id) => {
+    const row2 = document.createElement("section");
+    row2.className = "public-network-policy";
+    const title = document.createElement("h4");
+    title.textContent = id === "downloads" ? "公共下载 · Core 更新、模型与运行环境" : "插件市场 · 搜索与安装";
+    const source = select(title.textContent + "：来源顺序", [["mirror", "镜像优先"], ["official", "官方优先"]]);
+    const transport = select(title.textContent + "：官方连接", [
+      ["direct", "直接连接"],
+      ["fallback", "代理优先，失败后直连"],
+      ["required", "仅使用代理"]
+    ]);
+    source.box.firstChild.textContent = "来源顺序";
+    transport.box.firstChild.textContent = "官方连接";
+    const flow = document.createElement("p");
+    flow.className = "public-network-flow";
+    const paintFlow = () => {
+      const official = transport.input.value === "direct" ? "官方直连" : transport.input.value === "fallback" ? "官方代理 → 官方直连" : "官方代理";
+      flow.textContent = source.input.value === "mirror" ? "镜像直连 → " + official : official + " → 镜像直连";
+    };
+    source.input.addEventListener("change", paintFlow);
+    transport.input.addEventListener("change", paintFlow);
+    row2.append(title, source.box, transport.box, flow);
+    uses.append(row2);
+    return { id, source: source.input, transport: transport.input, paintFlow };
   });
-  const scopeInputs = [...boxes, ...extraBoxes].map((box) => box.input);
+  const policyNote = document.createElement("p");
+  policyNote.className = "set-note";
+  policyNote.textContent = "箭头表示失败后的下一条路径。更新摘要与插件文件清单只向官方核验，遵守上面的官方连接设置。下载页明确指定来源时，以该次选择为准。";
+  uses.append(policyNote);
+  const scopeInputs = boxes.map((box) => box.input);
+  const policyInputs = policies.flatMap((p) => [p.source, p.transport]);
   const hint = document.createElement("p");
   hint.className = "set-note";
   coreSetUIText(
@@ -13768,17 +14014,18 @@ function modelProxySettings() {
   coreSetUIText(reload, "textContent", corePhrase("重新读取"));
   const header = document.createElement("div");
   header.className = "model-proxy-header";
-  header.append(h, enabledLabel);
+  header.append(h);
+  targets.insertBefore(enabledLabel, legend.nextSibling);
   const details = document.createElement("details");
   details.className = "model-proxy-details";
-  const summary = document.createElement("summary");
-  coreSetUIText(summary, "textContent", corePhrase("适用范围"));
-  details.append(summary, targets, uses, help, hint, reload);
+  const summary2 = document.createElement("summary");
+  coreSetUIText(summary2, "textContent", corePhrase("模型 API 代理"));
+  details.append(summary2, targets, help, hint, reload);
   actions.append(save, system);
-  root.append(header, label, details, actions, note, status);
+  root.append(header, note, label, uses, details, actions, status);
   let revision = null, systemProxy = "", busy = false;
   let baseline = null, saving = false, guarding = false;
-  const draft = () => JSON.stringify([enabled.checked, address.value, scopeInputs.map((input2) => input2.checked)]);
+  const draft = () => JSON.stringify([enabled.checked, address.value, scopeInputs.map((input2) => input2.checked), policyInputs.map((input2) => input2.value)]);
   const dirty = () => baseline !== null && draft() !== baseline;
   const beforeUnload = (event) => {
     if (!saving && !dirty()) return;
@@ -13792,17 +14039,17 @@ function modelProxySettings() {
     if (needed) window.addEventListener("beforeunload", beforeUnload);
     else window.removeEventListener("beforeunload", beforeUnload);
   };
-  for (const input2 of [enabled, address, ...scopeInputs]) {
+  for (const input2 of [enabled, address, ...scopeInputs, ...policyInputs]) {
     input2.addEventListener("input", guardDraft);
     input2.addEventListener("change", guardDraft);
   }
-  const lock = (pending3) => {
-    busy = pending3;
-    for (const control of [enabled, address, ...scopeInputs, save]) {
-      control.disabled = pending3 || revision === null;
+  const lock = (pending5) => {
+    busy = pending5;
+    for (const control of [enabled, address, ...scopeInputs, ...policyInputs, save]) {
+      control.disabled = pending5 || revision === null;
     }
-    reload.disabled = pending3;
-    system.disabled = pending3 || revision === null || !systemProxy;
+    reload.disabled = pending5;
+    system.disabled = pending5 || revision === null || !systemProxy;
   };
   const apply = (s) => {
     revision = s.revision;
@@ -13810,12 +14057,16 @@ function modelProxySettings() {
     enabled.checked = s.enabled;
     address.value = s.proxy_url;
     for (const box of boxes) box.input.checked = s.providers.includes(box.id);
-    for (const box of extraBoxes) box.input.checked = s[box.id] === true;
+    for (const p of policies) {
+      p.source.value = s[`${p.id}_source`] || "mirror";
+      p.transport.value = !s[`${p.id}_enabled`] ? "direct" : s[`${p.id}_fallback`] ? "fallback" : "required";
+      p.paintFlow();
+    }
     baseline = draft();
     guardDraft();
     configPresentation(root, "ready");
   };
-  const read2 = async () => {
+  const read4 = async () => {
     lock(true);
     coreSetUIText(status, "textContent", corePhrase("正在读取网络代理设置…"));
     try {
@@ -13826,8 +14077,7 @@ function modelProxySettings() {
         throw new Error("代理设置响应不完整，未覆盖。");
       }
       apply(value.settings);
-      const active2 = enabled.checked || extraBoxes.some((box) => box.input.checked);
-      coreSetUIText(status, "textContent", corePhrase(active2 ? "已启用" : "未启用"));
+      status.textContent = "已读取 · 各用途独立生效";
     } catch (error) {
       revision = null;
       configPresentation(root, "error");
@@ -13847,7 +14097,7 @@ function modelProxySettings() {
         coreSetUIText(status, "textContent", corePhrase("启用前请填写代理地址并选择供应商。"));
         return;
       }
-      if (extraBoxes.some((box) => box.input.checked) && !address.value.trim()) {
+      if (policies.some((p) => p.transport.value !== "direct") && !address.value.trim()) {
         coreSetUIText(status, "textContent", corePhrase("启用代理前请填写代理地址。"));
         return;
       }
@@ -13863,7 +14113,11 @@ function modelProxySettings() {
             enabled: enabled.checked,
             proxy_url: address.value.trim(),
             providers: boxes.filter((x) => x.input.checked).map((x) => x.id),
-            ...Object.fromEntries(extraBoxes.map((box) => [box.id, box.input.checked])),
+            ...Object.fromEntries(policies.flatMap((p) => [
+              [`${p.id}_enabled`, p.transport.value !== "direct"],
+              [`${p.id}_fallback`, p.transport.value === "fallback"],
+              [`${p.id}_source`, p.source.value]
+            ])),
             revision
           })
         });
@@ -13889,7 +14143,7 @@ function modelProxySettings() {
   reload.addEventListener("click", () => {
     if (busy) return;
     if (dirty() && !window.confirm("重新读取将放弃尚未保存的代理草稿，继续吗？")) return;
-    void read2();
+    void read4();
   });
   system.addEventListener("click", () => {
     if (busy || !systemProxy) return;
@@ -13897,11 +14151,11 @@ function modelProxySettings() {
     coreSetUIText(status, "textContent", corePhrase("已填入，尚未保存。"));
     guardDraft();
   });
-  void read2();
+  void read4();
   return root;
 }
 
-// src/web/client/settings-page.ts
+// maintenance/plugin-release-0547-20261125/source/core/src/web/client/settings-page.ts
 var GROUPS = [
   ["背景层级", [
     ["--color-canvas", "页面背景"],
@@ -14198,8 +14452,8 @@ function settingsPage(shell2) {
   book.append(tabs, body);
   root.append(book);
   onUILanguage((value) => {
-    for (const button2 of root.querySelectorAll(".settings-language-button")) {
-      button2.setAttribute("aria-pressed", String(button2.dataset.language === value));
+    for (const button3 of root.querySelectorAll(".settings-language-button")) {
+      button3.setAttribute("aria-pressed", String(button3.dataset.language === value));
     }
   });
   let viewEpoch = 0;
@@ -14230,14 +14484,14 @@ function settingsPage(shell2) {
     languageOptions.setAttribute("role", "group");
     coreSetUIAttribute(languageOptions, "aria-label", corePhrase("界面语言"));
     for (const [value, label] of [["zh-Hans", "简体中文"], ["zh-Hant", "繁體中文"]]) {
-      const button2 = document.createElement("button");
-      button2.type = "button";
-      button2.className = "settings-language-button";
-      button2.dataset.language = value;
-      button2.textContent = label;
-      button2.setAttribute("aria-pressed", String(uiLanguage() === value));
-      button2.addEventListener("click", () => setUILanguage(value));
-      languageOptions.append(button2);
+      const button3 = document.createElement("button");
+      button3.type = "button";
+      button3.className = "settings-language-button";
+      button3.dataset.language = value;
+      button3.textContent = label;
+      button3.setAttribute("aria-pressed", String(uiLanguage() === value));
+      button3.addEventListener("click", () => setUILanguage(value));
+      languageOptions.append(button3);
     }
     language2.append(languageTitle, languageOptions);
     body.append(language2);
@@ -14465,7 +14719,7 @@ function settingsPage(shell2) {
   };
 }
 
-// src/web/client/pages.ts
+// maintenance/plugin-release-0547-20261125/source/core/src/web/client/pages.ts
 function page(row2, build) {
   return { ...row2, build };
 }
@@ -14573,16 +14827,16 @@ var PAGES = [
     group: "INFINITY",
     id: "plugin",
     label: "插件市场",
-    icon: "store",
-    file: "plugins-page.ts"
-  }, pluginsPage),
+    icon: "grid",
+    file: "plugin-market-page.ts"
+  }, pluginMarketPage),
   page({
     group: "INFINITY",
     id: "infinity",
     label: "插件总览",
-    icon: "grid",
-    file: "infinity-page.ts"
-  }, infinityPage),
+    icon: "puzzle",
+    file: "plugin-workspace.ts"
+  }, pluginWorkspace),
   page({
     group: "INFINITY",
     id: "infinity-entry",
@@ -14620,8 +14874,8 @@ var live = null;
 function route(shell2, pages = PAGES) {
   const one = currentPage(pages);
   const selected = one.id === "infinity-entry" ? location.hash.replace(/^#\/?/, "") : one.id;
-  for (const el2 of shell2.railNav.querySelectorAll(".rail-item")) {
-    el2.classList.toggle("active", el2.dataset.page === selected);
+  for (const el3 of shell2.railNav.querySelectorAll(".rail-item")) {
+    el3.classList.toggle("active", el3.dataset.page === selected);
   }
   if (live !== null) live.stop();
   live = one.build(shell2);
@@ -14629,7 +14883,7 @@ function route(shell2, pages = PAGES) {
   return live;
 }
 
-// src/web/client/state.ts
+// maintenance/plugin-release-0547-20261125/source/core/src/web/client/state.ts
 var COUNTER_KEYS = ["tokens", "messages", "batches", "paused"];
 var ENGINE_KEYS = ["endpoint", "model", "profile", "model_available"];
 function count2(value) {
@@ -14654,7 +14908,7 @@ function counterChips(m) {
   ];
 }
 
-// src/web/client/main.ts
+// maintenance/plugin-release-0547-20261125/source/core/src/web/client/main.ts
 var READ_NAMES = [
   ...COUNTER_KEYS,
   ...ENGINE_KEYS,
@@ -14676,9 +14930,9 @@ function isChat(view2) {
   return typeof view2 === "object" && view2 !== null && typeof view2.append === "function";
 }
 function need(id) {
-  const el2 = document.getElementById(id);
-  if (el2 === null) throw new Error(`那一页的壳里少了 #${id}`);
-  return el2;
+  const el3 = document.getElementById(id);
+  if (el3 === null) throw new Error(`那一页的壳里少了 #${id}`);
+  return el3;
 }
 function anchors() {
   for (const id of ["rail", "topbar", "content", "bottom"]) need(id);
@@ -14686,7 +14940,11 @@ function anchors() {
 void initializeDisplayScope();
 anchors();
 var mounted = createShell(document.body);
-if (typeof window.setInterval === "function") startPackageUpdates();
+if (typeof window.setInterval === "function") {
+  startPackageUpdates();
+  startPluginUpdates();
+  startPluginRestart();
+}
 var shell = mounted.shell;
 var bar = mounted.topbar;
 var conn = bar.provider;
@@ -14796,7 +15054,7 @@ function switchPage() {
 }
 var stateRead = 0;
 async function refresh() {
-  const read2 = ++stateRead;
+  const read4 = ++stateRead;
   const usageRead = pageFetch("/usage").then((r) => r.ok ? r.json() : null).catch(() => null);
   let where = "读 /state";
   try {
@@ -14805,10 +15063,10 @@ async function refresh() {
     const st = await got.json();
     const total = null;
     void usageRead.then((box) => {
-      if (read2 !== stateRead || typeof box?.total !== "number") return;
+      if (read4 !== stateRead || typeof box?.total !== "number") return;
       shell.counters(counterChips({ ...st.machine, tokens: box.total, context_estimate_source: box.estimate_source }));
     });
-    if (read2 !== stateRead) return;
+    if (read4 !== stateRead) return;
     where = "写机器那几个数";
     machineOf(st);
     syncGateState(shell.root, st.machine);
@@ -14829,7 +15087,7 @@ async function refresh() {
     coreSetUIText(bar.status, "title", localHealth === false ? corePhrase("本地模型离线，回复请求会失败") : machineStatus(st.machine));
     where = "画那一页";
   } catch (exc) {
-    if (read2 !== stateRead) return;
+    if (read4 !== stateRead) return;
     console.error("refresh 抛在：", where, exc);
     conn.dataset.on = "false";
     conn.dataset.model = "unknown";

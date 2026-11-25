@@ -222,20 +222,31 @@ def main(argv=None, *, host_registry=None, launch_options=None,
     from bot_global_admission import StartupAdmission
     from launcher_exit_log import launcher_exit_log
     core = Path(__file__).resolve().parent
-    update_handoff = []
-    with launcher_exit_log(core), StartupAdmission(core) as admission:
-        code = _main_owned(argv, host_registry=host_registry, launch_options=launch_options,
-                           reuse_start_paused=reuse_start_paused, update_handoff=update_handoff)
-        admission.finish(code)
-    if code == 0 and update_handoff:
-        name, port = update_handoff[0]
-        return subprocess.call([sys.executable, str(core/'scripts/online_update.py'), '--relaunch',
-                                '--bot', name, '--port', str(port)], cwd=core)
-    return code
+    # A restart gets a fresh admission/registry only after the old finally block
+    # has retired the exact child, job, output and endpoint. Never recurse or
+    # apply a staged Core update as a side effect of a plugin operation.
+    exact_port = False
+    while True:
+        update_handoff, plugin_handoff = [], []
+        with launcher_exit_log(core), StartupAdmission(core) as admission:
+            code = _main_owned(argv, host_registry=host_registry, launch_options=launch_options,
+                               reuse_start_paused=reuse_start_paused, update_handoff=update_handoff,
+                               plugin_handoff=plugin_handoff, exact_port=exact_port)
+            admission.finish(code)
+        if code == 0 and plugin_handoff:
+            name, port = plugin_handoff[0]
+            argv = ['--bot', name, '--port', str(port), '--no-browser']
+            exact_port = True
+            continue
+        if code == 0 and update_handoff:
+            name, port = update_handoff[0]
+            return subprocess.call([sys.executable, str(core/'scripts/online_update.py'), '--relaunch',
+                                    '--bot', name, '--port', str(port)], cwd=core)
+        return code
 
 
 def _main_owned(argv=None, *, host_registry=None, launch_options=None,
-                reuse_start_paused=False, update_handoff=None) -> int:
+                reuse_start_paused=False, update_handoff=None, plugin_handoff=None, exact_port=False) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--port', type=int, default=7799)
     parser.add_argument('--bot', help='跳过交互，启动指定Bot')
@@ -318,6 +329,7 @@ def _main_owned(argv=None, *, host_registry=None, launch_options=None,
     console_control = None
     launcher_host = None
     endpoint_recovered = False
+    restart_capability = ""
     try:
         try:
             if host_registry is not None:
@@ -340,6 +352,8 @@ def _main_owned(argv=None, *, host_registry=None, launch_options=None,
                 refuse_existing_instance(core,name,host_registry)
             if args.console and not 0<args.port<=65535:raise ValueError('bounded console port placeholder required')
             port = args.port if args.console else available_port(args.port)
+            if exact_port and port != args.port:
+                raise ValueError('重启所需的原页面端口被占用，未改用其他端口或启动重复 Bot。')
             companion_preflight = None
             companion_available = True
             if instance_only:
@@ -378,6 +392,10 @@ def _main_owned(argv=None, *, host_registry=None, launch_options=None,
                 command,spawn_environment = python_command(command[1:],
                     env=(dict(os.environ,PYTHONIOENCODING="utf-8") if instance_only
                          else child_environment()))
+                if instance_only and not args.console and os.name == 'nt':
+                    from telyincore.plugin_service_restart import ENV, offer
+                    restart_capability = offer(os.getpid())
+                    spawn_environment = dict(spawn_environment, **{ENV: restart_capability})
                 if instance_only:
                     launcher_host = LauncherHost('startup.console' if args.console else 'startup.web',
                         command,core,name,launch_options=launch_options)
@@ -457,6 +475,11 @@ def _main_owned(argv=None, *, host_registry=None, launch_options=None,
             code = watch(process, live, controlled=controlled, shutdown=shutdown,
                          pump=getattr(parent_channel,'watch_tick',parent_channel.tick))
         from launcher_exit_log import exit_event
+        if restart_capability:
+            from telyincore.plugin_service_restart import consume
+            if consume(core, process.pid, name, port, restart_capability, exit_code=code):
+                if plugin_handoff is not None:
+                    plugin_handoff.append((name, port))
         if os.name == 'nt' and code == 0 and update_handoff is not None:
             from telyincore.online_install import requested_windows_restart
             if requested_windows_restart(core.parent, process.pid, name, port):

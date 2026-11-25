@@ -13177,6 +13177,7 @@ function pluginWorkspace(shell2, view2 = "local") {
   let lastDetail = "", lastList = "";
   let filterValue = "all";
   let checkingUpdates = false;
+  let receiptPlugin = "";
   let historyName = "";
   let requestedName;
   const filterButtons = /* @__PURE__ */ new Map();
@@ -13239,13 +13240,16 @@ function pluginWorkspace(shell2, view2 = "local") {
   function render2() {
     if (!alive) return;
     const op = pluginOperation();
-    progress.hidden = !op;
+    const showProgress = op && (op.busy || op.phase === "uncertain" || op.name === receiptPlugin);
+    progress.hidden = !showProgress;
     progress.replaceChildren();
-    if (op) {
+    if (op && showProgress) {
       progress.dataset.phase = op.phase;
       progress.setAttribute("aria-busy", String(op.busy));
-      progress.append(node5("strong", "", { enable: "启用插件", disable: "停用插件", remove: "卸载插件", apply: "应用更改" }[op.action] + " · " + (locals.find((p) => p.name === op.name)?.displayName || op.name)), node5("p", "", op.text));
+      const label = { enable: "启用插件", disable: "停用插件", remove: "卸载插件", apply: "应用更改" }[op.action];
+      progress.append(node5("strong", "", label + " · " + (locals.find((p) => p.name === op.name)?.displayName || op.name)), node5("p", "", op.text));
       if (op.phase === "uncertain") progress.append(button3("继续检查", () => {
+        receiptPlugin = op.name;
         void continuePluginOperation();
       }));
     }
@@ -13291,6 +13295,7 @@ function pluginWorkspace(shell2, view2 = "local") {
     page2 = Math.min(page2, pages);
     const shown = rows.slice((page2 - 1) * 30, page2 * 30);
     if (!shown.some((e) => e.name === selected)) {
+      if (selected && installed(locals.find((p) => p.name === selected))) receiptPlugin = "";
       selected = shown[0]?.name || "";
       lastDetail = "";
     }
@@ -13312,6 +13317,7 @@ function pluginWorkspace(shell2, view2 = "local") {
           list.append(label);
         }
         const item = button3("", () => {
+          if (e.name !== selected) receiptPlugin = "";
           operationError = "";
           selected = e.name;
           lastDetail = "";
@@ -13429,9 +13435,6 @@ function pluginWorkspace(shell2, view2 = "local") {
       });
       toggle.disabled = busy || !!pluginOperation()?.busy;
       actions.append(toggle);
-      const status = node5("span", "pw-runtime", runtime(p));
-      status.dataset.tone = p.loaded ? "on" : "off";
-      metadata.append(status);
     } else {
       const install = button3(p?.builtin ? "恢复安装" : !m?.url ? "暂无正式版" : "安装插件", () => {
         void mutate(e, "install");
@@ -13485,7 +13488,23 @@ function pluginWorkspace(shell2, view2 = "local") {
     );
     if (exists && !p?.builtin) {
       const update2 = node5("section", "pw-update-note");
-      update2.append(node5("h3", "", u?.status === "available" ? "有新版本可用" : "版本检查"));
+      const heading3 = node5("div", "pw-update-heading");
+      heading3.append(node5("h3", "", u?.status === "available" ? "有新版本可用" : "版本检查"));
+      if (versionRepo) {
+        const label = node5("label", "pw-update-reminder", "更新提醒");
+        label.title = "在当前浏览器中接收此 Bot 的插件更新提醒";
+        const input2 = node5("input");
+        input2.type = "checkbox";
+        input2.setAttribute("role", "switch");
+        input2.checked = !updateMuted(e.name);
+        input2.onchange = () => {
+          setUpdateMuted(e.name, !input2.checked);
+          detail.querySelector(".pw-update-reminder input")?.focus({ preventScroll: true });
+        };
+        label.append(input2);
+        heading3.append(label);
+      }
+      update2.append(heading3);
       const row2 = node5("div", "pw-version-controls");
       row2.append(node5("span", "pw-update-version", u ? updateText(u) : "等待读取版本信息"));
       if (versionRepo && u?.status === "available" && u.latest) {
@@ -13510,21 +13529,11 @@ function pluginWorkspace(shell2, view2 = "local") {
       update2.append(row2);
       if (u?.checkedAt) update2.append(node5("small", "", `上次成功检查 ${new Date(u.checkedAt * 1e3).toLocaleString()}`));
       if (u?.error) update2.append(node5("p", "", u.error));
-      if (versionRepo) {
-        const mute = node5("input");
-        mute.type = "checkbox";
-        mute.checked = updateMuted(e.name);
-        mute.onchange = () => setUpdateMuted(e.name, mute.checked);
-        const label = node5("label", "pw-update-mute");
-        label.title = "适用于此浏览器中的当前 Bot";
-        label.append(mute, document.createTextNode("该插件不推送更新提示"));
-        update2.append(label);
-        if (historyName === e.name) {
-          const panel2 = history();
-          panel2.id = "pw-version-history";
-          update2.append(panel2);
-          void panel2.loadVersions();
-        }
+      if (versionRepo && historyName === e.name) {
+        const panel2 = history();
+        panel2.id = "pw-version-history";
+        update2.append(panel2);
+        void panel2.loadVersions();
       }
       detail.append(update2);
     } else if (versionRepo) detail.append(history());
@@ -13603,6 +13612,7 @@ function pluginWorkspace(shell2, view2 = "local") {
       const releaseTag = tag || latest && await tagForVersion(repository, latest);
       if (!releaseTag) throw Error("缺少正式版本标签，请重新检查更新。");
       if (mustStop) {
+        receiptPlugin = e.name;
         await runPluginOperation(e.name, "disable", e.local?.version);
         const stop = pluginOperation();
         if (stop?.phase !== "complete") throw Error(stop?.text || "尚未确认插件已停用。");
@@ -13655,6 +13665,7 @@ function pluginWorkspace(shell2, view2 = "local") {
       const accepted = await confirmAction(label, message, label, false, { className: "pw-confirm", detail: e.local?.displayName || e.name });
       if (!accepted || !alive || epoch !== startedEpoch) return;
       if (action !== "install") {
+        receiptPlugin = e.name;
         await runPluginOperation(e.name, action === "switch" ? e.local?.enabled ? "disable" : "enable" : action);
         epoch++;
         await readLocal(epoch);

@@ -896,7 +896,7 @@
   gap: 5px;
   margin-top: 0;
 }
-.pw-entry-state:before,.pw-runtime:before {
+.pw-entry-state:before {
   content: '';
   width: 5px;
   height: 5px;
@@ -905,7 +905,7 @@
   display: inline-block;
   flex-shrink: 0;
 }
-.pw-entry-state[data-tone=on]:before,.pw-runtime[data-tone=on]:before {
+.pw-entry-state[data-tone=on]:before {
   background: var(--color-mint);
 }
 .pw-entry-state[data-tone=update] {
@@ -1058,14 +1058,6 @@
 .pw-primary:hover:not(:disabled) {
   background: var(--color-mint-select);
 }
-.pw-runtime {
-  font-size: 12px;
-  margin-left: auto;
-  color: var(--color-dim);
-  display: flex;
-  align-items: center;
-  gap: 7px;
-}
 .pw-about,.pw-info {
   padding: 22px 0;
   border-top: 1px solid var(--workspace-line,var(--color-line));
@@ -1183,10 +1175,6 @@ dialog.pw-confirm {
   }
   .pw-browser {
     padding-right: 14px;
-  }
-  .pw-runtime {
-    margin-left: 0;
-    width: 100%;
   }
   .pw-platforms {
     grid-template-columns: 1fr;
@@ -1372,22 +1360,71 @@ dialog.pw-confirm {
   display: block;
   margin-top: 8px;
 }
-.pw-update-mute {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  width: fit-content;
-  margin-top: 10px;
-  color: var(--color-dim);
-  font-size: 12px;
-  cursor: pointer;
-}
 .pw-update-note > .pw-versions {
   border-top: 1px solid var(--color-line);
   padding: 12px 0 0;
 }
-.pw-update-note > h3 {
+.pw-update-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin-bottom: 10px;
+}
+.pw-update-heading h3 {
+  margin: 0;
   cursor: default;
+}
+.pw-update-reminder {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 24px;
+  font: 500 13px var(--font-sans);
+  color: var(--color-dim);
+  cursor: pointer;
+}
+.pw-update-reminder input {
+  appearance: none;
+  position: relative;
+  width: 32px;
+  height: 18px;
+  margin: 0;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-pill);
+  background: var(--color-card);
+  cursor: pointer;
+}
+.pw-update-reminder input::before {
+  content: '';
+  position: absolute;
+  left: 2px;
+  top: 2px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--color-dim);
+}
+.pw-update-reminder input:checked {
+  background: var(--color-mint);
+  border-color: var(--color-mint);
+}
+.pw-update-reminder input:checked::before {
+  left: 16px;
+  background: var(--color-canvas);
+}
+.pw-update-reminder input:focus-visible {
+  outline: 2px solid var(--color-mint);
+  outline-offset: 3px;
+}
+@media (forced-colors:active) {
+  .pw-update-reminder input {
+    appearance: auto;
+  }
+  .pw-update-reminder input::before {
+    content: none;
+  }
 }
 @layer base {
   :root {

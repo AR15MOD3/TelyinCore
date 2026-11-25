@@ -211,7 +211,12 @@ await writeFile(join(OUT, 'index.html'), renderThemeDocument(html, orderedPalett
 // Offline reference page; Markdown source remains the single content authority.
 const { renderPluginSpec } = await import('./render-plugin-spec.mjs');
 const guide = await readFile(join(ROOT, 'docs', guideFile), 'utf8');
-await writeFile(join(OUT, 'infinity-plugin-spec.html'), renderPluginSpec(guide), 'utf8');
+const manualTheme = await esbuild.build({
+  entryPoints: [join(CLIENT, 'manual-theme.ts')], write: false, bundle: true,
+  format: 'iife', target: 'es2022', charset: 'utf8', minify: true,
+  define: { __MANUAL_PALETTES__: JSON.stringify(orderedPalettes) },
+});
+await writeFile(join(OUT, 'infinity-plugin-spec.html'), renderPluginSpec(guide, manualTheme.outputFiles[0].text), 'utf8');
 
 
 await copyFile(join(ROOT, 'scripts', 'voice', 'asr-self-check.wav'), join(OUT, 'asr-self-check.wav'));

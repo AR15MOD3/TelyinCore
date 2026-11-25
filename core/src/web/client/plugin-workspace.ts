@@ -66,6 +66,7 @@ export function pluginWorkspace(shell:Chrome,view:View='local'):Panel {
   let lastDetail='',lastList='';
   let filterValue='all';
   let checkingUpdates=false;
+  let receiptPlugin='';
   let historyName='';
   let requestedName:string|undefined;
   const filterButtons=new Map<string,HTMLButtonElement>();
@@ -106,8 +107,19 @@ export function pluginWorkspace(shell:Chrome,view:View='local'):Panel {
   includeLocal.onchange=()=>{page=1;lastList=lastDetail='';render();};
   function render(){
     if(!alive)return;
-    const op=pluginOperation();progress.hidden=!op;progress.replaceChildren();
-    if(op){progress.dataset.phase=op.phase;progress.setAttribute('aria-busy',String(op.busy));progress.append(node('strong','',({enable:'启用插件',disable:'停用插件',remove:'卸载插件',apply:'应用更改'}[op.action])+' · '+(locals.find(p=>p.name===op.name)?.displayName||op.name)),node('p','',op.text));if(op.phase==='uncertain')progress.append(button('继续检查',()=>{void continuePluginOperation();}));}
+    const op=pluginOperation();
+    const showProgress=op && (op.busy || op.phase==='uncertain' || op.name===receiptPlugin);
+    progress.hidden=!showProgress;
+    progress.replaceChildren();
+    if(op && showProgress){
+      progress.dataset.phase=op.phase;
+      progress.setAttribute('aria-busy',String(op.busy));
+      const label={enable:'启用插件',disable:'停用插件',remove:'卸载插件',apply:'应用更改'}[op.action];
+      progress.append(node('strong','',label+' · '+(locals.find(p=>p.name===op.name)?.displayName||op.name)),node('p','',op.text));
+      if(op.phase==='uncertain')progress.append(button('继续检查',()=>{
+        receiptPlugin=op.name;void continuePluginOperation();
+      }));
+    }
     const pending=locals.filter(p=>installed(p)&&p.restart_required);
     restartSummary.hidden=view!=='local'||!pending.length||!!op?.busy;restartSummary.replaceChildren();
     if(pending.length){restartSummary.append(node('span','',`${pending.length} 个插件有待生效的更改。可在详情中重启并应用，当前页面会保留。`),button('查看待生效',()=>{filterValue='all';search.value='';page=1;requestedName=pending[0].name;lastList=lastDetail='';render();}));}
@@ -122,7 +134,7 @@ export function pluginWorkspace(shell:Chrome,view:View='local'):Panel {
 
     if(requestedName){const index=rows.findIndex(e=>e.name===requestedName);if(index>=0){selected=requestedName;page=Math.floor(index/30)+1;requestedName=undefined;requestAnimationFrame(()=>{if(alive)detail.querySelector('.pw-update-note')?.scrollIntoView({block:'nearest'});});}else if(localLoaded)requestedName=undefined;}
     page=Math.min(page,pages);const shown=rows.slice((page-1)*30,page*30);
-    if(!shown.some(e=>e.name===selected)){selected=shown[0]?.name||'';lastDetail='';}
+    if(!shown.some(e=>e.name===selected)){if(selected&&installed(locals.find(p=>p.name===selected)))receiptPlugin='';selected=shown[0]?.name||'';lastDetail='';}
     const listKey=JSON.stringify([view,shown,selected,busy,pluginOperation(),localLoaded,marketLoaded,localError,marketError,search.value,filterValue,shown.map(e=>[updateFor(e.name),updateMuted(e.name)])]);
     if(listKey!==lastList){lastList=listKey;list.replaceChildren();let group='';
       if(!shown.length){
@@ -132,7 +144,7 @@ export function pluginWorkspace(shell:Chrome,view:View='local'):Panel {
       }
       for(const e of shown){
         if(view==='local'&&originGroup(e)!==group){group=originGroup(e);const label=node('h3','pw-group',group);label.append(node('span','',String(rows.filter(row=>originGroup(row)===group).length)));list.append(label);}
-        const item=button('',()=>{operationError='';selected=e.name;lastDetail='';render();},'pw-entry');item.disabled=busy||!!pluginOperation()?.busy;item.dataset.name=e.name;item.setAttribute('aria-pressed',String(e.name===selected));
+        const item=button('',()=>{if(e.name!==selected)receiptPlugin='';operationError='';selected=e.name;lastDetail='';render();},'pw-entry');item.disabled=busy||!!pluginOperation()?.busy;item.dataset.name=e.name;item.setAttribute('aria-pressed',String(e.name===selected));
         const mark=node('span','pw-mark');mark.append(icon(e.local?.builtin?'grid':'puzzle'));
         const copy=node('span','pw-entry-copy');copy.append(node('strong','',e.local?.displayName||e.name));
         const text=filterValue==='available'&&updateFor(e.name)?updateText(updateFor(e.name)!):e.local?.description||e.market?.description||e.name;const summary=node('span','pw-entry-summary',text);summary.title=text;copy.append(summary);
@@ -164,7 +176,6 @@ export function pluginWorkspace(shell:Chrome,view:View='local'):Panel {
     if(exists){
       const configure=node('a','pw-button pw-primary','打开配置');configure.href=`#/infinity/${encodeURIComponent(e.name)}`;if(busy){configure.removeAttribute('href');configure.setAttribute('aria-disabled','true');}actions.append(configure);
       const toggle=button(p!.restart_required&&p!.restart_action!=='config'?(p!.enabled?'撤销启用':'撤销停用'):p!.enabled?'停用插件':'启用插件',()=>{void mutate(e,'switch');});toggle.disabled=busy||!!pluginOperation()?.busy;actions.append(toggle);
-      const status=node('span','pw-runtime',runtime(p!));status.dataset.tone=p!.loaded?'on':'off';metadata.append(status);
     }else{const install=button(p?.builtin?'恢复安装':!m?.url?'暂无正式版':'安装插件',()=>{void mutate(e,'install');},'pw-primary');install.disabled=busy||!!pluginOperation()?.busy||!p?.builtin&&!m?.url;actions.append(install);}
     if(exists&&p?.builtin){const check=button('检查 Core 更新',()=>openCoreUpdateDialog(check));actions.append(check);}
     else if(exists){const check=button(checkingUpdates||pluginUpdateSnapshot().checking?'检查中…':'检查更新',()=>{void checkUpdates();});check.disabled=busy||!!pluginOperation()?.busy||checkingUpdates||pluginUpdateSnapshot().checking;actions.append(check);}
@@ -179,7 +190,23 @@ export function pluginWorkspace(shell:Chrome,view:View='local'):Panel {
       row=>{void changeVersion(e,versionRepo,row.tag);});
     if(exists&&!p?.builtin){
       const update=node('section','pw-update-note');
-      update.append(node('h3','',u?.status==='available'?'有新版本可用':'版本检查'));
+      const heading=node('div','pw-update-heading');
+      heading.append(node('h3','',u?.status==='available'?'有新版本可用':'版本检查'));
+      if(versionRepo){
+        const label=node('label','pw-update-reminder','更新提醒');
+        label.title='在当前浏览器中接收此 Bot 的插件更新提醒';
+        const input=node('input');
+        input.type='checkbox';
+        input.setAttribute('role','switch');
+        input.checked=!updateMuted(e.name);
+        input.onchange=()=>{
+          setUpdateMuted(e.name,!input.checked);
+          detail.querySelector<HTMLInputElement>('.pw-update-reminder input')?.focus({preventScroll:true});
+        };
+        label.append(input);
+        heading.append(label);
+      }
+      update.append(heading);
       const row=node('div','pw-version-controls');
       row.append(node('span','pw-update-version',u?updateText(u):'等待读取版本信息'));
       if(versionRepo&&u?.status==='available'&&u.latest){
@@ -202,15 +229,9 @@ export function pluginWorkspace(shell:Chrome,view:View='local'):Panel {
       update.append(row);
       if(u?.checkedAt)update.append(node('small','',`上次成功检查 ${new Date(u.checkedAt*1000).toLocaleString()}`));
       if(u?.error)update.append(node('p','',u.error));
-      if(versionRepo){
-        const mute=node('input');mute.type='checkbox';mute.checked=updateMuted(e.name);
-        mute.onchange=()=>setUpdateMuted(e.name,mute.checked);
-        const label=node('label','pw-update-mute');label.title='适用于此浏览器中的当前 Bot';
-        label.append(mute,document.createTextNode('该插件不推送更新提示'));update.append(label);
-        if(historyName===e.name){
-          const panel=history();panel.id='pw-version-history';update.append(panel);
-          void panel.loadVersions();
-        }
+      if(versionRepo&&historyName===e.name){
+        const panel=history();panel.id='pw-version-history';update.append(panel);
+        void panel.loadVersions();
       }
       detail.append(update);
     }else if(versionRepo)detail.append(history());
@@ -262,6 +283,7 @@ export function pluginWorkspace(shell:Chrome,view:View='local'):Panel {
       const releaseTag=tag||(latest&&await tagForVersion(repository,latest));
       if(!releaseTag)throw Error('缺少正式版本标签，请重新检查更新。');
       if(mustStop){
+        receiptPlugin=e.name;
         await runPluginOperation(e.name,'disable',e.local?.version);
         const stop=pluginOperation();
         if(stop?.phase!=='complete')throw Error(stop?.text||'尚未确认插件已停用。');
@@ -294,6 +316,7 @@ export function pluginWorkspace(shell:Chrome,view:View='local'):Panel {
       const accepted=await confirmAction(label,message,label,false,{className:'pw-confirm',detail:e.local?.displayName||e.name});
       if(!accepted||!alive||epoch!==startedEpoch)return;
       if(action!=='install'){
+        receiptPlugin=e.name;
         await runPluginOperation(e.name,action==='switch'?(e.local?.enabled?'disable':'enable'):action);
         epoch++;await readLocal(epoch);if(view==='discover')await readMarket(epoch);
         return;

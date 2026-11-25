@@ -1,5 +1,5 @@
 /** Run in <head>, before stylesheets and the app. No network or hidden-page timeout. */
-export function bootTheme(presets, namespace = null, restoreRail = true) {
+export function bootTheme(presets, namespace = null, restoreRail = true, saved = null) {
   const root = document.documentElement;
   // Before Bot identity is known, paint public defaults only.
   const read = key => namespace === null ? null : localStorage.getItem(namespace + key);
@@ -16,10 +16,12 @@ export function bootTheme(presets, namespace = null, restoreRail = true) {
     || presets.find(one => one.values.__scheme === scheme) || presets[0];
   const values = { ...base.values };
   const allowed = new Set(Object.keys(presets[0].values).filter(key => key.startsWith('--')));
-  if (cache?.version === 1 && cache.mode === mode && cache.pick === pick && cache.dark === dark
+  const cached = cache?.version === 1 && cache.mode === mode && cache.pick === pick && cache.dark === dark
       && cache.base === JSON.stringify(base.values)
-      && cache.values && typeof cache.values === 'object') {
-    for (const [key, value] of Object.entries(cache.values)) {
+      && cache.values && typeof cache.values === 'object';
+  const overrides = cached ? cache.values : saved;
+  if (overrides && typeof overrides === 'object') {
+    for (const [key, value] of Object.entries(overrides)) {
       if (mode === 'auto' && key.startsWith('--color-')) continue;
       if (allowed.has(key) && typeof value === 'string' && value.length < 500
           && !/[;{}<>]|url\s*\(|@import/i.test(value)) values[key] = value;

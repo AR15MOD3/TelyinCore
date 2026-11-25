@@ -8591,6 +8591,197 @@ body.rail-searching #rail > :not(.rail-search-panel) {
     outline-offset: -2px;
   }
 }
+#rail .plugin-nav-toolbar, #rail .plugin-nav-row, #rail .plugin-nav-actions {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  min-width: 0;
+}
+#rail :is(.plugin-nav-toolbar,.plugin-nav-row) > .rail-item {
+  flex: 1;
+}
+#rail .plugin-nav-children {
+  margin-inline-start: 12px;
+  padding-inline-start: 8px;
+  border-inline-start: 1px solid var(--workspace-nav-rule);
+}
+#rail :is(.plugin-nav-edit,.plugin-nav-grip,.plugin-nav-action) {
+  display: inline-grid;
+  place-items: center;
+  border-radius: 6px;
+  color: var(--workspace-nav-text);
+}
+#rail .plugin-nav-edit {
+  width: 29px;
+  height: 30px;
+  opacity: .65;
+}
+#rail :is(.plugin-nav-edit,.plugin-nav-action):hover {
+  background: var(--workspace-nav-text);
+  @supports (color: color-mix(in lab, red, red)) {
+    background: color-mix(in srgb,var(--workspace-nav-text) 8%,transparent);
+  }
+  opacity: 1;
+}
+#rail .plugin-nav-actions {
+  justify-content: flex-end;
+  padding: 4px 3px;
+}
+#rail .plugin-nav-action {
+  font-size: 12px;
+  min-height: 30px;
+  padding: 0 9px;
+}
+#rail .plugin-nav-action.is-primary {
+  background: #00a870;
+  @supports (color: color-mix(in lab, red, red)) {
+    background: color-mix(in srgb,var(--color-mint) 14%,var(--workspace-nav));
+  }
+  color: var(--color-mint-text);
+}
+#rail :is(.plugin-nav-actions,.plugin-nav-edit)[hidden],#rail .plugin-nav-grip {
+  display: none;
+}
+#rail :is(.is-sorting,.plugin-nav-ghost) .plugin-nav-grip {
+  display: inline-grid;
+}
+#rail .plugin-nav-grip {
+  width: 26px;
+  min-height: 32px;
+  flex: none;
+  touch-action: none;
+  cursor: grab;
+}
+#rail .plugin-nav-grip::before {
+  content: '';
+  width: 10px;
+  height: 15px;
+  background: radial-gradient(circle,currentColor 1.1px,transparent 1.4px) 0 0/5px 5px;
+  opacity: .65;
+}
+#rail .plugin-nav-row {
+  border-radius: 7px;
+  transition: background-color 140ms ease,box-shadow 140ms ease;
+}
+#rail .is-sorting .plugin-nav-row:focus-within {
+  background: #00a870;
+  @supports (color: color-mix(in lab, red, red)) {
+    background: color-mix(in srgb,var(--color-mint) 11%,var(--workspace-nav));
+  }
+  box-shadow: inset 0 0 0 1px color-mix(in srgb,#00a870 25%,transparent);
+  @supports (color: color-mix(in lab, red, red)) {
+    box-shadow: inset 0 0 0 1px color-mix(in srgb,var(--color-mint) 25%,transparent);
+  }
+}
+#rail .plugin-nav-row:focus-within .plugin-nav-grip {
+  color: var(--color-mint-text);
+}
+#rail .plugin-nav-unit {
+  border-radius: 7px;
+}
+#rail .plugin-nav-unit.is-placeholder {
+  opacity: .32;
+  background: color-mix(in srgb,#00a870 9%,transparent);
+  @supports (color: color-mix(in lab, red, red)) {
+    background: color-mix(in srgb,var(--color-mint) 9%,transparent);
+  }
+}
+#rail .plugin-nav-ghost {
+  position: fixed;
+  inset: auto;
+  top: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  z-index: 20;
+  color: var(--workspace-nav-text);
+  border-radius: 7px;
+  background: #00a870;
+  @supports (color: color-mix(in lab, red, red)) {
+    background: color-mix(in srgb,var(--color-mint) 10%,var(--workspace-nav));
+  }
+  box-shadow: inset 0 0 0 1px color-mix(in srgb,#00a870 30%,transparent),0 3px 8px rgb(0 0 0 / .10);
+  @supports (color: color-mix(in lab, red, red)) {
+    box-shadow: inset 0 0 0 1px color-mix(in srgb,var(--color-mint) 30%,transparent),0 3px 8px rgb(0 0 0 / .10);
+  }
+  overflow: visible;
+  pointer-events: none;
+  will-change: transform;
+}
+#rail .plugin-nav-live {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+@media (min-width:721px) {
+  body.rail-compact #rail .plugin-nav-children {
+    margin: 0;
+    padding: 0;
+    border: 0;
+  }
+  body.rail-compact #rail .plugin-nav-toolbar {
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+}
+@media (pointer:coarse) {
+  #rail :is(.plugin-nav-edit,.plugin-nav-grip,.plugin-nav-action) {
+    min-height: 44px;
+    min-width: 38px;
+  }
+}
+@media (prefers-reduced-motion:reduce) {
+  #rail .plugin-nav-row {
+    transition: none;
+  }
+}
+.pw-order-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.pw-order-actions[hidden],.pw-order-actions button[hidden],.pw-order-preview[hidden], .plugin-workspace.pw-ordering > :not(.pw-header):not(.pw-order-preview) {
+  display: none;
+}
+.pw-order-help,.pw-order-row small {
+  color: var(--workspace-muted,var(--color-muted));
+}
+.pw-order-help {
+  margin: 0 0 16px;
+  font-size: 13px;
+}
+.pw-order-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 46px;
+  border-top: 1px solid var(--workspace-line,var(--color-line));
+}
+.pw-order-row .icon {
+  width: 16px;
+  height: 16px;
+  color: var(--color-mint-text);
+}
+.pw-order-row small {
+  margin-inline-start: auto;
+  font-size: 12px;
+}
+@media (prefers-reduced-motion:no-preference) {
+  #rail .plugin-nav-ghost {
+    animation: plugin-nav-lift 110ms ease-out;
+  }
+  #rail .plugin-nav-unit {
+    transition: opacity 105ms ease,background-color 140ms ease;
+  }
+}
+@keyframes plugin-nav-lift {
+  from {
+    opacity: .94;
+    box-shadow: inset 0 0 0 1px color-mix(in srgb,var(--color-mint) 18%,transparent);
+  }
+}
 @layer base {
   html, body {
     height: 100%;

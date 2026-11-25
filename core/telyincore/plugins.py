@@ -1279,6 +1279,7 @@ installed 表示目录存在，enabled 表示配置意图，loaded 表示进程�
         #    （`label` ／ `scope` ／ 标记正则全在插件自己的 package.json 里）
         #    ⇒ 加一个外部渠道（微 ／ B…）＝ 那个插件多写一条，页面一个字不用改。
         # ⚠️ 形状不对的那几条**丢掉**（一个坏插件不许把整页带走）。
+        "navigationParent": box.get("navigationParent") if isinstance(box.get("navigationParent"), str) else None,
         "channels": _the_channels(box.get("channels")),
         # **契约那一句**（空那一串 ＝ 对得上 ／ 有字 ＝ 为什么对不上 ）
         "reload_mode": reload_mode,

@@ -251,6 +251,40 @@ export function pluginWorkspace(shell:Chrome,view:View='local'):Panel {
       if(localError)operationError=[operationError,'操作后未能刷新安装状态，请重新刷新。'].filter(Boolean).join(' ');
     }finally{busy=false;lastList=lastDetail='';render();requested();}
   }
+  // The overview reflects the sidebar draft; only the sidebar owns edits and persistence.
+  const navOrder = node('section','pw-order-preview');
+  const orderRows = node('div','pw-order-rows');
+  navOrder.append(node('p','pw-order-help','拖动侧栏的六点手柄。主插件带着扩展一起移动，扩展可在同组换位。'),orderRows);
+  const orderActions = node('div','pw-order-actions');
+  const railButton = (selector:string) => shell.railNav.querySelector<HTMLButtonElement>(selector);
+  const editOrder = button('调整顺序',()=>{
+    const toggle=document.querySelector<HTMLButtonElement>('.compact-menu-toggle');
+    if(toggle?.offsetWidth && toggle.getAttribute('aria-expanded')==='false') toggle.click();
+    railButton('.plugin-nav-edit')?.click();
+  },'pw-quiet');
+  const cancelOrder = button('取消',()=>railButton('.plugin-nav-action:not(.is-primary)')?.click(),'pw-quiet');
+  const saveOrder = button('完成',()=>railButton('.plugin-nav-action.is-primary')?.click());
+  orderActions.append(editOrder,cancelOrder,saveOrder);
+  if(view==='local'){header.append(orderActions);header.after(navOrder);}
+  function reflectNavigation() {
+    if(view!=='local')return;
+    const tree=shell.railNav.querySelector('.rail-sublist.is-sorting');
+    const sorting=!!tree;
+    root.classList.toggle('pw-ordering',sorting);
+    orderActions.hidden=!railButton('.plugin-nav-edit');
+    editOrder.hidden=sorting;
+    cancelOrder.hidden=saveOrder.hidden=navOrder.hidden=!sorting;
+    heading.querySelector('h1')!.textContent=sorting?'调整顺序':'插件总览 · PLUGIN OVERVIEW';
+    orderRows.replaceChildren();
+    if(tree) for(const unit of tree.querySelectorAll<HTMLElement>('[data-nav-id]')){
+      const link=unit.querySelector<HTMLElement>(':scope > .plugin-nav-row .rail-item')!;
+      const entry=node('div','pw-order-row');
+      entry.append(icon('puzzle'),node('span','',link.querySelector('.rail-label')?.textContent||''),
+        node('small','',unit.parentElement?.classList.contains('plugin-nav-children')?'扩展插件':
+          unit.querySelector(':scope > .plugin-nav-children')?'主插件':'独立插件'));
+      orderRows.append(entry);
+    }
+  }
   async function readLocal(token:number){try{const response=await fetch('/plugins',{cache:'no-store'});if(!response.ok)throw Error();const data=await response.json() as PluginsAnswer;if(!data.wired||!Array.isArray(data.plugins))throw Error();if(alive&&epoch===token){locals=data.plugins;acceptPluginRuntime(locals);localLoaded=true;localError=data.broken?.length?'部分插件清单读取失败：'+data.broken.join('、'):'';}}catch{if(alive&&epoch===token)localError=localLoaded?'无法刷新，当前显示上次读取的本机插件。':'无法读取本机插件，请重试。';}render();}
   let marketRequest=0;
   async function readMarket(token:number){const request=++marketRequest;try{const response=await fetch('/market',{cache:'no-store'});if(!response.ok)throw Error();const data=await response.json() as MarketAnswer;if(!data.wired||!Array.isArray(data.found))throw Error(data.said);if(alive&&epoch===token&&request===marketRequest){market=data.found;marketLoaded=true;marketError=data.stale?(data.error||'显示上次缓存，市场正在后台刷新。'):'';}}catch{if(alive&&epoch===token)marketError=marketLoaded?'市场暂时无法刷新，保留上次结果。':'无法读取插件市场，请重试。';}finally{render();}}
@@ -259,5 +293,5 @@ export function pluginWorkspace(shell:Chrome,view:View='local'):Panel {
   function restartRequested(){if(busy||!alive||view!=='local')return;const name=takePluginRestartRequest();if(name){filterValue='all';search.value='';page=1;requestedName=name;lastList=lastDetail='';render();}}
   const updateChanged=()=>render();const pluginsChanged=()=>{if(!busy)void read();};let timer:number|undefined;
   setFilters();
-  return {root,show(){alive=true;root.hidden=false;window.addEventListener('plugin-updates-changed',updateChanged);window.addEventListener('plugin-operation-changed',updateChanged);window.addEventListener('plugin-updates-open',requested);window.addEventListener('plugin-restart-open',restartRequested);window.addEventListener('plugins-changed',pluginsChanged);requested();restartRequested();render();void read();timer=window.setInterval(()=>{if(!document.hidden&&view==='local'&&!busy)void read();},30000);},stop(){alive=false;epoch++;root.hidden=true;clearInterval(timer);window.removeEventListener('plugin-updates-changed',updateChanged);window.removeEventListener('plugin-operation-changed',updateChanged);window.removeEventListener('plugin-updates-open',requested);window.removeEventListener('plugin-restart-open',restartRequested);window.removeEventListener('plugins-changed',pluginsChanged);}};
+  return {root,show(){if(view==='local'){shell.railNav.addEventListener('plugin-navigation-order',reflectNavigation);reflectNavigation();}alive=true;root.hidden=false;window.addEventListener('plugin-updates-changed',updateChanged);window.addEventListener('plugin-operation-changed',updateChanged);window.addEventListener('plugin-updates-open',requested);window.addEventListener('plugin-restart-open',restartRequested);window.addEventListener('plugins-changed',pluginsChanged);requested();restartRequested();render();void read();timer=window.setInterval(()=>{if(!document.hidden&&view==='local'&&!busy)void read();},30000);},stop(){shell.railNav.removeEventListener('plugin-navigation-order',reflectNavigation);alive=false;epoch++;root.hidden=true;clearInterval(timer);window.removeEventListener('plugin-updates-changed',updateChanged);window.removeEventListener('plugin-operation-changed',updateChanged);window.removeEventListener('plugin-updates-open',requested);window.removeEventListener('plugin-restart-open',restartRequested);window.removeEventListener('plugins-changed',pluginsChanged);}};
 }

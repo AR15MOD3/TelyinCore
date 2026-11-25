@@ -11,15 +11,16 @@ from telyincore import package_updates as updates
 from telyincore.web import WebService
 
 
-def test_new_release_requires_three_segments_and_legacy_versions_still_upgrade():
+def test_distribution_versions_support_optional_patch():
     from telyincore.distribution_version import validate_release_version
 
-    validate_release_version("beta.0.5.5")
-    validate_release_version("beta.0.2.1")
-    for old in ("beta.0.5.4.9", "beta.0.5.4.10"):
-        with pytest.raises(ValueError, match="三段"):
-            validate_release_version(old)
-        assert updates.version_key(old) < updates.version_key("beta.0.5.5")
+    for version in ("beta.0.5.6", "beta.0.5.6.1", "beta.0.2.3"):
+        validate_release_version(version)
+    for version in ("beta.0.5.6.0", "beta.0.5.6.01", "beta.0.5.6.1.2"):
+        with pytest.raises(ValueError):
+            validate_release_version(version)
+    assert updates.version_key("beta.0.5.4.10") < updates.version_key("beta.0.5.6")
+    assert updates.version_key("beta.0.5.6") < updates.version_key("beta.0.5.6.1")
 
 
 def installed(root, platform, version):

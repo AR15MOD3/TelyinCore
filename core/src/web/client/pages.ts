@@ -42,6 +42,7 @@ export interface NavItem {
   readonly dot?: boolean;
   /** 二级导航项：放进同组的子列表，而不是与总览、市场并列。 */
   readonly child?: boolean;
+  readonly navigationParent?: string;
   /** 插件子项的实测状态灯；未读到状态时不猜。 */
   readonly signals?: ReadonlyArray<{
     readonly state: 'on' | 'off' | 'warn'; readonly label: string

@@ -1,3 +1,4 @@
+import { pluginNavigationOrder } from './plugin-navigation-order';
 import { startPluginRestart } from './plugin-restart';
 import { startPluginUpdates } from './plugin-updates';
 import { startPackageUpdates } from './package-updates';
@@ -8,7 +9,7 @@ import { initializeDisplayScope, onDisplayScopeReady, readDisplaySession,
 import { pageFetch as fetch } from './status-json';
 import { modelDisplayName } from './model-display';
 import { onEngineChanged } from './engine-events';
-import { pluginIcon, pluginSignals, refreshPluginHealth,
+import { pluginIcon, pluginSignals, navigationParent, refreshPluginHealth,
   type PluginNavigationInfo } from './plugin-ui-registry';
 import { getStatusJson } from './status-json';
 // 那一页的入口（esbuild 打的 bundle 就是它）。
@@ -99,11 +100,18 @@ for (const [index, group] of groupsOf().entries()) {
 }
 
 /** Installed packages get their own routes beneath the two Infinity index links. */
+let displayScopeReady = false;
 let pluginNavPending = false;
 let pluginNavKey = '';
 let pluginNavGeneration = 0;
 let latestPluginEntries: NavItem[] | null = null;
+const navigationOrder = pluginNavigationOrder(shell.railNav, () => {
+  pluginNavKey = '';
+  if (latestPluginEntries !== null) placePluginNav(groupsOf().indexOf('INFINITY'), latestPluginEntries);
+  else restorePluginNav();
+});
 function restorePluginNav(): void {
+if (navigationOrder.editing) return;
 try {
   const cached = JSON.parse(readDisplaySession('plugin-nav') || '[]') as NavItem[];
   if (Array.isArray(cached) && cached.every(one => typeof one.id === 'string'
@@ -113,14 +121,18 @@ try {
       // Metadata can stabilize navigation, but cached health is not live health.
       shell.place(index, 'INFINITY', [...navItems('INFINITY'),
         ...cached.map(one => ({ ...one, signals: undefined, dot: false }))]);
+      navigationOrder.mount(cached);
     }
   }
 } catch { /* Storage may be disabled; live discovery remains authoritative. */ }
 }
 restorePluginNav();
 onDisplayScopeReady(() => {
-  if (latestPluginEntries !== null) writeDisplaySession('plugin-nav',
-    JSON.stringify(latestPluginEntries));
+  displayScopeReady = true;
+  if (latestPluginEntries !== null) {
+    pluginNavKey = '';
+    placePluginNav(groupsOf().indexOf('INFINITY'), latestPluginEntries);
+  }
   else restorePluginNav();
 });
 function pluginEntries(plugins: readonly PluginNavigationInfo[]): NavItem[] {
@@ -129,17 +141,19 @@ function pluginEntries(plugins: readonly PluginNavigationInfo[]): NavItem[] {
     .map((one): NavItem => {
       const signals = pluginSignals(one);
       return { id: `infinity/${encodeURIComponent(one.name)}`,
-        label: one.displayName || one.name, icon: pluginIcon(one), child: true, signals };
+        label: one.displayName || one.name, icon: pluginIcon(one), child: true, signals,
+        navigationParent: navigationParent(one) };
     });
 }
 function placePluginNav(index: number, entries: NavItem[]): void {
   latestPluginEntries = entries;
   const key = JSON.stringify(entries);
-  if (key === pluginNavKey) return;
+  if (key === pluginNavKey || navigationOrder.editing) return;
   pluginNavKey = key;
   try { writeDisplaySession('plugin-nav', JSON.stringify(entries)); }
   catch { /* Optional refresh cache. */ }
   shell.place(index, 'INFINITY', [...navItems('INFINITY'), ...entries]);
+  navigationOrder.mount(entries, displayScopeReady);
   const active = location.hash.replace(/^#\/?/, '') || 'live';
   for (const link of shell.railNav.querySelectorAll<HTMLElement>('.rail-item')) {
     link.classList.toggle('active', link.dataset.page === active);

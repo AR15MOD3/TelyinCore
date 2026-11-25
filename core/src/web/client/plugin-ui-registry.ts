@@ -9,7 +9,16 @@ import { getStatusJson } from './status-json';
 
 export interface PluginNavigationInfo {
   name: string; displayName?: string; installed?: boolean; enabled?: boolean; loaded?: boolean;
-    icon?: string;
+  icon?: string; navigationParent?: string;
+}
+// Navigation metadata for published official extensions predating the manifest field.
+const legacyParents = new Map([
+  ['infinity-comfyui', 'core-infinity-qq'],
+  ['core-infinity-wavesuid', 'core-infinity-qq'],
+]);
+export function navigationParent(plugin: PluginNavigationInfo): string | undefined {
+  const parent = plugin.navigationParent ?? legacyParents.get(plugin.name);
+  return parent ? 'infinity/' + encodeURIComponent(parent) : undefined;
 }
 export interface PluginUIAdapter {
   icon: string;

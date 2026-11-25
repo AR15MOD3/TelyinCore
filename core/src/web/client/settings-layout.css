@@ -521,14 +521,39 @@
 }
 .topbar-update .topbar-version-mark { display: none; }
 .topbar-update.has-update { color: var(--color-mint-text); font-weight: 600; }
+.topbar-update.check-failed { color: var(--color-status-warn-text); }
+.topbar-update.check-failed .topbar-version-mark {
+  display: inline-grid; place-items: center; width: 12px; height: 12px;
+  border: 1px solid currentColor; border-radius: 50%; font-size: 9px;
+}
+.topbar-update.check-failed .topbar-version-mark::after { content: '!'; }
 .topbar-update.has-update .topbar-version-mark {
   display: inline-block; width: 9px; height: 10px; background: currentColor;
   clip-path: polygon(43% 100%, 43% 25%, 10% 55%, 0 43%, 50% 0, 100% 43%, 90% 55%, 57% 25%, 57% 100%);
 }
 .topbar-update:hover { color: var(--color-ink); background: var(--color-wash); }
 .topbar-update:focus-visible { outline: 2px solid var(--color-mint); outline-offset: 2px; }
+/* Update content keeps status and the primary action visible; diagnostics are opt-in. */
 .package-update-dialog .package-update-card { padding: 0; border: 0; background: transparent; }
-.package-update-card p { margin: .4rem 0; overflow-wrap: anywhere; }
-.package-update-card button { margin-top: .5rem; }
-
-.package-update-card .package-download { display: inline-block; margin-inline-end: .4rem; font-weight: 600; text-decoration: underline; }
+.package-update-card h3 { margin: 0 30px 16px 0; font-size: 14px; font-weight: 500; color: var(--color-dim); }
+.package-update-card p { margin: 0; overflow-wrap: anywhere; }
+.package-update-card [data-version] { font-size: 24px; line-height: 1.35; font-weight: 600; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.package-update-card [data-update-message] { margin: 10px 0 0; font-size: 13px; line-height: 1.65; color: var(--color-dim); }
+.package-update-card[data-update-state='unavailable'] [data-update-message] { color: var(--color-status-warn-text); }
+.package-update-card [data-update-links] { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 12px; font-size: 12px; }
+.package-update-card [data-update-links][hidden] { display: none; }
+.package-update-card [data-update-links] a { color: var(--color-mint-text); text-decoration: none; }
+.package-update-card [data-update-links] a:hover { text-decoration: underline; }
+.package-update-card details { margin-top: 18px; font-size: 12px; color: var(--color-dim); line-height: 1.7; }
+.package-update-card details p { margin-top: 8px; }
+.package-update-card details p:empty { display: none; }
+.package-update-card summary { cursor: pointer; width: fit-content; }
+.package-update-card .package-update-actions { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--color-line); }
+.package-update-card .package-update-actions button { appearance: none; margin: 0; min-height: 36px; padding: 7px 14px; border: 1px solid var(--color-line); border-radius: var(--radius-row); background: transparent; color: var(--color-ink); font: inherit; font-size: 13px; cursor: pointer; }
+.package-update-card .package-update-actions [data-check-update] { border-color: transparent; color: var(--color-dim); padding-inline: 0; }
+.package-update-card .package-update-actions [data-install] { background: var(--color-mint); color: var(--color-white); border-color: var(--color-mint); font-weight: 500; }
+.package-update-card .package-update-actions button:hover { filter: brightness(.94); }
+.package-update-card .package-update-actions button:disabled { opacity: .6; cursor: wait; }
+.package-update-dialog .package-update-close { position: absolute; top: 15px; right: 15px; display: grid; place-items: center; width: 30px; height: 30px; padding: 0; border: 0; border-radius: var(--radius-row); background: transparent; color: var(--color-dim); font-size: 23px; line-height: 1; cursor: pointer; }
+.package-update-dialog .package-update-close:hover { background: var(--color-wash); color: var(--color-ink); }
+.package-update-card button:focus-visible, .package-update-card summary:focus-visible, .package-update-dialog .package-update-close:focus-visible { outline: 2px solid var(--color-mint); outline-offset: 3px; }

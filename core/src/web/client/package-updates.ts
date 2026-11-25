@@ -8,6 +8,8 @@ interface PackageStatus {
   installable?: boolean;
   localPreview?: boolean;
   checkRoute?: string;
+  checkedAt?: number;
+  nextCheckAt?: number;
   required?: boolean;
   pendingVersion?: string;
   installProgress?: string;
@@ -24,8 +26,21 @@ function paint(card: HTMLElement, state: PackageStatus) {
   if (installing) return;
   const current = card.querySelector<HTMLElement>('[data-version]')!;
   const notice = card.querySelector<HTMLElement>('[data-update-message]')!;
+  card.dataset.updateState = state.status;
   const platform = ({win: 'Windows', linux: 'Linux'} as Record<string, string>)[state.platform] ?? '';
-  current.textContent = [platform, state.localPreview ? '本机验收源' : state.channel === 'acceptance' ? '验收更新' : '', state.current ? '已安装 ' + state.current : '未识别安装版本'].filter(Boolean).join(' · ');
+  const version = (value: string) => value.replace(/^beta\./, '');
+  const target = state.pendingVersion || (state.status === 'available' ? state.latest : undefined);
+  card.querySelector<HTMLElement>('h3')!.textContent = state.pendingVersion ? '更新已就绪'
+    : state.status === 'available' ? '发现新版本'
+    : state.status === 'current' ? '已是最新版本'
+    : state.status === 'unavailable' ? '检查更新失败' : '版本更新';
+  current.textContent = target && state.current
+    ? version(state.current) + ' → ' + version(target)
+    : state.current ? 'v' + version(state.current) : '版本未识别';
+  card.querySelector<HTMLElement>('[data-update-platform]')!.textContent =
+    [platform, state.current, state.localPreview ? '本机验收源' : state.channel === 'acceptance' ? '验收更新' : ''].filter(Boolean).join(' · ');
+  const links = card.querySelector<HTMLElement>('[data-update-links]')!;
+  links.replaceChildren();
   const history = card.querySelector<HTMLElement>('[data-update-history]')!;
   const receipt = state.lastInstall;
   history.hidden = !receipt;
@@ -37,9 +52,9 @@ function paint(card: HTMLElement, state: PackageStatus) {
   }
   const install = card.querySelector<HTMLButtonElement>('[data-install]')!;
   install.hidden = !(state.pendingVersion || (state.installable && state.status === 'available'));
-  install.textContent = state.pendingVersion ? '继续安装并重启' : '立即更新并重启';
+  install.textContent = state.pendingVersion ? '安装并重启' : '更新并重启';
   if (state.pendingVersion) {
-    notice.textContent = state.pendingVersion + ' 已下载并校验。重启会短暂中断会话，也可等下次启动时安装。';
+    notice.textContent = '已下载并校验。安装会重启 Core，短暂中断会话。';
   } else if (state.status === 'available') {
     const tag = state.platform + (state.channel === 'acceptance' ? '-acceptance-' : '-') + state.latest;
     const file = `Telyincore_${state.platform}_${state.current}_to_${state.latest}_update.zip`;
@@ -47,16 +62,17 @@ function paint(card: HTMLElement, state: PackageStatus) {
     const direct = base?.startsWith('https://github.com/')
       && state.releaseUrl === base + '/releases/tag/' + tag
       && state.downloadUrl === base + '/releases/download/' + tag + '/' + file;
-    notice.textContent = (state.required ? '当前版本已低于最低兼容版本，请先更新再唤醒 Bot。目标版本 ' : '发现新版本 ') + state.latest + (state.installable ? '。更新完成后 Core 会自动重启。' : '。');
+    notice.textContent = state.required ? '请先更新再唤醒 Bot。安装会重启 Core。'
+      : state.installable ? '安装会重启 Core，短暂中断会话。' : '此版本需要手动下载安装。';
     if (direct && state.downloadUrl && !state.installable) {
       const download = document.createElement('a');
       download.href = state.downloadUrl;
       download.download = file;
       download.className = 'package-download';
       download.textContent = '下载更新包';
-      notice.append(' ', download);
+      links.append(download);
     } else if (!state.installable) {
-      notice.append('请在发布说明或分发 QQ 群中获取适用的更新包。');
+      notice.textContent = state.required ? '请先更新再唤醒 Bot。请从发布说明获取更新包。' : '请从发布说明获取适用的更新包。';
     }
     if (state.releaseUrl?.startsWith('https://github.com/')) {
       const notes = document.createElement('a');
@@ -64,16 +80,52 @@ function paint(card: HTMLElement, state: PackageStatus) {
       notes.target = '_blank';
       notes.rel = 'noopener noreferrer';
       notes.textContent = '查看发布说明';
-      notice.append(' ', notes);
+      links.append(notes);
     }
   } else if (state.status === 'current') {
-    notice.textContent = '当前已是最新发布版本。';
+    notice.textContent = '当前无需更新。';
   } else if (state.status === 'ahead') {
     notice.textContent = '本机版本高于当前公开版本 ' + state.latest + '。';
   } else {
-    notice.textContent = state.message || '暂时无法检查更新。';
+    notice.textContent = state.status === 'unavailable'
+      ? '暂时无法确认新版本，请稍后重试。'
+      : state.message || '暂时无法检查更新。';
   }
-  if (state.checkRoute) notice.append('　版本检查 · ' + state.checkRoute);
+  const details = card.querySelector<HTMLElement>('[data-update-details]')!;
+  const detailText = state.status === 'unavailable' ? state.message : state.checkRoute;
+  details.querySelector<HTMLElement>('[data-update-connection]')!.textContent = detailText || '';
+  links.hidden = !links.childElementCount;
+  const timing = card.querySelector<HTMLElement>('[data-update-timing]')!;
+  const time = (stamp: number) => new Date(stamp * 1000).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
+  timing.textContent = [state.checkedAt ? '最近检查 ' + time(state.checkedAt) : '',
+    state.status === 'unavailable' ? (state.nextCheckAt
+      ? '服务运行期间将于 ' + time(state.nextCheckAt) + ' 左右自动重试，也可立即重试。'
+      : '可立即重试；服务运行期间也会自动检查。') : ''].filter(Boolean).join(' · ');
+  timing.hidden = !timing.textContent;
+  card.querySelector<HTMLButtonElement>('[data-check-update]')!.textContent =
+    state.status === 'unavailable' ? '重新检查' : '检查更新';
+}
+
+function paintTopbar(checking = false) {
+  const button = document.querySelector<HTMLButtonElement>('.topbar-update');
+  if (!button) return;
+  const available = last?.status === 'available' && !!last.latest;
+  const failed = last?.status === 'unavailable';
+  const version = last?.current ? 'v' + last.current.replace(/^beta\./, '') : '版本';
+  button.classList.toggle('has-update', !checking && available);
+  button.classList.toggle('check-failed', !checking && failed);
+  button.setAttribute('aria-busy', String(checking));
+  button.querySelector<HTMLElement>('.topbar-version-label')!.textContent = checking
+    ? version + ' · 检查中' : available ? '新版 ' + last!.latest!.replace(/^beta\./, '')
+    : failed ? version + ' · 检查失败'
+    : last?.status === 'unconfigured' ? version + ' · 未配置更新源'
+    : last?.status === 'unknown' ? '版本未识别' : version;
+  button.title = checking ? '正在检查更新'
+    : failed ? '暂时无法确认是否有新版本，点击查看原因并重试'
+    : available ? '发现新版本 ' + last!.latest + '，查看版本更新'
+    : last?.status === 'current' ? '已确认是最新发布版本，点击查看详情'
+    : '版本更新 · 查看详情';
+  button.setAttribute('aria-label', button.title);
 }
 
 async function check(force = false) {
@@ -82,10 +134,12 @@ async function check(force = false) {
     await pending;
     if (pending) return pending;
   }
+  if (force || !last) paintTopbar(true);
   pending = (async () => {
     let state: PackageStatus;
     try {
-      const reply = await fetch('/package-update' + (force ? '?refresh=1' : ''), {cache: 'no-store'});
+      const reply = await fetch('/package-update' + (force ? '?refresh=1' : ''),
+        {cache: 'no-store', signal: AbortSignal.timeout(20000)});
       if (!reply.ok) throw new Error();
       state = await reply.json();
     } catch {
@@ -94,16 +148,7 @@ async function check(force = false) {
     }
     last = state;
     document.querySelectorAll<HTMLElement>('.package-update-card').forEach(card => paint(card, state));
-    const button = document.querySelector<HTMLButtonElement>('.topbar-update');
-    if (button) {
-      const available = state.status === 'available' && !!state.latest;
-      button.classList.toggle('has-update', available);
-      const label = button.querySelector<HTMLElement>('.topbar-version-label')!;
-      label.textContent = available ? '新版 ' + state.latest!.replace(/^beta\./, '')
-        : state.current ? 'v' + state.current.replace(/^beta\./, '') : '版本';
-      button.title = available ? '发现新版本 ' + state.latest + '，查看版本更新' : '版本更新 · 检查更新';
-      button.setAttribute('aria-label', button.title);
-    }
+    paintTopbar();
   })().finally(() => { pending = undefined; });
   return pending;
 }
@@ -116,10 +161,11 @@ function openUpdateDialog(opener: HTMLButtonElement) {
   close.type = 'button';
   close.textContent = '关闭';
   close.addEventListener('click', () => dialog.close());
-  const actions = document.createElement('div');
-  actions.className = 'avatar-crop-actions';
-  actions.append(close);
-  dialog.append(packageUpdateCard(), actions);
+  close.className = 'package-update-close';
+  close.textContent = '×';
+  close.setAttribute('aria-label', '关闭');
+  close.title = '关闭';
+  dialog.append(close, packageUpdateCard());
   dialog.addEventListener('close', () => { dialog.remove(); opener.focus(); }, {once: true});
   document.body.append(dialog);
   dialog.showModal();
@@ -162,6 +208,7 @@ export function packageUpdateCard() {
   notice.setAttribute('role', 'status');
   const button = document.createElement('button');
   button.type = 'button';
+  button.dataset.checkUpdate = '';
   button.className = 'settings-language-button';
   button.textContent = '检查更新';
   button.addEventListener('click', async () => {
@@ -225,7 +272,26 @@ export function packageUpdateCard() {
   const history = document.createElement('p');
   history.dataset.updateHistory = '';
   history.hidden = true;
-  card.append(title, current, notice, history, install, button);
+  const timing = document.createElement('p');
+  timing.dataset.updateTiming = '';
+  timing.hidden = true;
+  const details = document.createElement('details');
+  details.dataset.updateDetails = '';
+  details.hidden = true;
+  const summary = document.createElement('summary');
+  summary.textContent = '更新详情';
+  const platform = document.createElement('p');
+  platform.dataset.updatePlatform = '';
+  const connection = document.createElement('p');
+  connection.dataset.updateConnection = '';
+  details.append(summary, platform, connection, timing, history);
+  details.hidden = false;
+  const links = document.createElement('div');
+  links.dataset.updateLinks = '';
+  const actions = document.createElement('div');
+  actions.className = 'package-update-actions';
+  actions.append(button, install);
+  card.append(title, current, notice, links, details, actions);
   if (last) paint(card, last);
   else notice.textContent = '正在读取版本信息…';
   void check();

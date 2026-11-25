@@ -33,6 +33,7 @@ def installed_package(root: Path, platform: str) -> str:
 RELEASE_REPOSITORY = "AR15MOD3/TelyinCore"
 _TAG = re.compile(r"(win|linux)-(beta\.[0-9.]+)", re.ASCII)
 CHECK_INTERVAL = 30 * 60
+FAILED_CHECK_INTERVAL = 5 * 60
 _PAGE_SIZE = 50
 
 
@@ -189,7 +190,7 @@ class PackageUpdates:
             self._from_launcher()
         with self._lock:
             if self._cache is not None:
-                if time.monotonic() - self._checked_at < (5 if force else CHECK_INTERVAL):
+                if time.monotonic() - self._checked_at < (5 if force else self.check_interval()):
                     return self._cache
             result = {"platform": self.platform, "current": None, "channel": self.channel}
             try:
@@ -214,7 +215,9 @@ class PackageUpdates:
                             if not self.preview:
                                 result["downloadUrl"] = overlay_url(self.repository, self.platform, current, release["latest"], self.channel)
                     except HTTPError as exc:
-                        message = ("GitHub 暂时限制了检查频率，请稍后重试。" if exc.code in (403, 429)
+                        limited = exc.code == 429 or (exc.code == 403 and exc.headers
+                                  and exc.headers.get("X-RateLimit-Remaining") == "0")
+                        message = ("GitHub 暂时限制了检查频率，请稍后重试。" if limited
                                    else f"暂时无法读取发行仓库（HTTP {exc.code}）。")
                         result.update(status="unavailable", message=message)
                     except (OSError, HTTPException, ValueError) as exc:
@@ -223,7 +226,12 @@ class PackageUpdates:
             self._cache = result
             self._checked_at = time.monotonic()
             self._checked_wall = time.time()
+            result.update(checkedAt=self._checked_wall,
+                          nextCheckAt=self._checked_wall + self.check_interval())
             return result
+
+    def check_interval(self):
+        return FAILED_CHECK_INTERVAL if self._cache and self._cache.get("status") == "unavailable" else CHECK_INTERVAL
 
     def wake_block(self):
         if not (self.root / "candidate.json").is_file():
@@ -286,6 +294,8 @@ class PackageUpdates:
                     if asset[0] is True:
                         result["installable"] = len(asset) >= 2 and asset[1] is True
                         result["downloadUrl"] = overlay_url(repository, platform, current, latest, self.channel)
+            result.update(checkedAt=stamp, nextCheckAt=stamp + (
+                FAILED_CHECK_INTERVAL if result["status"] == "unavailable" else CHECK_INTERVAL))
             checked_at = time.monotonic() - age
             with self._lock:
                 if self._cache is None or stamp > self._checked_wall:
@@ -322,8 +332,10 @@ class PackageUpdates:
                 print("[check] " + self.describe(result), file=sys.stderr, flush=True)
                 # A wake or manual check may have moved the next deadline.
                 while not stopped.is_set():
-                    remaining = self._checked_at + CHECK_INTERVAL - time.monotonic()
-                    if remaining <= 0 or stopped.wait(remaining):
+                    remaining = self._checked_at + self.check_interval() - time.monotonic()
+                    # A manual failure can shorten a previously successful
+                    # check's deadline while this monitor is sleeping.
+                    if remaining <= 0 or stopped.wait(min(remaining, 5)):
                         break
         Thread(target=monitor, name="core-package-update", daemon=True).start()
 

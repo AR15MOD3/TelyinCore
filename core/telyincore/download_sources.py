@@ -111,10 +111,14 @@ def github_route_text(target, official, proxy, error=None):
         reason = f"HTTP {error.code}"
         if error.code == 429 or (error.code == 403 and error.headers and error.headers.get("X-RateLimit-Remaining") == "0"):
             reason += "（限流）"
+            if error.headers and error.headers.get("X-RateLimit-Remaining") == "0":
+                reason += "，" + ("镜像上游的" if target != official else "") + "GitHub API 配额已用尽"
     elif isinstance(cause, (TimeoutError, socket.timeout)):
         reason = "超时"
     elif isinstance(cause, ConnectionRefusedError) or getattr(cause, "winerror", None) == 10061:
         reason = "连接被拒绝"
+        if proxy:
+            reason += "，请检查下载代理是否启动及端口设置"
     elif isinstance(cause, socket.gaierror):
         reason = "域名解析失败"
     elif isinstance(cause, ssl.SSLError):

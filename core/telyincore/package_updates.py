@@ -55,7 +55,7 @@ def installed_channel(root):
     return "acceptance" if setting == {"channel": "acceptance"} else "stable"
 
 
-def github_latest(repository: str, platform: str, *, channel="stable", proxy_root=None) -> dict:
+def github_latest(repository: str, platform: str, *, channel="stable", proxy_root=None, official_only=False) -> dict:
     from urllib.parse import quote
     from http.client import HTTPException
     from .download_sources import github_json, public_network
@@ -73,14 +73,14 @@ def github_latest(repository: str, platform: str, *, channel="stable", proxy_roo
             detail = " → ".join(dict.fromkeys(attempts[-6:]))
             raise ValueError("检查版本失败。" + detail) from error
 
-    bucket = int(time.time() // 60)
+    bucket = time.time_ns() if official_only else int(time.time() // 60)
     for page in range(1, 11):
         url = f"https://api.github.com/repos/{repository}/releases?per_page={_PAGE_SIZE}&page={page}&check={bucket}"
         remaining = deadline - time.monotonic()
         if remaining <= 0:
             raise TimeoutError("GitHub 检查超时")
         releases = fetch(url, {"Accept": "application/vnd.github+json", "User-Agent": "TelyinCore-release-check"},
-                               network, timeout=min(4, remaining / 2),
+                               network, timeout=min(4, remaining / 2), official_only=official_only,
                                expected=lambda rows: isinstance(rows, list) and all(isinstance(row, dict) for row in rows))
         for release in releases:
             if not isinstance(release, dict) or release.get("draft") is not False:
@@ -144,6 +144,10 @@ class PackageUpdates:
         preview = LocalRelease(root)
         self.preview = preview if self.channel == "acceptance" and preview.config.is_file() else None
         self.fetch = fetch or (self.preview.latest if self.preview else None) or (lambda repo, plat: github_latest(repo, plat, channel=self.channel, proxy_root=self.proxy_root))
+        self.fetch_official = fetch or (self.preview.latest if self.preview else None) or (
+            lambda repo, plat: github_latest(repo, plat, channel=self.channel,
+                                              proxy_root=self.proxy_root, official_only=True))
+        self.install_target = None
         self.install_lock = Lock()
         self.install_progress = ""
         self._restart_requested = False
@@ -170,11 +174,13 @@ class PackageUpdates:
             pass
         if self.install_lock.locked() and self.install_progress:
             status["installProgress"] = self.install_progress
+            status["installTarget"] = self.install_target
         return status
 
     def prepare_install(self):
         from .online_install import stage
-        self.install_progress = "正在检查版本"
+        self.install_target = None
+        self.install_progress = "正在向 GitHub 官方确认最新版"
         return stage(self)
 
     def restart_for_update(self, port):
@@ -183,14 +189,14 @@ class PackageUpdates:
             start_restart(self.root, port)
             self._restart_requested = True
 
-    def check(self, force=False):
+    def check(self, force=False, *, official=False):
         from urllib.error import HTTPError
         from http.client import HTTPException
 
-        if not force and not self.preview:
+        if not official and not force and not self.preview:
             self._from_launcher()
         with self._lock:
-            if self._cache is not None:
+            if not official and self._cache is not None:
                 if time.monotonic() - self._checked_at < (5 if force else self.check_interval()):
                     return self._cache
             result = {"platform": self.platform, "current": None, "channel": self.channel}
@@ -204,7 +210,8 @@ class PackageUpdates:
                     result.update(status="unconfigured", message="这份发行包尚未指定官方 GitHub 仓库。")
                 else:
                     try:
-                        release = self.fetch(self.repository, self.platform)
+                        fetch = self.fetch_official if official else self.fetch
+                        release = fetch(self.repository, self.platform)
                         local = version_key(current)
                         remote = version_key(release["latest"])
                         status = "available" if remote > local else "ahead" if local > remote else "current"

@@ -20,6 +20,14 @@ SUM = re.compile(r'[a-f0-9]{64}')
 PLATFORMS = {'win', 'linux'}
 
 
+class LatestUnavailable(ValueError):
+    """Authoritative version discovery failed before an installation was chosen."""
+
+
+class PackageMismatch(ValueError):
+    """A downloaded artifact or the current deployment failed verification."""
+
+
 def sha(data):
     return hashlib.sha256(data).hexdigest()
 
@@ -74,7 +82,7 @@ def folder(root):
 def check_manifest(root, archive, platform, base, version):
     row = json.loads(archive.read('UPDATE.json'))
     if (row.get('schema'),row.get('platform'),row.get('from_version'),row.get('to_version')) != ('core-online-update-v1',platform,base,version):
-        raise ValueError('增量包的平台或版本不匹配')
+        raise PackageMismatch('增量包的平台或版本不匹配')
     files = row['files']
     if not isinstance(files,list) or not files or len(files)>12000:
         raise ValueError('增量包文件清单无效')
@@ -93,7 +101,7 @@ def check_manifest(root, archive, platform, base, version):
         if (old is None and new is None) or any(v is not None and not SUM.fullmatch(v) for v in (old,new)):
             raise ValueError('文件校验值无效')
         if new is not None and sha(archive.read('payload/'+name))!=new:
-            raise ValueError('包内程序文件校验失败')
+            raise PackageMismatch('包内程序文件校验失败')
     if 'candidate.json' not in seen:
         raise ValueError('缺少版本登记文件')
     candidate=json.loads(archive.read('payload/candidate.json'))
@@ -151,8 +159,10 @@ def fetch_asset(url, proxy, path, size, expected, user_agent):
                 deadline = time.monotonic() + 180
                 while block := response.read(256 * 1024):
                     count += len(block)
-                    if count > size or time.monotonic() > deadline:
-                        raise ValueError('更新包长度异常或下载超时')
+                    if count > size:
+                        raise PackageMismatch('更新包长度异常')
+                    if time.monotonic() > deadline:
+                        raise TimeoutError('下载超时')
                     out.write(block)
                 out.flush()
                 os.fsync(out.fileno())
@@ -164,7 +174,7 @@ def fetch_asset(url, proxy, path, size, expected, user_agent):
         with path.open('wb'):
             pass
         if not offset or attempt:
-            raise ValueError('更新包 SHA-256 校验失败')
+            raise PackageMismatch('更新包 SHA-256 校验失败')
 
 
 def release_asset(api, tag, url, name, headers, proxy):
@@ -203,37 +213,87 @@ def release_asset(api, tag, url, name, headers, proxy):
         except (OSError, ValueError, HTTPException) as error:
             raise ValueError("已取得官方摘要，读取附件元数据失败。" + " → ".join(attempts)) from error
     if not isinstance(release, dict) or release.get('draft') is not False or release.get('tag_name') != tag:
-        raise ValueError('未取得该平台的公开发布记录')
+        raise PackageMismatch('未取得该平台的公开发布记录')
     matches = [asset for asset in release.get('assets', []) if isinstance(asset, dict)
                and asset.get('name') == name and asset.get('browser_download_url') == url
                and asset.get('state') == 'uploaded' and asset.get('label') == 'core-online-update-v1']
     if len(matches) != 1:
-        raise ValueError('没有适用于当前版本的增量包')
+        raise PackageMismatch('没有适用于当前版本的增量包')
     asset = matches[0]
     expected = str(asset.get('digest') or '').removeprefix('sha256:')
     size = asset.get('size')
     if not SUM.fullmatch(expected) or type(size) is not int or not 0 < size <= MAX_BYTES:
         raise ValueError('GitHub 附件缺少 SHA-256 或大小超限')
     if proof is not None and proof != expected:
-        raise ValueError('镜像元数据与官方校验文件不符')
+        raise PackageMismatch('镜像元数据与官方校验文件不符')
     return size, expected
 
 
+def verify_program_files(root, archive, platform, base, version):
+    with zipfile.ZipFile(archive) as package:
+        files = inspect_zip(root, package, platform, base, version)
+        for item in files:
+            path = safe_file(root, item['path'])
+            actual = sha(path.read_bytes()) if path.exists() else None
+            if not matches_existing(item, actual):
+                raise PackageMismatch('本机程序文件与更新包不匹配，已保留：' + item['path'])
+
+
+def verified_pending(root, platform, version):
+    from .package_updates import installed_package
+    row = pending(root)
+    if (not row or row.get('version') != version or row.get('platform') != platform
+            or row.get('base') != installed_package(root, platform)
+            or not SUM.fullmatch(str(row.get('sha256', '')))):
+        raise ValueError('已下载的更新已变化，请重新检查。')
+    archive = folder(root) / (row['sha256'] + '.zip')
+    with archive.open('rb') as stream:
+        if hashlib.file_digest(stream, 'sha256').hexdigest() != row['sha256']:
+            raise PackageMismatch('暂存包校验失败')
+        stream.seek(0)
+        verify_program_files(root, stream, platform, row['base'], version)
+    return row
+
+
 def stage(checker):
-    root=checker.root.resolve()
-    state=checker.check(force=True)
-    if state['status']=='unavailable':
-        raise ValueError(state['message'])
-    if state['status']!='available':
-        raise ValueError('当前没有可安装的新版')
+    root = checker.root.resolve()
+    previous = None
+    failure = None
+    for attempt in range(2):
+        state = checker.check(official=True)
+        if state['status'] == 'unavailable':
+            if failure is not None:
+                raise ValueError(f'{failure}；官方复查未完成：{state["message"]}')
+            raise LatestUnavailable('暂时无法确认最新版。' + state['message'])
+        if state['status'] != 'available':
+            raise ValueError('当前没有可安装的新版')
+        if not state.get('installable'):
+            raise ValueError('官方最新版没有适用于本机版本的在线更新包。')
+        version = state['latest']
+        checker.install_target = version
+        fingerprint = (version, None)
+        try:
+            package = package_metadata(checker, state)
+            fingerprint = (version, package[1])
+            if failure is not None and fingerprint == previous:
+                raise ValueError(f'{failure}；已复查官方最新版，版本和附件摘要均未变化。')
+            return stage_package(checker, root, state, package)
+        except (PackageMismatch, zipfile.BadZipFile) as exc:
+            if attempt:
+                raise
+            failure, previous = exc, fingerprint
+            checker.install_progress = '校验不匹配，正在复查 GitHub 官方最新版'
+
+
+def package_metadata(checker, state):
     base,version,platform=state['current'],state['latest'],state['platform']
     name=f'Telyincore_{platform}_{base}_to_{version}_update.zip'
     from .package_updates import release_tag
     tag=release_tag(platform, version, checker.channel)
     repo=checker.repository
-    api=f'https://api.github.com/repos/{repo}/releases/tags/{tag}'
+    api=f'https://api.github.com/repos/{repo}/releases/tags/{tag}?check={time.time_ns()}'
     headers={'User-Agent':'TelyinCore-online-update','Accept':'application/vnd.github+json'}
-    from .download_sources import github_routes, public_network, github_route_text, TRANSFER_ERRORS
+    from .download_sources import public_network, github_route_text
     proxy = public_network(checker.proxy_root)
     checker.install_progress = "正在向发布方核对附件 SHA-256"
     url = f'https://github.com/{repo}/releases/download/{tag}/{name}'
@@ -246,6 +306,14 @@ def stage(checker):
             size, expected = release_asset(api, tag, url, name, headers, proxy)
         except (OSError, http.client.HTTPException) as error:
             raise ValueError("核验官方附件摘要失败。" + github_route_text(url, url, proxy.proxy, error)) from error
+    return size, expected, name, headers, url, proxy
+
+
+def stage_package(checker, root, state, package):
+    from .download_sources import github_routes, github_route_text, TRANSFER_ERRORS
+    size, expected, name, headers, url, proxy = package
+    platform, base, version = state['platform'], state['current'], state['latest']
+    preview = checker.preview
     cache=folder(root);cache.mkdir(parents=True,exist_ok=True)
     with tempfile.NamedTemporaryFile(dir=cache,delete=False) as out:
         temp=Path(out.name)
@@ -268,6 +336,7 @@ def stage(checker):
             source, route = "preview", "direct"
         else:
             failures = []
+            mismatch = None
             routes = github_routes(url, proxy)
             for index, (target, via) in enumerate(routes):
                 is_origin = target == url
@@ -279,17 +348,15 @@ def stage(checker):
                     route = 'proxy' if via else 'direct'
                     break
                 except TRANSFER_ERRORS as error:
+                    if isinstance(error, PackageMismatch):
+                        mismatch = error
                     failures.append(github_route_text(target, url, via, error))
                     if index == len(routes) - 1:
+                        if mismatch is not None:
+                            raise PackageMismatch('更新包 SHA-256 校验失败。' + ' → '.join(failures)) from mismatch
                         raise ValueError('下载更新包失败。' + ' → '.join(failures)) from error
         checker.install_progress = '正在核对更新包和本机版本'
-        with zipfile.ZipFile(cached if reusable else temp) as z:
-            files = inspect_zip(root,z,platform,base,version)
-            for item in files:
-                path = safe_file(root, item['path'])
-                actual = sha(path.read_bytes()) if path.exists() else None
-                if not matches_existing(item, actual):
-                    raise ValueError('本机程序文件与更新包不匹配，已保留：' + item['path'])
+        verify_program_files(root, cached if reusable else temp, platform, base, version)
         if not reusable:
             temp.replace(cached)
         receipt=dict(platform=platform,base=base,version=version,sha256=expected,source=source,route=route)

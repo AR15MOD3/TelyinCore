@@ -42,7 +42,7 @@ def test_control_download_baseline_check_restart_and_conflict(tmp_path,monkeypat
     def upstream(req,timeout,proxy):
         if req.full_url.startswith("https://gh-proxy.com/"):
             return io.BytesIO(b"corrupt mirror")
-        assert req.full_url in (f'https://api.github.com/repos/{repo}/releases/tags/{tag}',url)
+        assert req.full_url.split('?')[0] in (f'https://api.github.com/repos/{repo}/releases/tags/{tag}',url)
         return io.BytesIO(data if req.full_url==url else json.dumps(release).encode())
     monkeypatch.setattr('telyincore.download_sources.open_public',upstream)
     checker=PackageUpdates(tmp_path,'linux',repo,lambda *_:dict(latest=latest,assets=[name],native_assets=[name]))
@@ -131,3 +131,103 @@ def test_invalid_patch_baselines_rejected(tmp_path, alternatives):
     with zipfile.ZipFile(buffer) as z:
         with pytest.raises(ValueError,match='补丁基线'):
             install.inspect_zip(tmp_path,z,'linux',base,latest)
+
+
+@pytest.mark.parametrize('new_publication', ['none', 'version', 'digest'])
+def test_install_rechecks_once_after_baseline_mismatch(tmp_path, monkeypatch, new_publication):
+    from telyincore import download_sources
+    from telyincore.package_updates import overlay_url
+
+    base, first, original = pack(tmp_path)
+    newer = 'beta.0.1.2' if new_publication == 'version' else first
+    repo = 'test/Core'
+    (tmp_path/'core/main.py').write_bytes(b'reviewed variant')
+
+    def archive(version, repair):
+        with zipfile.ZipFile(io.BytesIO(original)) as old:
+            data = {n: old.read(n) for n in old.namelist()}
+        metadata = json.loads(data['UPDATE.json'])
+        metadata['to_version'] = version
+        candidate = json.loads(data['payload/candidate.json'])
+        candidate['version'] = version
+        data['payload/candidate.json'] = json.dumps(candidate).encode()
+        for row in metadata['files']:
+            if repair and row['path'] == 'core/main.py':
+                row['old_sha256'] = install.sha(b'reviewed variant')
+            row['new_sha256'] = install.sha(data['payload/'+row['path']])
+        data['UPDATE.json'] = json.dumps(metadata).encode()
+        blob = io.BytesIO()
+        with zipfile.ZipFile(blob, 'w') as z:
+            for n, payload in data.items():
+                z.writestr(n, payload)
+        return blob.getvalue()
+
+    first_archive = archive(first, False)
+    second_archive = first_archive if new_publication == 'none' else archive(newer, True)
+    reads, transfers, tags = [], [], []
+    def network(req, timeout, proxy):
+        if '/releases?' in req.full_url:
+            assert req.full_url.startswith('https://api.github.com/')
+            reads.append(req.full_url)
+        second = len(reads) > 1
+        version = newer if second else first
+        payload = second_archive if second else first_archive
+        name = overlay_name('linux', base, version)
+        release = {'tag_name': 'linux-'+version, 'draft': False, 'assets': [{
+            'name': name, 'label': 'core-online-update-v1', 'state': 'uploaded',
+            'digest': 'sha256:'+install.sha(payload), 'size': len(payload),
+            'browser_download_url': overlay_url(repo, 'linux', base, version)}]}
+        if '/releases?' in req.full_url:
+            return io.BytesIO(json.dumps([release]).encode())
+        if '/releases/tags/' in req.full_url:
+            assert req.full_url.startswith('https://api.github.com/')
+            tags.append(req.full_url)
+            return io.BytesIO(json.dumps(release).encode())
+        assert req.full_url.startswith(download_sources.GITHUB_MIRROR)
+        transfers.append(version)
+        return io.BytesIO(payload)
+
+    monkeypatch.setattr(download_sources, 'open_public', network)
+    checker = PackageUpdates(tmp_path, 'linux', repo)
+    if new_publication == 'none':
+        with pytest.raises(ValueError, match='core/main.py.*摘要均未变化'):
+            checker.prepare_install()
+        assert len(transfers) == 1 and not install.pending(tmp_path)
+    else:
+        assert checker.prepare_install()['version'] == newer
+        assert len(transfers) == 2
+        assert install.apply_pending(tmp_path, 'linux')
+        assert json.loads((tmp_path/'candidate.json').read_bytes())['version'] == newer
+    assert len(tags) == len(reads) == 2 and reads[0] != reads[1]
+
+
+def test_official_unavailable_offers_only_explicit_verified_cached_version(tmp_path):
+    base, latest, payload = pack(tmp_path)
+    cache = install.folder(tmp_path)
+    cache.mkdir(parents=True)
+    digest = install.sha(payload)
+    archive = cache / (digest + '.zip')
+    archive.write_bytes(payload)
+    receipt = dict(platform='linux', base=base, version=latest, sha256=digest)
+    (cache/'pending.json').write_text(json.dumps(receipt))
+
+    def offline(*_):
+        raise OSError('network unavailable')
+
+    checker = PackageUpdates(tmp_path, 'linux', 'fixture/Core', offline)
+    opener = build_opener(ProxyHandler({}))
+    with WebService(port=0, package_updates=checker) as service:
+        service._shutdown_callback = lambda: None
+        req = Request(service.url('/package-update/install'), data=b'{}',
+                      headers={'Origin':service.url('/').rstrip('/')})
+        with pytest.raises(HTTPError) as error:
+            opener.open(req,timeout=4)
+        answer = json.load(error.value)
+        assert '暂时无法确认最新版' in answer['error'] and answer['cachedVersion'] == latest
+        assert not service.shutdown_requested and not checker._restart_requested
+    assert install.verified_pending(tmp_path, 'linux', latest) == receipt
+    with pytest.raises(ValueError, match='已下载的更新已变化'):
+        install.verified_pending(tmp_path,'linux','beta.0.1.2')
+    archive.write_bytes(b'broken')
+    with pytest.raises(ValueError, match='暂存包校验失败'):
+        install.verified_pending(tmp_path,'linux',latest)

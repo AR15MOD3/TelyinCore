@@ -14,6 +14,7 @@ interface PackageStatus {
   required?: boolean;
   pendingVersion?: string;
   installProgress?: string;
+  installTarget?: string;
   lastInstall?: {version: string; base?: string; source: 'mirror' | 'official' | 'cache' | 'offline' | 'preview'; route: 'direct' | 'proxy' | 'local'};
   status: 'available' | 'current' | 'ahead' | 'unavailable' | 'unconfigured' | 'unknown';
   message?: string;
@@ -53,9 +54,9 @@ function paint(card: HTMLElement, state: PackageStatus) {
   }
   const install = card.querySelector<HTMLButtonElement>('[data-install]')!;
   install.hidden = !(state.pendingVersion || (state.installable && state.status === 'available'));
-  install.textContent = state.pendingVersion ? '安装并重启' : '更新并重启';
+  install.textContent = '更新并重启';
   if (state.pendingVersion) {
-    notice.textContent = '已下载并校验。安装会重启 Core，短暂中断会话。';
+    notice.textContent = '已下载并校验。点击更新时会先确认最新版，再重启 Core。';
   } else if (state.status === 'available') {
     const tag = state.platform + (state.channel === 'acceptance' ? '-acceptance-' : '-') + state.latest;
     const file = `Telyincore_${state.platform}_${state.current}_to_${state.latest}_update.zip`;
@@ -216,6 +217,7 @@ export function packageUpdateCard() {
   button.className = 'settings-language-button';
   button.textContent = '检查更新';
   button.addEventListener('click', async () => {
+    offline.hidden = true;
     button.disabled = true;
     notice.textContent = '正在检查…';
     try { await check(true); } finally { button.disabled = false; }
@@ -225,33 +227,55 @@ export function packageUpdateCard() {
   install.className = 'settings-language-button';
   install.dataset.install = '';
   install.hidden = true;
-  install.addEventListener('click', async () => {
+  const offline = document.createElement('button');
+  offline.type = 'button';
+  offline.hidden = true;
+  async function applyUpdate(cachedVersion?: string) {
     if (installing) return;
-    const targetVersion = last?.pendingVersion || last?.latest;
+    const baseVersion = last?.current;
+    const displayedVersion = last?.pendingVersion || last?.latest;
+    let targetVersion = cachedVersion || displayedVersion;
+    const displayTarget = (actual: string) => {
+      targetVersion = actual;
+      if (baseVersion) current.textContent = baseVersion.replace(/^beta\./, '') + ' → ' + actual.replace(/^beta\./, '');
+    };
     if (!targetVersion) return;
     installing = true;
     install.disabled = true;
-    notice.textContent = '正在下载并校验，安装完成后会自动重启…';
+    offline.hidden = true;
+    notice.textContent = cachedVersion ? '正在核对已下载的更新包…' : '正在确认最新版…';
     let waitingForTransfer = true;
     const showProgress = window.setInterval(async () => {
       try {
         const response = await fetch('/package-update', {cache: 'no-store', signal: AbortSignal.timeout(2000)});
         if (!response.ok) return;
         const state: PackageStatus = await response.json();
-        if (waitingForTransfer && state.installProgress) notice.textContent = state.installProgress;
+        if (waitingForTransfer && state.installProgress) {
+          if (state.installTarget) displayTarget(state.installTarget);
+          const newer = state.installTarget && state.installTarget !== displayedVersion
+            ? '目标已更新至 ' + state.installTarget.replace(/^beta\./, '') + ' · ' : '';
+          notice.textContent = newer + state.installProgress;
+        }
       } catch { /* The installer closes the listener on successful handoff. */ }
     }, 2000);
     try {
-      const response = await fetch('/package-update/install', {
-        method: 'POST', headers: {'Content-Type': 'application/json'}, body: '{}',
+      const response = await fetch(cachedVersion ? '/package-update/restart' : '/package-update/install', {
+        method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({cachedVersion}),
       });
       if (!response.ok) {
         const detail = await response.json().catch(() => ({}));
+        if (typeof detail.cachedVersion === 'string') {
+          offline.textContent = '安装已下载的 ' + detail.cachedVersion.replace(/^beta\./, '');
+          offline.onclick = () => { void applyUpdate(detail.cachedVersion); };
+          offline.hidden = false;
+        }
         throw new Error(detail.error || '更新未完成，请重试');
       }
       waitingForTransfer = false;
       window.clearInterval(showProgress);
-      notice.textContent = '正在重启，等待新版 Core 就绪…';
+      const accepted = await response.json();
+      if (typeof accepted.targetVersion === 'string') displayTarget(accepted.targetVersion);
+      notice.textContent = '正在重启，等待 ' + targetVersion.replace(/^beta\./, '') + ' 就绪…';
       const deadline = Date.now() + 120000;
       while (Date.now() < deadline) {
         await new Promise(resolve => setTimeout(resolve, 1500));
@@ -272,7 +296,8 @@ export function packageUpdateCard() {
       installing = false;
       install.disabled = false;
     }
-  });
+  }
+  install.onclick = () => { void applyUpdate(); };
   const history = document.createElement('p');
   history.dataset.updateHistory = '';
   history.hidden = true;
@@ -303,7 +328,7 @@ export function packageUpdateCard() {
   links.append(inspect);
   const actions = document.createElement('div');
   actions.className = 'package-update-actions';
-  actions.append(button, install);
+  actions.append(button, offline, install);
   card.append(title, current, notice, links, details, actions);
   if (last) paint(card, last);
   else notice.textContent = '正在读取版本信息…';

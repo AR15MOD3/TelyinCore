@@ -2117,9 +2117,9 @@ function paint3(card, state3) {
   }
   const install = card.querySelector("[data-install]");
   install.hidden = !(state3.pendingVersion || state3.installable && state3.status === "available");
-  install.textContent = state3.pendingVersion ? "安装并重启" : "更新并重启";
+  install.textContent = "更新并重启";
   if (state3.pendingVersion) {
-    notice.textContent = "已下载并校验。安装会重启 Core，短暂中断会话。";
+    notice.textContent = "已下载并校验。点击更新时会先确认最新版，再重启 Core。";
   } else if (state3.status === "available") {
     const tag = state3.platform + (state3.channel === "acceptance" ? "-acceptance-" : "-") + state3.latest;
     const file = `Telyincore_${state3.platform}_${state3.current}_to_${state3.latest}_update.zip`;
@@ -2278,6 +2278,7 @@ function packageUpdateCard() {
   button4.className = "settings-language-button";
   button4.textContent = "检查更新";
   button4.addEventListener("click", async () => {
+    offline.hidden = true;
     button4.disabled = true;
     notice.textContent = "正在检查…";
     try {
@@ -2291,36 +2292,59 @@ function packageUpdateCard() {
   install.className = "settings-language-button";
   install.dataset.install = "";
   install.hidden = true;
-  install.addEventListener("click", async () => {
+  const offline = document.createElement("button");
+  offline.type = "button";
+  offline.hidden = true;
+  async function applyUpdate(cachedVersion) {
     if (installing) return;
-    const targetVersion = last?.pendingVersion || last?.latest;
+    const baseVersion = last?.current;
+    const displayedVersion = last?.pendingVersion || last?.latest;
+    let targetVersion = cachedVersion || displayedVersion;
+    const displayTarget = (actual) => {
+      targetVersion = actual;
+      if (baseVersion) current2.textContent = baseVersion.replace(/^beta\./, "") + " → " + actual.replace(/^beta\./, "");
+    };
     if (!targetVersion) return;
     installing = true;
     install.disabled = true;
-    notice.textContent = "正在下载并校验，安装完成后会自动重启…";
+    offline.hidden = true;
+    notice.textContent = cachedVersion ? "正在核对已下载的更新包…" : "正在确认最新版…";
     let waitingForTransfer = true;
     const showProgress = window.setInterval(async () => {
       try {
         const response = await fetch("/package-update", { cache: "no-store", signal: AbortSignal.timeout(2e3) });
         if (!response.ok) return;
         const state3 = await response.json();
-        if (waitingForTransfer && state3.installProgress) notice.textContent = state3.installProgress;
+        if (waitingForTransfer && state3.installProgress) {
+          if (state3.installTarget) displayTarget(state3.installTarget);
+          const newer = state3.installTarget && state3.installTarget !== displayedVersion ? "目标已更新至 " + state3.installTarget.replace(/^beta\./, "") + " · " : "";
+          notice.textContent = newer + state3.installProgress;
+        }
       } catch {
       }
     }, 2e3);
     try {
-      const response = await fetch("/package-update/install", {
+      const response = await fetch(cachedVersion ? "/package-update/restart" : "/package-update/install", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: "{}"
+        body: JSON.stringify({ cachedVersion })
       });
       if (!response.ok) {
         const detail = await response.json().catch(() => ({}));
+        if (typeof detail.cachedVersion === "string") {
+          offline.textContent = "安装已下载的 " + detail.cachedVersion.replace(/^beta\./, "");
+          offline.onclick = () => {
+            void applyUpdate(detail.cachedVersion);
+          };
+          offline.hidden = false;
+        }
         throw new Error(detail.error || "更新未完成，请重试");
       }
       waitingForTransfer = false;
       window.clearInterval(showProgress);
-      notice.textContent = "正在重启，等待新版 Core 就绪…";
+      const accepted = await response.json();
+      if (typeof accepted.targetVersion === "string") displayTarget(accepted.targetVersion);
+      notice.textContent = "正在重启，等待 " + targetVersion.replace(/^beta\./, "") + " 就绪…";
       const deadline = Date.now() + 12e4;
       while (Date.now() < deadline) {
         await new Promise((resolve) => setTimeout(resolve, 1500));
@@ -2342,7 +2366,10 @@ function packageUpdateCard() {
       installing = false;
       install.disabled = false;
     }
-  });
+  }
+  install.onclick = () => {
+    void applyUpdate();
+  };
   const history = document.createElement("p");
   history.dataset.updateHistory = "";
   history.hidden = true;
@@ -2374,7 +2401,7 @@ function packageUpdateCard() {
   links.append(inspect);
   const actions = document.createElement("div");
   actions.className = "package-update-actions";
-  actions.append(button4, install);
+  actions.append(button4, offline, install);
   card.append(title, current2, notice, links, details, actions);
   if (last) paint3(card, last);
   else notice.textContent = "正在读取版本信息…";

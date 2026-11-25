@@ -1746,7 +1746,8 @@ class _Handler(BaseHTTPRequestHandler):
             if not self.headers.get("Origin") or not self._same_origin() or self.client_address[0] not in ("127.0.0.1", "::1"):
                 self._reject_cross_origin("更新操作仅供本机控制台使用")
                 return
-            if self._read_body() is None:
+            body = self._read_body()
+            if body is None:
                 return
             checker = self._service.package_updates
             if checker is None:
@@ -1755,22 +1756,35 @@ class _Handler(BaseHTTPRequestHandler):
             if not checker.install_lock.acquire(blocking=False):
                 self._send_json(409, {"error": "更新正在进行中"})
                 return
+            from .online_install import LatestUnavailable, verified_pending
             try:
+                if checker._restart_requested:
+                    raise ValueError("更新正在重启，请等待服务恢复。")
                 if route.endswith("/stage"):
                     row = checker.prepare_install()
                     self._send_json(200, {"pendingVersion": row["version"]})
                     return
                 if getattr(self._service, "_shutdown_callback", None) is None:
                     raise ValueError("请从已安装的 Core 启动器启动，再执行重启")
-                if route.endswith("/install") and not checker.installation().get("pendingVersion"):
-                    checker.prepare_install()
+                if route.endswith("/restart") and body.strip():
+                    request = json.loads(body)
+                    if not isinstance(request, dict):
+                        raise ValueError("更新请求格式无效")
+                    offline_version = request.get("cachedVersion")
+                else:
+                    offline_version = None
+                row = (verified_pending(checker.root, checker.platform, offline_version)
+                       if offline_version else checker.prepare_install())
                 checker.restart_for_update(self.server.server_address[1])
+            except LatestUnavailable as exc:
+                self._send_json(409, {"error": str(exc), "cachedVersion": checker.installation().get("pendingVersion")})
+                return
             except Exception as exc:
                 self._send_json(409, {"error": str(exc) if isinstance(exc, ValueError) else "更新未完成，请检查网络与更新包后重试"})
                 return
             finally:
                 checker.install_lock.release()
-            self._accept_the_shutdown()
+            self._accept_the_shutdown(update_version=row["version"])
             return
         if route == "/shutdown":
             # **2026-10-10（三颗按钮 ④）**： **收工**
@@ -3008,7 +3022,7 @@ class _Handler(BaseHTTPRequestHandler):
         if not closed and self._service.package_updates is not None:
             self._service.package_updates.wake()
         self._send_json(200, {"stopped_by_hand": closed})
-    def _accept_the_shutdown(self) -> None:
+    def _accept_the_shutdown(self, *, update_version=None) -> None:
         """ `POST /shutdown` —— **收工**（ 2026-10-10 ）。
 
         ⚠️ **那一下由服务自己收** （`stop()` —— 本模块**不跑任何命令** ，
@@ -3040,7 +3054,8 @@ class _Handler(BaseHTTPRequestHandler):
             if getattr(self._service, '_shutdown_callback', None) is not None:
                 # Listener retirement does not prove the accepted model work ended.
                 self._send_json(202, {"accepted": True, "done": False,
-                                      "listener_stopped": True})
+                                      "listener_stopped": True,
+                                      **({"targetVersion": update_version} if update_version else {})})
             else:
                 self._send_json(200, {"done": True})
         else:

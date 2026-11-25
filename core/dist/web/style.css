@@ -7444,6 +7444,50 @@ body.rail-searching #rail > :not(.rail-search-panel) {
 #topbar .topbar-update.check-failed .topbar-version-label {
   color: var(--color-status-warn-text);
 }
+#content .page-people .roster-group {
+  min-width: 0;
+  margin: 0 0 18px;
+}
+#content .page-people .roster-group-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0;
+  padding: 6px 12px 10px;
+  font: 600 12px/1.5 var(--font-sans);
+  color: var(--color-dim);
+}
+#content .page-people .roster-group-count {
+  font-weight: 400;
+  color: var(--color-faint);
+}
+#content .page-people .roster .roster-linked {
+  display: block;
+  margin-top: 5px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--color-dim);
+}
+@container console (max-width:640px) {
+  #content .page-people .roster {
+    gap: 16px;
+    align-items: flex-start;
+  }
+  #content .page-people .roster-group {
+    flex: 0 0 auto;
+    margin: 0;
+  }
+  #content .page-people .roster-group-items {
+    display: flex;
+    gap: 6px;
+  }
+  #content .page-people .roster .one {
+    width: 180px;
+    flex-basis: 180px;
+    margin-bottom: 0;
+  }
+}
 #content :is(.page-people, .page-experience, .page-settings, .page-memory, .page-persona, .page-engine, .plugin-workspace, .page-qq-settings, .page-plugin-config) {
   overflow: hidden;
   min-height: 0;

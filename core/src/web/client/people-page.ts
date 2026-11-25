@@ -6,7 +6,7 @@ import { pageFetch as fetch } from './status-json';
 // the revision from the same server snapshot. Presentation never changes identity keys.
 
 import { searchBox } from './shell';
-import { portraitOrigin, portraitSource, portraitEncounters } from './portrait-display';
+import { portraitOrigin, portraitSource, portraitEncounters, portraitGroups, portraitLinkedToConsole } from './portrait-display';
 import type { Chrome, Panel } from './shell';
 
 /** 她写下的**一条原话**（ 照 `memory.Remembered` 那五格 ）。 */
@@ -276,7 +276,8 @@ export function peoplePage(shell: Chrome): Panel {
       return;
     }
 
-    const rows = answer.everyone ?? [];
+    const groups = portraitGroups(answer.everyone ?? []);
+    const rows = groups.flatMap(group => group.people);
 
     if (rows.length === 0) {
       roster.append(line('div', 'empty', ROSTER_EMPTY));
@@ -554,7 +555,18 @@ export function peoplePage(shell: Chrome): Panel {
       face.scrollTop = 0;
     };
 
-    rows.forEach((one, index) => {
+    let rowIndex = 0;
+    for (const group of groups) {
+      const section = line('section', 'roster-group');
+      const heading = line('h2', 'roster-group-heading');
+      heading.append(line('span', '', group.label), line('span', 'roster-group-count', String(group.people.length)));
+      section.setAttribute('aria-label', group.label);
+      const items = line('div', 'roster-group-items');
+      section.append(heading, items);
+      roster.append(section);
+      group.people.forEach(one => {
+      const index = rowIndex++;
+
       const item = line('button', 'one') as HTMLButtonElement;
       item.type = 'button';
       const label = line('span', 'n', one.display_name || one.who);
@@ -564,8 +576,10 @@ export function peoplePage(shell: Chrome): Panel {
         item.append(line('span', 'p', portraitOrigin(one.display_account || String(one.plat))));
       }
       item.addEventListener('click', () => { pick(index); });
-      roster.append(item);
-    });
+      if (portraitLinkedToConsole(one)) item.append(line('span', 'roster-linked', '已关联控制台'));
+      items.append(item);
+      });
+    }
     pick(at);
 
     tail.append(

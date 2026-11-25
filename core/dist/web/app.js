@@ -1,4 +1,4 @@
-// core/src/web/client/status-json.ts
+// maintenance/portrait-groups-20261125/build-source/core/src/web/client/status-json.ts
 var StatusHttpError = class extends Error {
   constructor(url, status) {
     super(`${url} returned ${status}`);
@@ -93,7 +93,7 @@ async function getStatusJson(url, timeoutMs = 8e3) {
   return await response.json();
 }
 
-// core/src/web/client/plugin-restart.ts
+// maintenance/portrait-groups-20261125/build-source/core/src/web/client/plugin-restart.ts
 var pending = [];
 var request;
 var requested;
@@ -159,7 +159,7 @@ function startPluginRestart() {
   });
 }
 
-// core/src/web/client/plugin-updates.ts
+// maintenance/portrait-groups-20261125/build-source/core/src/web/client/plugin-updates.ts
 var state = { rows: [], checking: false };
 var pending2;
 var failure = "";
@@ -294,7 +294,7 @@ function startPluginUpdates() {
   });
 }
 
-// core/src/web/client/ui-phrases.ts
+// maintenance/portrait-groups-20261125/build-source/core/src/web/client/ui-phrases.ts
 var traditional = {
   "国内镜像始终直连。切换到官方源时，按下方用途使用代理。": "國內鏡像一律直連。切換到官方來源時，依下方用途使用代理。",
   "模型 API": "模型 API",
@@ -1609,7 +1609,7 @@ var traditional = {
   "页面未连接": "頁面未連接"
 };
 
-// core/src/web/client/display-storage.ts
+// maintenance/portrait-groups-20261125/build-source/core/src/web/client/display-storage.ts
 var localKeys = /* @__PURE__ */ new Set([
   "ui-language",
   "telyincore-look-mode",
@@ -1688,7 +1688,7 @@ function initializeDisplayScope() {
   return loading;
 }
 
-// core/src/web/client/ui-language.ts
+// maintenance/portrait-groups-20261125/build-source/core/src/web/client/ui-language.ts
 var bindings = /* @__PURE__ */ new Set();
 var owned = /* @__PURE__ */ new WeakMap();
 var listeners2 = /* @__PURE__ */ new Set();
@@ -1762,7 +1762,7 @@ function onUILanguage(listener) {
 }
 onDisplayScopeReady(() => setUILanguage(readDisplayLocal("ui-language") === "zh-Hant" ? "zh-Hant" : "zh-Hans", false));
 
-// core/src/web/client/text-detail.ts
+// maintenance/portrait-groups-20261125/build-source/core/src/web/client/text-detail.ts
 function showTextDetail(title, text2) {
   const opener = document.activeElement;
   const dialog = document.createElement("dialog");
@@ -1790,7 +1790,7 @@ function showTextDetail(title, text2) {
   close2.focus();
 }
 
-// core/src/web/client/package-updates.ts
+// maintenance/portrait-groups-20261125/build-source/core/src/web/client/package-updates.ts
 var last;
 var pending3;
 var installing = false;
@@ -2084,7 +2084,7 @@ function packageUpdateCard() {
   return card;
 }
 
-// core/src/web/client/quick-search.ts
+// maintenance/portrait-groups-20261125/build-source/core/src/web/client/quick-search.ts
 function installQuickSearch(rail) {
   const nav = rail.querySelector(".rail-nav");
   if (!nav) return;
@@ -2300,7 +2300,7 @@ function installQuickSearch(rail) {
   });
 }
 
-// core/src/web/client/rail-resize.ts
+// maintenance/portrait-groups-20261125/build-source/core/src/web/client/rail-resize.ts
 var WIDTH_KEY = "telyincore.rail-width";
 var DEFAULT_WIDTH = 280;
 function railWidthBounds(viewport) {
@@ -2501,7 +2501,7 @@ function installRailResize(root, rail) {
   window.requestAnimationFrame?.(() => root.classList.add("rail-motion-ready"));
 }
 
-// core/src/web/client/brand.ts
+// maintenance/portrait-groups-20261125/build-source/core/src/web/client/brand.ts
 var CORE_MARK_T = "M4 5H28L22 11H18V25L12 29V11H4Z";
 var CORE_MARK_CORE = "M24 17L29 22L24 27L19 22Z";
 function coreBrandMark() {
@@ -2521,7 +2521,7 @@ function coreBrandMark() {
   return svg;
 }
 
-// core/src/web/client/confirm-dialog.ts
+// maintenance/portrait-groups-20261125/build-source/core/src/web/client/confirm-dialog.ts
 var nextDialogId = 0;
 async function confirmAction(heading2, description, action, notice = false, options = {}) {
   const opener = document.activeElement;
@@ -2587,13 +2587,13 @@ async function notifyAction(heading2, description) {
   await confirmAction(heading2, description, "知道了", true);
 }
 
-// core/src/web/client/asset-url.ts
+// maintenance/portrait-groups-20261125/build-source/core/src/web/client/asset-url.ts
 function assetUrl(name) {
   if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(name)) throw new Error("Invalid asset name");
   return new URL(name, import.meta.url).href;
 }
 
-// core/src/web/client/look.ts
+// maintenance/portrait-groups-20261125/build-source/core/src/web/client/look.ts
 var THE_LOOK_ROWS = [
   ["--color-ink", "正文"],
   ["--color-dim", "次要文字"],
@@ -2794,7 +2794,7 @@ onDisplayScopeReady((prefix2) => {
   void loadLook();
 });
 
-// core/src/web/client/avatar-crop.ts
+// maintenance/portrait-groups-20261125/build-source/core/src/web/client/avatar-crop.ts
 function cropBounds(width, height, zoom, x, y) {
   const side = Math.min(width, height) / Math.max(1, zoom);
   return {
@@ -3013,7 +3013,7 @@ async function cropAvatar(file, save) {
   }
 }
 
-// core/src/web/client/speaker.ts
+// maintenance/portrait-groups-20261125/build-source/core/src/web/client/speaker.ts
 var NEUTRAL = "BOT";
 var NAME_LINE = /^[ \t]*-[ \t]*\*\*名字\*\*[ \t]*[：:][ \t]*([^。，,.;；!！?？\n（(]+)/m;
 function bodies_of(report) {
@@ -3121,7 +3121,7 @@ function loadUserLabel(force = false) {
   return labelRequest;
 }
 
-// core/src/web/client/bot-manager.ts
+// maintenance/portrait-groups-20261125/build-source/core/src/web/client/bot-manager.ts
 async function botDialog(shownName = speaker()) {
   const opener = document.activeElement;
   const response = await pageFetch("/infinity/bots", { cache: "no-store" });
@@ -3195,7 +3195,7 @@ async function botDialog(shownName = speaker()) {
   }
 }
 
-// core/src/web/client/shell.ts
+// maintenance/portrait-groups-20261125/build-source/core/src/web/client/shell.ts
 var STROKE = {
   fill: "none",
   stroke: "currentColor",
@@ -3757,7 +3757,7 @@ function createShell(root) {
   return { shell: shell2, topbar: shell2.bar };
 }
 
-// core/src/web/client/model-display.ts
+// maintenance/portrait-groups-20261125/build-source/core/src/web/client/model-display.ts
 function modelDisplayName(model) {
   const path = model.trim();
   const isFilePath = /^(?:[a-z]:[\\/]|\/|\\\\)/i.test(path);
@@ -3772,7 +3772,7 @@ function modelDisplayName(model) {
   return filename.replace(/\.gguf$/i, "");
 }
 
-// core/src/web/client/engine-events.ts
+// maintenance/portrait-groups-20261125/build-source/core/src/web/client/engine-events.ts
 var ENGINE_CHANGED = "engine-changed";
 function notifyEngineChanged() {
   if (typeof window !== "undefined" && typeof window.dispatchEvent === "function") {
@@ -3784,7 +3784,7 @@ function onEngineChanged(refresh2) {
   return () => window.removeEventListener(ENGINE_CHANGED, refresh2);
 }
 
-// core/src/web/client/qq-toolbox.ts
+// maintenance/portrait-groups-20261125/build-source/core/src/web/client/qq-toolbox.ts
 var QQ = "core-infinity-qq";
 var guide = [
   ["消息与语音", "qq_send_text", "发送文字"],
@@ -3897,7 +3897,7 @@ function qqToolbox() {
   return { root, refresh: refresh2 };
 }
 
-// core/src/web/client/qq-stickers.ts
+// maintenance/portrait-groups-20261125/build-source/core/src/web/client/qq-stickers.ts
 function qqStickers() {
   function element3(tag, text2 = "") {
     const e = document.createElement(tag);
@@ -4225,7 +4225,7 @@ function qqStickers() {
   } };
 }
 
-// core/src/web/client/qq-voice-setup.ts
+// maintenance/portrait-groups-20261125/build-source/core/src/web/client/qq-voice-setup.ts
 function voiceSetup(kind, selection) {
   const section = document.createElement("details");
   section.className = "qq-voice-setup compact-disclosure";
@@ -4371,7 +4371,7 @@ function voiceSetup(kind, selection) {
   };
 }
 
-// core/src/web/client/plugin-display-cache.ts
+// maintenance/portrait-groups-20261125/build-source/core/src/web/client/plugin-display-cache.ts
 var scope = null;
 onDisplayScopeReady((prefix2) => {
   scope = prefix2 + "plugin-page-display.v1:";
@@ -4511,7 +4511,7 @@ function fuzzyPluginMatch(name, id, query) {
   });
 }
 
-// core/src/web/client/qq-diagnostics.ts
+// maintenance/portrait-groups-20261125/build-source/core/src/web/client/qq-diagnostics.ts
 function element(tag, cls, text2) {
   const item = document.createElement(tag);
   item.className = cls;
@@ -4810,7 +4810,7 @@ function createQQEnvironment() {
   };
 }
 
-// core/src/web/client/voice-corpus-panel.ts
+// maintenance/portrait-groups-20261125/build-source/core/src/web/client/voice-corpus-panel.ts
 function voiceCorpusPanel() {
   const root = document.createElement("section");
   root.className = "voice-corpus";
@@ -5017,13 +5017,13 @@ function voiceCorpusPanel() {
   });
 }
 
-// core/src/web/client/config-presentation.ts
+// maintenance/portrait-groups-20261125/build-source/core/src/web/client/config-presentation.ts
 function configPresentation(root, state3) {
   root.setAttribute("data-config-state", state3);
   root.setAttribute("aria-busy", String(state3 === "loading"));
 }
 
-// core/src/web/client/qq-signals.ts
+// maintenance/portrait-groups-20261125/build-source/core/src/web/client/qq-signals.ts
 function serviceSignal(name, configured, running) {
   return {
     state: !configured ? "warn" : running ? "on" : "off",
@@ -5070,7 +5070,7 @@ function qqSignals(value, loaded2 = false) {
   ];
 }
 
-// core/src/web/client/download-dialog.ts
+// maintenance/portrait-groups-20261125/build-source/core/src/web/client/download-dialog.ts
 async function chooseASRSource(kind = "ASR", preferredSource) {
   const opener = document.activeElement;
   const dialog = document.createElement("dialog");
@@ -5125,7 +5125,7 @@ async function chooseASRSource(kind = "ASR", preferredSource) {
   }
 }
 
-// core/src/web/client/infinity-controls.ts
+// maintenance/portrait-groups-20261125/build-source/core/src/web/client/infinity-controls.ts
 function infinityField(label, input2) {
   const box = document.createElement("label");
   box.className = "infinity-field";
@@ -5157,7 +5157,7 @@ function infinityVoiceHeading(title, download) {
   return row2;
 }
 
-// core/src/web/client/infinity-page.ts
+// maintenance/portrait-groups-20261125/build-source/core/src/web/client/infinity-page.ts
 function node2(tag, className, text2) {
   const element3 = document.createElement(tag);
   element3.className = className;
@@ -6692,7 +6692,7 @@ function infinityPage(shell2, pluginName = "") {
   };
 }
 
-// core/src/web/client/plugin-page-bridge.ts
+// maintenance/portrait-groups-20261125/build-source/core/src/web/client/plugin-page-bridge.ts
 function pluginPageBridge(options) {
   let busy = false;
   return (event) => {
@@ -6747,7 +6747,7 @@ function pluginPageBridge(options) {
   };
 }
 
-// core/src/web/client/page-load.ts
+// maintenance/portrait-groups-20261125/build-source/core/src/web/client/page-load.ts
 function pageLoad(root, label, retry) {
   const note = document.createElement("p");
   note.className = "infinity-hint page-load-status";
@@ -6782,7 +6782,7 @@ function pageLoad(root, label, retry) {
   };
 }
 
-// core/src/web/client/plugin-config-page.ts
+// maintenance/portrait-groups-20261125/build-source/core/src/web/client/plugin-config-page.ts
 function text(tag, className, value = "") {
   const node6 = document.createElement(tag);
   node6.className = className;
@@ -7102,7 +7102,7 @@ function pluginConfigPage(shell2, name) {
   } };
 }
 
-// core/src/web/client/plugin-ui-registry.ts
+// maintenance/portrait-groups-20261125/build-source/core/src/web/client/plugin-ui-registry.ts
 var adapters = /* @__PURE__ */ new Map();
 function registerPluginUI(name, adapter) {
   if (adapters.has(name)) throw new Error(`插件页面重复注册：${name}`);
@@ -7148,7 +7148,7 @@ function pluginSignals(plugin) {
   return provider && value ? provider.signals(value, plugin) : lifecycle(plugin);
 }
 
-// core/src/web/client/engine.ts
+// maintenance/portrait-groups-20261125/build-source/core/src/web/client/engine.ts
 async function ask(url, init) {
   try {
     const resp = await pageFetch(url, init);
@@ -7235,7 +7235,7 @@ async function saveEngineDraft(asked, typed) {
   return { profile, secret };
 }
 
-// core/src/web/client/engine-controls.ts
+// maintenance/portrait-groups-20261125/build-source/core/src/web/client/engine-controls.ts
 var selects = /* @__PURE__ */ new Map();
 var menus = /* @__PURE__ */ new Map();
 var serial = 0;
@@ -7449,7 +7449,7 @@ function selectControl(select2, label) {
   return box;
 }
 
-// core/src/web/client/chatgpt-auth.ts
+// maintenance/portrait-groups-20261125/build-source/core/src/web/client/chatgpt-auth.ts
 function chatgptAuth(readName, backendReady = true) {
   const root = document.createElement("div");
   root.className = "engine-chatgpt";
@@ -7629,7 +7629,7 @@ function chatgptAuth(readName, backendReady = true) {
   };
 }
 
-// core/src/web/client/engine-providers.ts
+// maintenance/portrait-groups-20261125/build-source/core/src/web/client/engine-providers.ts
 function isPlanProvider(preset) {
   return preset.auth === "chatgpt" || /\/api\/coding\/paas\/v4\/?$/.test(preset.base_url);
 }
@@ -7648,7 +7648,7 @@ function nextProviderName(base, names) {
   return name;
 }
 
-// core/src/web/client/engine-page.ts
+// maintenance/portrait-groups-20261125/build-source/core/src/web/client/engine-page.ts
 function readDrafts() {
   try {
     const stored = JSON.parse(readDisplaySession("engine-drafts") ?? "{}");
@@ -8775,7 +8775,7 @@ function handoffNote(windowTokens, outTokens) {
   return ` 输入硬阈 ${hard}；软提醒 ${Math.floor(hard * SOFT_RATIO)}，余下 15% 为后续增长预留。`;
 }
 
-// core/src/web/client/composer-popovers.ts
+// maintenance/portrait-groups-20261125/build-source/core/src/web/client/composer-popovers.ts
 function popoverPosition(anchor, height, view2) {
   const edge = 12;
   const gap = 10;
@@ -8924,7 +8924,7 @@ function wireComposerPopovers(entries, refresh2) {
   }
 }
 
-// core/src/web/client/cache-view.ts
+// maintenance/portrait-groups-20261125/build-source/core/src/web/client/cache-view.ts
 var object = (value) => typeof value === "object" && value !== null ? value : {};
 var number = (value) => typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : null;
 var count = (value) => {
@@ -9053,7 +9053,7 @@ function latestCacheRead(fetcher) {
   };
 }
 
-// core/src/web/client/console-introduction.ts
+// maintenance/portrait-groups-20261125/build-source/core/src/web/client/console-introduction.ts
 function mountConsoleIntroduction(root, composer2) {
   const guide2 = document.createElement("section");
   guide2.className = "console-introduction";
@@ -9152,7 +9152,7 @@ function mountConsoleIntroduction(root, composer2) {
   void load();
 }
 
-// core/src/web/client/tool-activity.ts
+// maintenance/portrait-groups-20261125/build-source/core/src/web/client/tool-activity.ts
 function toolReceiptFailed(name, text2) {
   return name !== "handoff_note" && /^\s*\[tool failed\]/.test(text2 || "");
 }
@@ -9206,7 +9206,7 @@ function rememberToolTitles(result, titles) {
   if (knowledge && !/^(记录时间|修订来历|第\s*\d)/.test(knowledge[2])) titles.set(knowledge[1], knowledge[2]);
 }
 
-// core/src/web/client/history-feed.ts
+// maintenance/portrait-groups-20261125/build-source/core/src/web/client/history-feed.ts
 function mergeHistory(history, live2) {
   const result = [];
   const known = /* @__PURE__ */ new Set();
@@ -9287,7 +9287,7 @@ var HistoryFeed = class {
   }
 };
 
-// core/src/web/client/chat.ts
+// maintenance/portrait-groups-20261125/build-source/core/src/web/client/chat.ts
 var ME = "user";
 var OTHER = "bot";
 var A_BATCH = "batch";
@@ -9821,7 +9821,7 @@ function mountChat(host) {
   return view2;
 }
 
-// core/src/web/client/live.ts
+// maintenance/portrait-groups-20261125/build-source/core/src/web/client/live.ts
 var EXPORT_LABEL = "导出诊断";
 var SEND_LABEL = "▶";
 var HANDOFF_LABEL = "交接";
@@ -10503,7 +10503,7 @@ function chatPage(shell2) {
   };
 }
 
-// core/src/web/client/persona-memory.ts
+// maintenance/portrait-groups-20261125/build-source/core/src/web/client/persona-memory.ts
 function personaMemoryTail() {
   const tail = document.createElement("footer");
   tail.className = "persona-memory-tail page-footer";
@@ -10511,7 +10511,7 @@ function personaMemoryTail() {
   return tail;
 }
 
-// core/src/web/client/persona-page.ts
+// maintenance/portrait-groups-20261125/build-source/core/src/web/client/persona-page.ts
 var BOUNDARY_LINE_SHORT = "修改会写入人设文件。仅限本机访问不等于账号鉴权。";
 var A_STAMP = /^\d{8}-\d{6}$/;
 var REPORT_ROUTE = "/persona";
@@ -11530,7 +11530,7 @@ function personaPage(shell2, options = {}) {
   };
 }
 
-// core/src/web/client/display-date.ts
+// maintenance/portrait-groups-20261125/build-source/core/src/web/client/display-date.ts
 function displayDate(value) {
   if (!value) return "";
   if (!/^\d{4}-\d{2}-\d{2}T/.test(value)) return value;
@@ -11538,7 +11538,7 @@ function displayDate(value) {
   return Number.isNaN(date.getTime()) ? "日期未知" : `${date.getMonth() + 1} 月 ${date.getDate()} 日`;
 }
 
-// core/src/web/client/record-refresh.ts
+// maintenance/portrait-groups-20261125/build-source/core/src/web/client/record-refresh.ts
 function recordRefresh(root, read4) {
   let active2 = false;
   let running = false;
@@ -11589,7 +11589,7 @@ function recordRefresh(root, read4) {
   };
 }
 
-// core/src/web/client/memory-page.ts
+// maintenance/portrait-groups-20261125/build-source/core/src/web/client/memory-page.ts
 function recentPeople(everyone) {
   const recordedAt = (one) => {
     if (typeof one.recent_at === "number" && Number.isFinite(one.recent_at)) {
@@ -12248,7 +12248,7 @@ function memoryPage(shell2) {
   };
 }
 
-// core/src/web/client/plugin-versions.ts
+// maintenance/portrait-groups-20261125/build-source/core/src/web/client/plugin-versions.ts
 var states = /* @__PURE__ */ new Map();
 var painters = /* @__PURE__ */ new Map();
 var el4 = (tag, text2 = "", cls = "") => {
@@ -12381,7 +12381,7 @@ function pluginVersions(repo2, name, current2, blocked, install) {
   return Object.assign(box, { loadVersions: read4 });
 }
 
-// core/src/web/client/plugin-origin.ts
+// maintenance/portrait-groups-20261125/build-source/core/src/web/client/plugin-origin.ts
 function githubRepository(value) {
   return /^https:\/\/github\.com\/([\w.-]+\/[\w.-]+?)(?:\.git)?(?:\/|$)/.exec(value)?.[1] || "";
 }
@@ -12392,7 +12392,7 @@ function pluginOrigin(plugin, repository = "") {
 }
 var pluginOriginOrder = (group) => ({ "Core": 0, "GitHub": 1, "本地导入": 2, "来源待确认": 3 })[group];
 
-// core/src/web/client/plugin-operation.ts
+// maintenance/portrait-groups-20261125/build-source/core/src/web/client/plugin-operation.ts
 var state2;
 var continuation;
 var pluginOperation = () => state2;
@@ -12560,10 +12560,10 @@ async function runPluginOperation(name, action) {
   }
 }
 
-// core/src/web/client/plugin-guide-version.ts
+// maintenance/portrait-groups-20261125/build-source/core/src/web/client/plugin-guide-version.ts
 var PLUGIN_GUIDE_VERSION = true ? "v1.18" : "";
 
-// core/src/web/client/plugin-catalog.ts
+// maintenance/portrait-groups-20261125/build-source/core/src/web/client/plugin-catalog.ts
 var pluginCategories = [
   ["all", "全部"],
   ["communication", "通讯接入"],
@@ -12592,7 +12592,7 @@ function pluginRequirement(one) {
   return (one.full || "").toLowerCase() === "ar15mod3/infinity-comfyui" ? "需启用 QQ 连接" : "";
 }
 
-// core/src/web/client/plugin-platforms.ts
+// maintenance/portrait-groups-20261125/build-source/core/src/web/client/plugin-platforms.ts
 var platformNames = { windows: "Windows", linux: "Linux", macos: "macOS" };
 function pluginPlatforms(one) {
   const supported = Object.keys(platformNames).filter((id) => one.keywords?.includes(`platform-${id}`));
@@ -12610,7 +12610,7 @@ function platformSummary(info) {
   return values.length ? values.join(" / ") : "平台未声明";
 }
 
-// core/src/web/client/plugin-workspace.ts
+// maintenance/portrait-groups-20261125/build-source/core/src/web/client/plugin-workspace.ts
 var node5 = (tag, cls = "", text2 = "") => {
   const n = document.createElement(tag);
   n.className = cls;
@@ -13271,12 +13271,12 @@ function pluginWorkspace(shell2, view2 = "local") {
   } };
 }
 
-// core/src/web/client/plugin-market-page.ts
+// maintenance/portrait-groups-20261125/build-source/core/src/web/client/plugin-market-page.ts
 function pluginMarketPage(shell2) {
   return pluginWorkspace(shell2, "discover");
 }
 
-// core/src/web/client/infinity-plugin-page.ts
+// maintenance/portrait-groups-20261125/build-source/core/src/web/client/infinity-plugin-page.ts
 function infinityPluginPage(shell2) {
   const route2 = location.hash.replace(/^#\/?infinity\//, "");
   let name = "";
@@ -13288,7 +13288,7 @@ function infinityPluginPage(shell2) {
   return pluginPage(shell2, name);
 }
 
-// core/src/web/client/knowledge-page.ts
+// maintenance/portrait-groups-20261125/build-source/core/src/web/client/knowledge-page.ts
 var READ_FAILED2 = "知识库加载失败，请重试。";
 var NOT_WIRED2 = "当前服务暂不支持查看知识库。";
 var NOTHING_YET = "暂无知识库内容。";
@@ -13464,7 +13464,7 @@ function knowledgePage(shell2) {
   };
 }
 
-// core/src/web/client/portrait-display.ts
+// maintenance/portrait-groups-20261125/build-source/core/src/web/client/portrait-display.ts
 function portraitAccount(raw) {
   const group = /^group:qq:\d+\|sender=(qq:\d+)$/.exec(raw);
   if (group) return group[1];
@@ -13502,8 +13502,27 @@ function portraitEncounters(person, people) {
   }
   return [...rooms.values()].sort((a, b) => (b.last || "").localeCompare(a.last || "") || a.room.localeCompare(b.room));
 }
+function portraitPlatform(person) {
+  const account = portraitAccount(person.display_account || person.plat || person.who);
+  const key2 = /^(?:private:|group:)?([a-z][a-z0-9_-]*):/i.exec(account)?.[1].toLowerCase() || "unknown";
+  const labels = { console: "控制台", qq: "QQ", discord: "Discord", telegram: "Telegram", wechat: "微信" };
+  return { key: key2, label: labels[key2] || (key2 === "unknown" ? "其他" : key2) };
+}
+function portraitLinkedToConsole(person) {
+  const account = portraitAccount(person.display_account || person.plat || person.who);
+  return portraitPlatform(person).key !== "console" && !!person.identity?.accounts.includes(account) && !!person.identity.accounts.some((value) => value.startsWith("console:"));
+}
+function portraitGroups(people) {
+  const groups = /* @__PURE__ */ new Map();
+  for (const person of people) {
+    const platform = portraitPlatform(person);
+    if (!groups.has(platform.key)) groups.set(platform.key, { ...platform, people: [] });
+    groups.get(platform.key).people.push(person);
+  }
+  return [...groups.values()].sort((a, b) => Number(b.key === "console") - Number(a.key === "console")).map((group) => ({ ...group, people: group.people.sort((a, b) => Number(portraitLinkedToConsole(b)) - Number(portraitLinkedToConsole(a))) }));
+}
 
-// core/src/web/client/people-page.ts
+// maintenance/portrait-groups-20261125/build-source/core/src/web/client/people-page.ts
 var READ_FAILED3 = "画像加载失败，请重试。";
 var NOT_WIRED3 = "当前服务暂不支持查看画像。";
 var NOBODY_YET = "暂无画像记录。";
@@ -13675,7 +13694,8 @@ function peoplePage(shell2) {
       face.append(said);
       return;
     }
-    const rows = answer.everyone ?? [];
+    const groups = portraitGroups(answer.everyone ?? []);
+    const rows = groups.flatMap((group) => group.people);
     if (rows.length === 0) {
       roster.append(line("div", "empty", ROSTER_EMPTY));
       face.append(gist(null));
@@ -14000,21 +14020,33 @@ function peoplePage(shell2) {
       showFace(index);
       face.scrollTop = 0;
     };
-    rows.forEach((one, index) => {
-      const item = line("button", "one");
-      item.type = "button";
-      const label = line("span", "n", one.display_name || one.who);
-      label.title = one.who;
-      item.append(label);
-      if (one.blocked) item.append(line("span", "gate", ""));
-      if (String(one.plat ?? "") !== "") {
-        item.append(line("span", "p", portraitOrigin(one.display_account || String(one.plat))));
-      }
-      item.addEventListener("click", () => {
-        pick2(index);
+    let rowIndex = 0;
+    for (const group of groups) {
+      const section = line("section", "roster-group");
+      const heading2 = line("h2", "roster-group-heading");
+      heading2.append(line("span", "", group.label), line("span", "roster-group-count", String(group.people.length)));
+      section.setAttribute("aria-label", group.label);
+      const items = line("div", "roster-group-items");
+      section.append(heading2, items);
+      roster.append(section);
+      group.people.forEach((one) => {
+        const index = rowIndex++;
+        const item = line("button", "one");
+        item.type = "button";
+        const label = line("span", "n", one.display_name || one.who);
+        label.title = one.who;
+        item.append(label);
+        if (one.blocked) item.append(line("span", "gate", ""));
+        if (String(one.plat ?? "") !== "") {
+          item.append(line("span", "p", portraitOrigin(one.display_account || String(one.plat))));
+        }
+        item.addEventListener("click", () => {
+          pick2(index);
+        });
+        if (portraitLinkedToConsole(one)) item.append(line("span", "roster-linked", "已关联控制台"));
+        items.append(item);
       });
-      roster.append(item);
-    });
+    }
     pick2(at);
     tail.append(
       line("span", "", "共 " + String(rows.length) + " 个人")
@@ -14060,7 +14092,7 @@ function peoplePage(shell2) {
   };
 }
 
-// core/src/web/client/record-labels.ts
+// maintenance/portrait-groups-20261125/build-source/core/src/web/client/record-labels.ts
 function experienceSourceName(path) {
   const name = path.split(/[\\/]/).filter(Boolean).at(-1)?.replace(/\.[^.]+$/, "") || "";
   if (/^对话(?:记录)?$/.test(name)) return "对话";
@@ -14070,7 +14102,7 @@ function experienceSourceName(path) {
   return labels[name] || name;
 }
 
-// core/src/web/client/experience-page.ts
+// maintenance/portrait-groups-20261125/build-source/core/src/web/client/experience-page.ts
 var READ_FAILED4 = "经历加载失败，请重试。";
 var NOT_WIRED4 = "当前服务暂不支持查看经历。";
 var NOTHING_YET2 = "暂无经历。保存的对话和记录会显示在这里。";
@@ -14461,7 +14493,7 @@ function experiencePage(shell2) {
   };
 }
 
-// core/src/web/client/plugin-storage-settings.ts
+// maintenance/portrait-groups-20261125/build-source/core/src/web/client/plugin-storage-settings.ts
 var element2 = (tag, cls, label) => {
   const el6 = document.createElement(tag);
   el6.className = cls;
@@ -14677,7 +14709,7 @@ function snowlumaSessionSettings() {
   return root;
 }
 
-// core/src/web/client/model-proxy-settings.ts
+// maintenance/portrait-groups-20261125/build-source/core/src/web/client/model-proxy-settings.ts
 var PROVIDERS = [["openai", "OpenAI / ChatGPT"], ["google", "Google Gemini"], ["anthropic", "Anthropic Claude"], ["xai", "xAI Grok"]];
 var el5 = (tag, cls = "", text2 = "") => {
   const n = document.createElement(tag);
@@ -14895,7 +14927,7 @@ function modelProxySettings() {
   return root;
 }
 
-// core/src/web/client/settings-page.ts
+// maintenance/portrait-groups-20261125/build-source/core/src/web/client/settings-page.ts
 var GROUPS = [
   ["背景层级", [
     ["--color-canvas", "页面背景"],
@@ -15450,7 +15482,7 @@ function settingsPage(shell2) {
   };
 }
 
-// core/src/web/client/pages.ts
+// maintenance/portrait-groups-20261125/build-source/core/src/web/client/pages.ts
 function page(row2, build) {
   return { ...row2, build };
 }
@@ -15614,7 +15646,7 @@ function route(shell2, pages = PAGES) {
   return live;
 }
 
-// core/src/web/client/state.ts
+// maintenance/portrait-groups-20261125/build-source/core/src/web/client/state.ts
 var COUNTER_KEYS = ["tokens", "messages", "batches", "paused"];
 var ENGINE_KEYS = ["endpoint", "model", "profile", "model_available"];
 function count2(value) {
@@ -15639,7 +15671,7 @@ function counterChips(m) {
   ];
 }
 
-// core/src/web/client/main.ts
+// maintenance/portrait-groups-20261125/build-source/core/src/web/client/main.ts
 var READ_NAMES = [
   ...COUNTER_KEYS,
   ...ENGINE_KEYS,

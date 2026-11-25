@@ -39,3 +39,29 @@ export function portraitEncounters(person: Person, people: readonly Person[]): V
   }
   return [...rooms.values()].sort((a,b)=>(b.last || '').localeCompare(a.last || '') || a.room.localeCompare(b.room));
 }
+
+/** Platform grouping uses account identifiers, never names or shared chat rooms. */
+type GroupPerson = Person & { identity?: { accounts: readonly string[] } | null };
+export function portraitPlatform(person: Person): { key: string; label: string } {
+  const account = portraitAccount(person.display_account || person.plat || person.who);
+  const key = /^(?:private:|group:)?([a-z][a-z0-9_-]*):/i.exec(account)?.[1].toLowerCase() || 'unknown';
+  const labels: Record<string, string> = { console: '控制台', qq: 'QQ', discord: 'Discord', telegram: 'Telegram', wechat: '微信' };
+  return { key, label: labels[key] || (key === 'unknown' ? '其他' : key) };
+}
+export function portraitLinkedToConsole(person: GroupPerson): boolean {
+  const account = portraitAccount(person.display_account || person.plat || person.who);
+  return portraitPlatform(person).key !== 'console'
+    && !!person.identity?.accounts.includes(account)
+    && !!person.identity.accounts.some(value => value.startsWith('console:'));
+}
+export function portraitGroups<T extends GroupPerson>(people: readonly T[]): { key: string; label: string; people: T[] }[] {
+  const groups = new Map<string, { key: string; label: string; people: T[] }>();
+  for (const person of people) {
+    const platform = portraitPlatform(person);
+    if (!groups.has(platform.key)) groups.set(platform.key, { ...platform, people: [] });
+    groups.get(platform.key)!.people.push(person);
+  }
+  return [...groups.values()]
+    .sort((a, b) => Number(b.key === 'console') - Number(a.key === 'console'))
+    .map(group => ({ ...group, people: group.people.sort((a, b) => Number(portraitLinkedToConsole(b)) - Number(portraitLinkedToConsole(a))) }));
+}

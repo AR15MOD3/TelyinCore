@@ -123,3 +123,18 @@
 @media(max-width: 560px) { .public-network-policy { grid-template-columns: minmax(0,1fr); } }
 
 @container (max-width: 500px) { .public-network-policy { grid-template-columns: minmax(0,1fr); } }
+/* Public download and model controls use one field/action layout. */
+.model-proxy-address-row{display:flex;gap:10px;align-items:center;min-width:0}
+.model-proxy-address-row .engine-input{flex:1}
+.model-proxy-address-row .btn{flex:none;white-space:nowrap;border:1px solid var(--color-line);background:var(--color-white);border-radius:var(--radius-row);padding:9px 12px;color:var(--color-dim);font:inherit;cursor:pointer}
+.public-network-policy{padding:18px;gap:12px 16px;grid-template-columns:1fr 1fr}
+.public-network-policy h4{font-size:14px;font-weight:650;margin:0 0 3px}
+.public-network-policy .model-proxy-details,.public-network-policy .public-network-caption,.model-network-wide{grid-column:1/-1}
+.public-network-caption{font-size:12px;color:var(--color-dim);line-height:1.7}
+.model-network-fields{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:12px 0}
+.model-network-fields[hidden],.public-network-flow[hidden]{display:none}
+.model-proxy-details .model-proxy-provider{margin-top:12px}
+.model-proxy-details{padding-top:12px}.model-proxy-details summary{color:var(--color-dim);line-height:1.8}
+.model-proxy-targets{margin:4px 0 8px}.model-proxy-actions{border-top:1px solid var(--color-line);padding-top:18px}
+@container(max-width:500px){.model-network-fields{grid-template-columns:1fr}}
+@media(max-width:560px){.model-proxy-address-row{flex-wrap:wrap}.model-proxy-address-row .engine-input{flex-basis:100%}.model-network-fields{grid-template-columns:1fr}}

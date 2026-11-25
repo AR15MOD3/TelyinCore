@@ -26,6 +26,7 @@
       && cache.base === JSON.stringify(base.values)
       && cache.values && typeof cache.values === 'object') {
     for (const [key, value] of Object.entries(cache.values)) {
+      if (mode === 'auto' && key.startsWith('--color-')) continue;
       if (allowed.has(key) && typeof value === 'string' && value.length < 500
           && !/[;{}<>]|url\s*\(|@import/i.test(value)) values[key] = value;
     }
@@ -51,7 +52,7 @@
   root.style.setProperty('--rail-w', `${Math.round(railWidth)}px`);
   root.setAttribute('data-core-rail-compact', String(railWidth === 68));
 };globalThis.__coreApplyScopedTheme=namespace=>boot(presets,namespace,false);boot(presets);})();</script>
-<link rel="stylesheet" href="/__web/99d9143c04034fffb04c4c9723c82367/style.css">
+<link rel="stylesheet" href="/__web/dd03d071e0a54e1da738af7cb4de7cd9/style.css">
 </head>
 <body>
 <!-- ★★ 壳那四块的**落点**：左栏 ／ 顶栏 ／ 正文那一列 ／ 底部那一行。
@@ -63,6 +64,6 @@
 <header id="topbar"></header>
 <footer id="bottom"></footer>
 <noscript>这是那一页 —— 而它要 JavaScript 才转得起来。</noscript>
-<script type="module" src="/__web/99d9143c04034fffb04c4c9723c82367/app.js"></script>
+<script type="module" src="/__web/dd03d071e0a54e1da738af7cb4de7cd9/app.js"></script>
 </body>
 </html>

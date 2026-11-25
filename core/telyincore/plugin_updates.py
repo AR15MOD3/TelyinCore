@@ -12,7 +12,6 @@ import threading
 import time
 from urllib.error import HTTPError
 
-OFFICIAL_PLUGIN_REPOSITORIES = {"core-infinity-qq": "AR15MOD3/core-infinity-qq"}
 
 TTL = 6 * 3600
 RETRY = 1800
@@ -98,6 +97,9 @@ class PluginUpdates:
             tmp=Path(file.name);json.dump(state,file,ensure_ascii=False);file.flush();os.fsync(file.fileno())
         try: os.replace(tmp,path)
         finally: tmp.unlink(missing_ok=True)
+    def history(self, repo, page=1, kind="releases"):
+        from .plugin_versions import history
+        return history(self.root, repo, page, kind)
     def inventory(self):
         from runtime_identity import safe_path
         home=safe_path(self.root,self.root/'extensions')
@@ -119,13 +121,10 @@ class PluginUpdates:
                 origin=origins.get(name,{})
                 recorded=repository(origin.get('url')) if isinstance(origin,dict) else ''
                 declared=repository(spec.get('repository'))
-                official=OFFICIAL_PLUGIN_REPOSITORIES.get(name)
-                repo=official or recorded or declared
+                repo=recorded or declared
                 row={'name':name,'displayName':contract.get('displayName') or name,
                      'current':spec.get('version',''),'repository':repo,'status':'pending'}
-                if official and any(value and value.lower()!=official.lower() for value in (recorded,declared)):
-                    row.update(status='unsupported',message='安装来源与官方插件仓库不一致，需手动核对')
-                elif name in builtins and not official: row.update(status='managed',message='随 Core 更新')
+                if name in builtins: row.update(status='managed',message='随 Core 更新',repository='')
                 elif recorded and declared and recorded.lower()!=declared.lower(): row.update(status='unsupported',message='安装来源与声明仓库不一致，需手动核对')
                 elif not repo: row.update(status='unsupported',message='未声明可检查的 GitHub 仓库')
                 else: Version(row['current'])
@@ -167,7 +166,9 @@ class PluginUpdates:
                 state=self._state();now=self.clock()
                 attempts=[t for t in state['attempts'] if type(t) in (int,float) and 0<=now-t<3600]
                 repos={r['repository'].lower():r['repository'] for r in self.inventory() if r['status']=='pending'}
-                state['cache']={k:v for k,v in state['cache'].items() if k in repos and isinstance(v,dict)}
+                previous_cache=state['cache']
+                state['cache']={k:v for k,v in previous_cache.items() if k in repos and isinstance(v,dict)}
+                if state['cache'] != previous_cache: self._save(state)
                 due=[]
                 for key,repo in repos.items():
                     old=state['cache'].get(key,{})

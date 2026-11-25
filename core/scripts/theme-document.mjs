@@ -20,6 +20,7 @@ export function bootTheme(presets, namespace = null, restoreRail = true) {
       && cache.base === JSON.stringify(base.values)
       && cache.values && typeof cache.values === 'object') {
     for (const [key, value] of Object.entries(cache.values)) {
+      if (mode === 'auto' && key.startsWith('--color-')) continue;
       if (allowed.has(key) && typeof value === 'string' && value.length < 500
           && !/[;{}<>]|url\s*\(|@import/i.test(value)) values[key] = value;
     }

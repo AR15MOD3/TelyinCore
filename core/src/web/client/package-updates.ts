@@ -153,7 +153,7 @@ async function check(force = false) {
   return pending;
 }
 
-function openUpdateDialog(opener: HTMLButtonElement) {
+export function openCoreUpdateDialog(opener: HTMLButtonElement) {
   const dialog = document.createElement('dialog');
   dialog.className = 'avatar-crop-dialog package-update-dialog';
   dialog.setAttribute('aria-label', '版本更新');
@@ -187,7 +187,7 @@ export function startPackageUpdates() {
     button.title = '版本更新 · 检查更新';
     button.setAttribute('aria-haspopup', 'dialog');
     button.setAttribute('aria-label', button.title);
-    button.addEventListener('click', () => openUpdateDialog(button));
+    button.addEventListener('click', () => openCoreUpdateDialog(button));
     row.append(button);
   }
   void check();

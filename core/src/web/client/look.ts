@@ -40,8 +40,12 @@ export function onLookChanged(listener: () => void): () => void {
 let lookEpoch = 0;
 let resolvedBase = '';
 let displayEdited = false;
-export function writeTheLook(automatic = false): void {
+export function writeTheLook(automatic = false, editedName = ''): void {
   if (!automatic) displayEdited = true;
+  // Explicit colour edits pin the current scheme; automatic mode owns colours.
+  if (!automatic && editedName.startsWith('--color-') && theMode() === 'auto') {
+    writeDisplayLocal(MODE_KEY, window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+  }
   lookEpoch++;
   for (const [name, value] of Object.entries(theLook)) {
     document.documentElement.style.setProperty(name, value);
@@ -103,8 +107,9 @@ export async function setTheMode(mode: string): Promise<void> {
   const epoch = ++lookEpoch;
   const fine = mode === 'light' || mode === 'dark' ? mode : 'auto';
   writeDisplayLocal(MODE_KEY, fine);
+  if (fine === 'auto') { await loadLook(); return; }
   const file = await theBaseFor(fine);
-  if (epoch === lookEpoch) await putOn(file, fine === 'auto');
+  if (epoch === lookEpoch) await putOn(file);
 }
 
 /** 跟随系统： 系统那一头变了就重挑一遍 （ 只在那一档管用 ）。 */
@@ -160,6 +165,9 @@ export async function loadLook(): Promise<void> {
       const box = await mine.json() as Record<string, unknown>;
       for (const [name, value] of Object.entries(box)) {
         if (name.startsWith('__')) continue;
+        // /look contains a full saved palette, not only user overrides. Reusing
+        // its colours would undo a system scheme change after first paint.
+        if (mode === 'auto' && name.startsWith('--color-')) continue;
         if (typeof value === 'string' && value !== '') next[name] = value;
       }
     }

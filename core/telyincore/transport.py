@@ -196,14 +196,23 @@ class HttpxTransport:
             proxy = self._proxy_of(url) if self._proxy_of is not None else None
         except ValueError:
             raise TransportError("模型代理配置无效，请检查通用设置", retryable=False) from None
-        if proxy and not self._injected_client:
-            async with httpx.AsyncClient(proxy=proxy, trust_env=False, follow_redirects=False,
+        from .model_network import ModelNetwork
+        active_proxy = proxy.proxy if isinstance(proxy, ModelNetwork) else proxy
+        if active_proxy and not self._injected_client:
+            from .model_network import client_options
+            async with httpx.AsyncClient(**client_options(proxy, asynchronous=True, check=self._request_check), trust_env=False, follow_redirects=False,
                                          headers={"User-Agent": USER_AGENT},
                                          event_hooks={"request": [self._check_request]}
                                          if self._request_check is not None else None) as client:
                 yield client
         else:
             yield self._client
+
+    def _fallback_extensions(self, signal):
+        def check():
+            if signal is not None and signal.is_set():
+                raise PreOpenCancelled("request cancelled before direct fallback")
+        return {"telyin_before_model_fallback": check}
 
     async def model_is_strata(self, base_url, model, headers, *, signal=None):
         """Read provider identity from the selected endpoint using its own credentials."""
@@ -218,7 +227,8 @@ class HttpxTransport:
             async with asyncio.timeout(2), self._request_client(url) as client:
                 if signal is not None and signal.is_set():
                     raise PreOpenCancelled("request cancelled before provider discovery")
-                async with client.stream('GET', url, headers=headers, follow_redirects=False) as response:
+                async with client.stream('GET', url, headers=headers, follow_redirects=False,
+                                         extensions=self._fallback_extensions(signal)) as response:
                     if response.status_code != 200:
                         return False
                     raw = bytearray()
@@ -250,7 +260,8 @@ class HttpxTransport:
         if self._send_fence is None:
             async with client.stream("POST", url, json=dict(body),
                                      headers=extra or None,
-                                     timeout=frame_idle_ms / 1000) as response:
+                                     timeout=frame_idle_ms / 1000,
+                                     extensions=self._fallback_extensions(signal)) as response:
                 yield response
             return
         from .request_admission import admit, bind_request
@@ -261,7 +272,8 @@ class HttpxTransport:
                     raise PreOpenCancelled("request cancelled before HTTP stream open")
                 response = await opened.enter_async_context(client.stream(
                     "POST", url, json=frozen, headers=extra or None,
-                    timeout=frame_idle_ms / 1000))
+                    timeout=frame_idle_ms / 1000,
+                    extensions=self._fallback_extensions(signal)))
             # Host admission is released; HTTP response still belongs to this stack.
             yield response
 

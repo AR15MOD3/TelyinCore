@@ -38,8 +38,8 @@ export function writePluginDisplay(name: string, slot: DisplaySlot, value: unkno
 export const readPluginTab = (name: string): number | null => readPluginDisplay(name, 'host-tab') as number | null;
 export const writePluginTab = (name: string, tab: number): void => { writePluginDisplay(name, 'host-tab', tab); };
 const slots: DisplaySlot[] = ['host-tab','view-tab','list-page','details-open'];
-export function pluginDisplayEntries(): Array<{name: string; bytes: number}> {
-  const rows = new Map<string, number>();
+export function pluginDisplayEntries(): Array<{name: string; bytes: number; records: number; valueBytes: number}> {
+  const rows = new Map<string, {bytes:number; records:number; valueBytes:number}>();
   if (!scope) return [];
   // Exact owned schema only: unknown records never become clearable by scanning.
   for (let i = 0; i < sessionStorage.length; i++) {
@@ -48,9 +48,12 @@ export function pluginDisplayEntries(): Array<{name: string; bytes: number}> {
     const [name, slot] = parts as [string, DisplaySlot];
     if (parts.length !== 2 || !validName(name) || !slots.includes(slot) || readPluginDisplay(name, slot) === null) continue;
     const value = sessionStorage.getItem(k)!;
-    rows.set(name, (rows.get(name) ?? 0) + new TextEncoder().encode(k + value).length);
+    const row = rows.get(name) ?? {bytes:0, records:0, valueBytes:0};
+    row.bytes += new TextEncoder().encode(k + value).length;
+    row.valueBytes += new TextEncoder().encode(value).length;
+    row.records++; rows.set(name, row);
   }
-  return Array.from(rows, ([name,bytes]) => ({name,bytes}));
+  return Array.from(rows, ([name,entry]) => ({name,...entry}));
 }
 export function clearPluginDisplay(name: string): boolean {
   const k = key(name); if (!k || pluginDisplayProtected(name)) return false;

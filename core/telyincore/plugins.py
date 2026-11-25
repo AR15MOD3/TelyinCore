@@ -1177,6 +1177,20 @@ def _read_manifest(path: Path) -> dict[str, Any] | None:
     return got if isinstance(got, dict) else None
 
 
+def _repository_url(manifest):
+    import re
+    value = manifest.get('repository', '')
+    if isinstance(value, dict):
+        value = value.get('url', '')
+    if not isinstance(value, str):
+        return ''
+    value = value.removeprefix('git+')
+    match = re.fullmatch(r'https://github\.com/([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+)/?', value)
+    if not match or any(part in ('.', '..') for part in match.groups()):
+        return ''
+    return 'https://github.com/' + match[1] + '/' + match[2].removesuffix('.git')
+
+
 def _one_plugin(name: str, manifest: dict[str, Any], *, on: bool = False,
                 place: Path | None = None,
                 origin: dict[str, str] | None = None,
@@ -1230,6 +1244,7 @@ installed 表示目录存在，enabled 表示配置意图，loaded 表示进程�
             pass
     return {
         "package_id": package_id,
+        "repository": _repository_url(manifest),
         "name": named,
         "displayName": str(display) if isinstance(display, str) and display else named,
         "icon": box.get("icon") if isinstance(box.get("icon"), str) else "",

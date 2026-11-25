@@ -34,7 +34,9 @@ def lookup(engine, profile, base, model):
     elif key:
         headers['Authorization'] = 'Bearer ' + key
     deadline = time.monotonic() + 5
-    with httpx.Client(proxy=snap['proxy'], trust_env=False, follow_redirects=False,
+    from .model_network import ModelNetwork, client_options
+    network = ModelNetwork(snap['proxy'], snap.get('proxy_fallback', False))
+    with httpx.Client(**client_options(network), trust_env=False, follow_redirects=False,
                       timeout=5) as client:
         with client.stream('GET', base.rstrip('/') + '/models', headers=headers) as response:
             response.raise_for_status()

@@ -336,9 +336,10 @@ class Subscription:
         self.path = self.directory / (name + ".credentials")
         self.lock_path = self.directory / (name + ".lock")
         self._lock = threading.RLock()
-        from .model_proxy import proxy_for
+        from .model_proxy import model_network
+        from .model_network import client_options
         self._client_factory = client_factory or (lambda: httpx.Client(
-            proxy=proxy_for(self.policy_root, ISSUER), trust_env=False, follow_redirects=False, timeout=15,
+            **client_options(model_network(self.policy_root, ISSUER)), trust_env=False, follow_redirects=False, timeout=15,
             headers={"User-Agent": "TelyinCore-ChatGPT/0.1"}))
         self._clock = clock
         self._pending = None

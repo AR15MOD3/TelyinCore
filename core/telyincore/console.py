@@ -1904,10 +1904,10 @@ class Console:
         if transport is None:
             # **2026-10-12**：那几颗鉴权头交给 transport **每次请求现算**（见
             #   `transport._headers_of` 那一段：档案可以中途换 ⇒ 头也必须跟着换）。
-            from .model_proxy import proxy_for
-            selector = getattr(config, "proxy_for", None)
+            from .model_proxy import model_network
+            selector = getattr(config, "model_network", None) or getattr(config, "proxy_for", None)
             if not callable(selector):
-                selector = lambda url: proxy_for(root, url)
+                selector = lambda url: model_network(root, url)
             from .provider_record_replay import check_observation_before_send
             transport = HttpxTransport(headers_of=key_headers, proxy_of=selector,
                                        request_check=check_observation_before_send,

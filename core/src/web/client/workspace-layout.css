@@ -3,8 +3,8 @@
 :root {
   --workspace-gutter: clamp(16px, 2.4vw, 42px);
   --workspace-line: color-mix(in srgb, var(--color-line) 78%, var(--color-white));
-  --workspace-nav: color-mix(in srgb, var(--color-console) 93%, var(--color-rail));
-  --workspace-nav-text: var(--color-console-ink);
+  --workspace-nav: var(--color-rail);
+  --workspace-nav-text: var(--color-ink);
   --workspace-nav-rule: color-mix(in srgb, var(--workspace-nav-text) 24%, transparent);
 }
 

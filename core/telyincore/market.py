@@ -79,7 +79,7 @@ def _fetch(url: str, proxy=None) -> bytes:
        而**装**是一个**动作** ⇒ 它失败了要**说出来**（抛上去，由调用方交一句人话 ）。
     """
     import re
-    from .download_sources import github_json, github_routes, open_public, TRANSFER_ERRORS
+    from .download_sources import github_json, github_routes, github_route_text, open_public, TRANSFER_ERRORS
     from .plugin_network import github_destination
     headers = {"User-Agent": USER_AGENT}
 
@@ -108,15 +108,22 @@ def _fetch(url: str, proxy=None) -> bytes:
         return raw
 
     match = re.fullmatch(r"https://github\.com/([\w.-]+/[\w.-]+)/archive/refs/(heads|tags)/([\w./-]+)\.tar\.gz", url, re.ASCII)
-    routes = github_routes(url, proxy, official_only=not bool(match))
+    pinned = re.fullmatch(r"https://github\.com/([\w.-]+/[\w.-]+)/archive/([a-f0-9]{40})\.tar\.gz", url, re.ASCII)
+    routes = github_routes(url, proxy, official_only=not bool(match or pinned))
+    failures = []
     for index, (target, via) in enumerate(routes):
         try:
             raw = read(target, via)
             if target == url:
                 return raw
             # Mirror bytes still require an independent official file inventory.
-            repo, kind, ref = match.groups()
-            api = f"https://api.github.com/repos/{repo}/git/trees/refs/{kind}/{ref}?recursive=1"
+            if pinned:
+                repo, ref = pinned.groups()
+                tree_ref = ref
+            else:
+                repo, kind, ref = match.groups()
+                tree_ref = f"refs/{kind}/{ref}"
+            api = f"https://api.github.com/repos/{repo}/git/trees/{tree_ref}?recursive=1"
             tree = github_json(api, headers, proxy, official_only=True)
             if not isinstance(tree, dict) or tree.get("truncated") is not False:
                 raise ValueError("未取得完整插件文件清单")
@@ -135,9 +142,10 @@ def _fetch(url: str, proxy=None) -> bytes:
             if actual and actual == expected:
                 return raw
             raise ValueError("镜像插件文件与官方清单不符")
-        except (*TRANSFER_ERRORS, tarfile.TarError, KeyError, TypeError):
+        except (*TRANSFER_ERRORS, tarfile.TarError, KeyError, TypeError) as exc:
+            failures.append(github_route_text(target, url, via, exc))
             if index == len(routes) - 1:
-                raise
+                raise ValueError("；".join(failures)) from exc
 
 
 def _unpack(raw: bytes, into: Path) -> None:
@@ -182,7 +190,7 @@ def _unpack(raw: bytes, into: Path) -> None:
                 target.write_bytes(body.read())
 
 
-def install_url(root: Any, url: str, *, proxy_root=None) -> dict[str, Any]:
+def install_url(root: Any, url: str, *, proxy_root=None, expected_name="", publisher=None) -> dict[str, Any]:
     """ **从一个网址装**（2026-10-05 作者："别人没法发没法搜那就没用了" ⇒ 补这一条）。
 
      **它不依赖任何 registry**（也不依赖"搜" ）—— 谁把那份 `.tgz` 放在哪儿都行：
@@ -225,18 +233,20 @@ def install_url(root: Any, url: str, *, proxy_root=None) -> dict[str, Any]:
             raise ValueError(reason)
         named = validate_plugin_name(str(manifest.get("name") or folder))
         place = plugin_destination(home, named)
+        if expected_name and named != expected_name:
+            raise ValueError("所选版本的插件名称不匹配")
         words = [str(w) for w in (manifest.get("keywords") or [])]
         if KEYWORD not in words:
             raise ValueError(f"那一份里没有「{KEYWORD}」这个关键字")
         entry = stage.joinpath(*_archive_parts(str(manifest.get("main") or "index.py")))
         if not entry.is_file():
             raise ValueError("插件入口文件缺失，安装未发布")
-        if place.exists():
+        if place.exists() and publisher is None:
             shutil.rmtree(stage, ignore_errors=True)
             return {"ok": False, "where": str(place), "name": named,
                     "said": f"「{named}」那一格已经在了（这一层不覆盖别人的东西）。"}
         from .plugin_uninstall import publish_package
-        publish_package(root, named, stage, place)
+        (publisher or publish_package)(root, named, stage, place)
     except Exception as exc: # noqa: BLE001 —— 出错就说错
         shutil.rmtree(stage, ignore_errors=True)
         from .plugin_network import error_text

@@ -411,6 +411,10 @@ export function settingsPage(shell: Chrome): Panel {
     const appearanceTitle = document.createElement('h3');
     coreSetUIText(appearanceTitle, 'textContent', corePhrase("主题与配色"));
     left.append(appearanceTitle, theModeRow());
+    const modeHint = document.createElement('p');
+    modeHint.className = 'set-note';
+    coreSetUIText(modeHint, 'textContent', corePhrase('跟随系统自动切换明暗配色；选择预设或手动调色后，使用固定配色。'));
+    left.append(modeHint);
     markTheMode();
 
     const scheme = document.createElement('div');
@@ -495,7 +499,8 @@ export function settingsPage(shell: Chrome): Panel {
       theLook[name] = value;
       // Keep the active native picker/slider mounted while it emits input.
       editingPalette = true;
-      try { writeTheLook(); } finally { editingPalette = false; }
+      try { writeTheLook(false, name); } finally { editingPalette = false; }
+      markTheMode();
       void keepTheLook();
       if (code !== undefined) code.textContent = value;
     };

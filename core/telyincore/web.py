@@ -802,6 +802,9 @@ def probe_engine(engine: Any, asked: Mapping[str, Any] | None = None, *,
                 return None
         opener = urllib.request.build_opener(
             urllib.request.ProxyHandler({"https": selected_proxy} if selected_proxy else {}), NoRedirect())
+        if snapshot.get('proxy_fallback') is True and selected_proxy:
+            from .model_network import ModelNetwork, ModelProbeOpener
+            opener = ModelProbeOpener(ModelNetwork(selected_proxy, True))
         payload = None if body is None else json.dumps(body).encode("utf-8")
         req = urllib.request.Request(url, data=payload, method="GET" if body is None else "POST")
         if body is not None:
@@ -1389,6 +1392,22 @@ class _Handler(BaseHTTPRequestHandler):
             owner=self._service.runtime_evidence
             self._send_json(200, {'observation_exempt':True,'runtime_evidence':
                 {'recording_status':'DISABLED'} if owner is None else owner.capacity_state()})
+            return
+        if route == "/plugin-versions":
+            checker = self._service.plugin_updates
+            if checker is None:
+                self._send_json(503, {"message": "当前 Core 尚未接入版本选择"})
+                return
+            try:
+                from urllib.parse import parse_qs, urlsplit
+                query = parse_qs(urlsplit(self.path).query, strict_parsing=True)
+                if any(len(v) != 1 for v in query.values()):
+                    raise ValueError("版本参数重复")
+                result = checker.history(query.get('repository', [''])[0],
+                    int(query.get('page', ['1'])[0]), query.get('kind', ['releases'])[0])
+                self._send_json(200, result)
+            except (OSError, ValueError, TypeError):
+                self._send_json(400, {"message": "暂时无法获取版本，请检查网络或稍后重试"})
             return
         if route == "/plugin-updates":
             checker = self._service.plugin_updates
@@ -2077,6 +2096,22 @@ class _Handler(BaseHTTPRequestHandler):
             return
         if not isinstance(box, dict):
             self._send_text(400, "那一段该是一份 JSON 对象\n")
+            return
+        if "version" in box:
+            version = box["version"]
+            if (set(box) != {"version"} or not isinstance(version, dict)
+                    or set(version) != {"repository", "tag", "name", "current"}
+                    or any(not isinstance(v, str) for v in version.values())):
+                self._send_text(400, "版本安装参数无效\n")
+                return
+            try:
+                got = act(version=version)
+                if not got.get("ok"):
+                    self._send_text(400, str(got.get("said") or "安装失败") + "\n")
+                else:
+                    self._send_json(200, got)
+            except Exception as exc:
+                self._send_text(400, f"版本安装失败：{exc}\n")
             return
         name = str(box.get("name") or "")
         where = str(box.get("from") or "")

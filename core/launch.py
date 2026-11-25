@@ -5310,7 +5310,7 @@ def _main_impl(argv: list[str] | None = None, *, sharing_bridge_factory=None, pr
             # BudgetRunTools splits batches: only its own aggregate getter is valid.
             # B must supply this producer; never substitute the inner dispatcher.
             core_ledger.settled_receipts = getattr(core_run_tools, "settled_receipts", None)
-            budget_transport = HttpxTransport(headers_of=the_key_headers(engine), proxy_of=engine.proxy_for)
+            budget_transport = HttpxTransport(headers_of=the_key_headers(engine), proxy_of=engine.model_network)
             if not args.profile_acceptance:
                 budget_transport = isolation_ledger.BudgetTransport(budget_transport, ledger)
             async def bound_isolated_generate(active_config, messages, wire, **kwargs):
@@ -5601,6 +5601,11 @@ def _main_impl(argv: list[str] | None = None, *, sharing_bridge_factory=None, pr
         # first production wake; later launches retain private selections.
         initialize_plugin_scope(plugin_scope, core_root, baseline_bot,
             initial_choices=initial_plugin_choices(core_root, args.bot, baseline_bot))
+    if confined_plugins is None:
+        from telyincore.builtin_plugin_sync import sync_bundled
+        for result in sync_bundled(core_root):
+            if not result['ok']:
+                print('[plugins] 内置插件更新待下次启动完成：' + result['name'], file=sys.stderr, flush=True)
     if _sharing_lifecycle.get('scope') is not None:
         _sharing_preview_mount = _sharing_lifecycle['scope'].acquire(bot=args.bot, plugin_host=plugin_host)
     def prepare_qq_entry():
@@ -6013,12 +6018,24 @@ def _main_impl(argv: list[str] | None = None, *, sharing_bridge_factory=None, pr
     # · `where=…` ⇒ **从本机目录装**（照那边 `link:` 那条 —— 它是能立刻验的那条 ）。
     # ⚠️ **装完不自动开** （"开不开"是上面那个开关的事 ）。
     @_with_plugin_tables
-    def install_plugin(*, name: str = "", where: str = "", url: str = "") -> dict:
+    def install_plugin(*, name: str = "", where: str = "", url: str = "", version: dict | None = None) -> dict:
         # **两个入口**（作者："别人没法发没法搜那就没用了" ⇒ 补了网址那一条）——
         # 网址那一条**不依赖任何 registry** ⇒ "别人怎么发都行"那一半靠它 。
         # ⚠️ **装完顺手重算那张表**（ 装进来的照旧是"关着的" ⇒ 它今天不改变那张表 ；
         # 而**开**的那一下会 —— 两处都叫同一次，是"办完就一致"那一条 ）。
-        if where:
+        if version is not None:
+            from telyincore.plugin_versions import install_version
+            from telyincore.plugin_scope_store import PluginScopeStore
+            def ready():
+                if plugin_scope is None:
+                    raise ValueError('当前宿主缺少可信 Bot 上下文')
+                for bot in bot_registry.read()['bots']:
+                    item = PluginScopeStore(plugin_scope.bots, bot['id'])
+                    if item.read_state()['enabled'].get(version['name'], False):
+                        raise ValueError('请先在档案「' + bot['id'] + '」停用该插件，再切换版本')
+            got = install_version(p_root, version['repository'], version['tag'],
+                version['name'], version['current'], proxy_root=engine.root, ready=ready)
+        elif where:
             got = market.install_from(p_root, where)
         elif url:
             got = market.install_url(p_root, url, proxy_root=engine.root)

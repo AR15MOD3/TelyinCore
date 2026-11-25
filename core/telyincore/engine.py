@@ -655,6 +655,10 @@ class Engine:
         except OSError:
             return {"ok": False, "status": 503, "error": "无法读取或保存模型代理设置"}
 
+    def model_network(self, url):
+        from .model_proxy import model_network
+        return model_network(self.root, url)
+
     def proxy_for(self, url):
         from .model_proxy import proxy_for
         return proxy_for(self.root, url)
@@ -823,8 +827,9 @@ class Engine:
             key = key.strip()
             if not key and host not in ("127.0.0.1", "localhost", "::1"):
                 raise EngineError("remote probe credentials missing")
-            proxy = self.proxy_for(target["base_url"])
-            snapshot = {**target, "api_key": key, "proxy": proxy,
+            network = self.model_network(target["base_url"])
+            proxy = network.proxy
+            snapshot = {**target, "api_key": key, "proxy": proxy, "proxy_fallback": network.fallback,
                         "secret_name": slot, "generation": uuid.uuid4().hex}
         return snapshot
 
@@ -869,7 +874,7 @@ class Engine:
                 if target["kind"] != "responses" or target["base_url"] != API_BASE:
                     raise EngineError("subscription target must be the official endpoint")
                 manager = self.chatgpt(target["name"])
-                api_proxy, auth_proxy = self.proxy_for(API_BASE), self.proxy_for(ISSUER)
+                api_proxy, auth_proxy = self.model_network(API_BASE), self.model_network(ISSUER)
                 # The current model-proxy policy assigns both to OpenAI. Refuse
                 # a future policy split until the refresh client contract grows.
                 if api_proxy != auth_proxy:
@@ -884,7 +889,8 @@ class Engine:
                     raise SubscriptionError("subscription Web scope is stopping")
             def client_factory():
                 admitted()
-                return httpx.Client(proxy=auth_proxy, trust_env=False, follow_redirects=False,
+                from .model_network import client_options
+                return httpx.Client(**client_options(auth_proxy, check=admitted), trust_env=False, follow_redirects=False,
                                     timeout=15, headers={"User-Agent": "TelyinCore-ChatGPT/0.1"},
                                     event_hooks={"request": [lambda request: admitted()]})
             with manager._lock:
@@ -956,7 +962,7 @@ class Engine:
                 raise SubscriptionError("请先获取并选择模型")
             manager = self.chatgpt(str(asked.get("name") or ""))
             async def run():
-                transport = adapt(HttpxTransport(proxy_of=self.proxy_for), kind_of=lambda: "responses",
+                transport = adapt(HttpxTransport(proxy_of=self.model_network), kind_of=lambda: "responses",
                     values_of=lambda: {"auth": "chatgpt", "_subscription": manager})
                 stream = transport.stream_chat(API_BASE, {"model": model,
                     "input": [{"role": "user", "content": "Reply with OK only."}]}, frame_idle_ms=15000)
@@ -1156,7 +1162,7 @@ class Engine:
             keys.update(ENV_NAMES[field] for field in ('base_url', 'model', 'context_window'))
         environment = hashlib.sha256(repr([(key, self._env.get(key)) for key in sorted(keys)]).encode()).hexdigest()
         return (one, stamp(self.secret_path), account, environment,
-                self.proxy_for(self.effective("base_url", profile=one).value))
+                self.model_network(self.effective("base_url", profile=one).value))
 
     def refresh_context_capacity(self):
         from .context_capacity import lookup, select_capacity
@@ -1898,6 +1904,9 @@ class LiveConfig:
         fresh = LiveConfig(self._engine, frozen=self._frozen)
         await fresh.prepare_round()
         return fresh.pinned()
+
+    def model_network(self, url):
+        return self._engine.model_network(url)
 
     def proxy_for(self, url):
         """Use this Bot's network policy with the shared provider catalog."""

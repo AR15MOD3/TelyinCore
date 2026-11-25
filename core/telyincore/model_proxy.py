@@ -69,7 +69,10 @@ def _validated(value):
         raise ProxySettingsError('启用代理时必须填写地址')
     if value['enabled'] and (not url or not providers):
         raise ProxySettingsError('启用代理时必须填写地址并选择至少一家供应商')
-    routes = {}
+    model_fallback = value.get('model_fallback', False)
+    if type(model_fallback) is not bool or (model_fallback and not value['enabled']):
+        raise ProxySettingsError('模型代理回退须先启用模型代理')
+    routes = {'model_fallback': model_fallback}
     for purpose in ('market', 'downloads'):
         source = value.get(purpose + '_source', 'mirror')
         fallback = value.get(purpose + '_fallback', False)
@@ -116,6 +119,8 @@ def save_settings(root, asked):
                     value[key] = previous[key]
             if not value[purpose + '_enabled']:
                 value[purpose + '_fallback'] = False
+        if 'model_fallback' not in asked:
+            value['model_fallback'] = previous['model_fallback'] if value['enabled'] else False
         raw = (json.dumps(value, ensure_ascii=False, indent=2) + '\n').encode('utf-8')
         fd, tmp = tempfile.mkstemp(prefix='.model-proxy-', suffix='.tmp', dir=root)
         try:
@@ -135,12 +140,18 @@ def provider_for(url):
     except (ValueError, TypeError):
         return None
 
-def proxy_for(root, url):
+def model_network(root, url):
+    from .model_network import ModelNetwork
     provider = provider_for(url)
     if provider is None:
-        return None  # Includes localhost, LAN, mainland and custom relay endpoints.
+        return ModelNetwork()  # Custom, local and LAN endpoints stay direct.
     value, _ = _read(root)
-    return value['proxy_url'] if value['enabled'] and provider in value['providers'] else None
+    if not value['enabled'] or provider not in value['providers']:
+        return ModelNetwork()
+    return ModelNetwork(value['proxy_url'], value['model_fallback'])
+
+def proxy_for(root, url):
+    return model_network(root, url).proxy
 
 def auxiliary_proxy(root, purpose):
     key = {'market': 'market_enabled', 'downloads': 'downloads_enabled'}[purpose]

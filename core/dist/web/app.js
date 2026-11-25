@@ -1,4 +1,4 @@
-// maintenance/plugin-release-0547-20261125/source/core/src/web/client/status-json.ts
+// core/src/web/client/status-json.ts
 var StatusHttpError = class extends Error {
   constructor(url, status) {
     super(`${url} returned ${status}`);
@@ -93,7 +93,7 @@ async function getStatusJson(url, timeoutMs = 8e3) {
   return await response.json();
 }
 
-// maintenance/plugin-release-0547-20261125/source/core/src/web/client/plugin-restart.ts
+// core/src/web/client/plugin-restart.ts
 var pending = [];
 var request;
 var requested;
@@ -159,7 +159,7 @@ function startPluginRestart() {
   });
 }
 
-// maintenance/plugin-release-0547-20261125/source/core/src/web/client/plugin-updates.ts
+// core/src/web/client/plugin-updates.ts
 var state = { rows: [], checking: false };
 var pending2;
 var failure = "";
@@ -294,7 +294,7 @@ function startPluginUpdates() {
   });
 }
 
-// maintenance/plugin-release-0547-20261125/source/core/src/web/client/package-updates.ts
+// core/src/web/client/package-updates.ts
 var last;
 var pending3;
 var installing = false;
@@ -414,7 +414,7 @@ async function check(force = false) {
   });
   return pending3;
 }
-function openUpdateDialog(opener) {
+function openCoreUpdateDialog(opener) {
   const dialog = document.createElement("dialog");
   dialog.className = "avatar-crop-dialog package-update-dialog";
   dialog.setAttribute("aria-label", "版本更新");
@@ -450,7 +450,7 @@ function startPackageUpdates() {
     button3.title = "版本更新 · 检查更新";
     button3.setAttribute("aria-haspopup", "dialog");
     button3.setAttribute("aria-label", button3.title);
-    button3.addEventListener("click", () => openUpdateDialog(button3));
+    button3.addEventListener("click", () => openCoreUpdateDialog(button3));
     row2.append(button3);
   }
   void check();
@@ -574,7 +574,7 @@ function packageUpdateCard() {
   return card;
 }
 
-// maintenance/plugin-release-0547-20261125/source/core/src/web/client/ui-phrases.ts
+// core/src/web/client/ui-phrases.ts
 var traditional = {
   "国内镜像始终直连。切换到官方源时，按下方用途使用代理。": "國內鏡像一律直連。切換到官方來源時，依下方用途使用代理。",
   "模型 API": "模型 API",
@@ -1793,7 +1793,7 @@ var traditional = {
   "🗑 确认删除": "🗑 確認刪除"
 };
 
-// maintenance/plugin-release-0547-20261125/source/core/src/web/client/display-storage.ts
+// core/src/web/client/display-storage.ts
 var localKeys = /* @__PURE__ */ new Set([
   "ui-language",
   "telyincore-look-mode",
@@ -1872,7 +1872,7 @@ function initializeDisplayScope() {
   return loading;
 }
 
-// maintenance/plugin-release-0547-20261125/source/core/src/web/client/ui-language.ts
+// core/src/web/client/ui-language.ts
 var bindings = /* @__PURE__ */ new Set();
 var owned = /* @__PURE__ */ new WeakMap();
 var listeners2 = /* @__PURE__ */ new Set();
@@ -1946,7 +1946,7 @@ function onUILanguage(listener) {
 }
 onDisplayScopeReady(() => setUILanguage(readDisplayLocal("ui-language") === "zh-Hant" ? "zh-Hant" : "zh-Hans", false));
 
-// maintenance/plugin-release-0547-20261125/source/core/src/web/client/rail-resize.ts
+// core/src/web/client/rail-resize.ts
 var WIDTH_KEY = "telyincore.rail-width";
 var DEFAULT_WIDTH = 280;
 function railWidthBounds(viewport) {
@@ -2136,7 +2136,7 @@ function installRailResize(root, rail) {
   window.requestAnimationFrame?.(() => root.classList.add("rail-motion-ready"));
 }
 
-// maintenance/plugin-release-0547-20261125/source/core/src/web/client/brand.ts
+// core/src/web/client/brand.ts
 var CORE_MARK_T = "M4 5H28L22 11H18V25L12 29V11H4Z";
 var CORE_MARK_CORE = "M24 17L29 22L24 27L19 22Z";
 function coreBrandMark() {
@@ -2156,7 +2156,7 @@ function coreBrandMark() {
   return svg;
 }
 
-// maintenance/plugin-release-0547-20261125/source/core/src/web/client/confirm-dialog.ts
+// core/src/web/client/confirm-dialog.ts
 var nextDialogId = 0;
 async function confirmAction(heading2, description, action, notice = false, options = {}) {
   const opener = document.activeElement;
@@ -2222,13 +2222,13 @@ async function notifyAction(heading2, description) {
   await confirmAction(heading2, description, "知道了", true);
 }
 
-// maintenance/plugin-release-0547-20261125/source/core/src/web/client/asset-url.ts
+// core/src/web/client/asset-url.ts
 function assetUrl(name) {
   if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(name)) throw new Error("Invalid asset name");
   return new URL(name, import.meta.url).href;
 }
 
-// maintenance/plugin-release-0547-20261125/source/core/src/web/client/look.ts
+// core/src/web/client/look.ts
 var THE_LOOK_ROWS = [
   ["--color-ink", "正文"],
   ["--color-dim", "次要的字"],
@@ -2251,8 +2251,11 @@ function onLookChanged(listener) {
 var lookEpoch = 0;
 var resolvedBase = "";
 var displayEdited = false;
-function writeTheLook(automatic = false) {
+function writeTheLook(automatic = false, editedName = "") {
   if (!automatic) displayEdited = true;
+  if (!automatic && editedName.startsWith("--color-") && theMode() === "auto") {
+    writeDisplayLocal(MODE_KEY, window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+  }
   lookEpoch++;
   for (const [name, value] of Object.entries(theLook)) {
     document.documentElement.style.setProperty(name, value);
@@ -2266,8 +2269,8 @@ function writeTheLook(automatic = false) {
       base: resolvedBase,
       values: theLook
     }));
-    const mode = readDisplayLocal("telyincore-look-mode") || "auto";
-    document.documentElement.style.colorScheme = mode === "dark" || mode === "auto" && window.matchMedia?.("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+    const mode2 = readDisplayLocal("telyincore-look-mode") || "auto";
+    document.documentElement.style.colorScheme = mode2 === "dark" || mode2 === "auto" && window.matchMedia?.("(prefers-color-scheme: dark)").matches ? "dark" : "light";
     const meta = document.querySelector('meta[name="theme-color"]');
     if (meta && theLook["--color-canvas"]) meta.setAttribute("content", theLook["--color-canvas"]);
   } catch {
@@ -2283,13 +2286,17 @@ function theMode() {
 function thePick() {
   return readDisplayLocal(PICK_KEY) ?? "";
 }
-async function setTheMode(mode) {
+async function setTheMode(mode2) {
   displayEdited = true;
   const epoch = ++lookEpoch;
-  const fine = mode === "light" || mode === "dark" ? mode : "auto";
+  const fine = mode2 === "light" || mode2 === "dark" ? mode2 : "auto";
   writeDisplayLocal(MODE_KEY, fine);
+  if (fine === "auto") {
+    await loadLook();
+    return;
+  }
   const file = await theBaseFor(fine);
-  if (epoch === lookEpoch) await putOn(file, fine === "auto");
+  if (epoch === lookEpoch) await putOn(file);
 }
 var watching = false;
 function watchTheSystem() {
@@ -2300,8 +2307,8 @@ function watchTheSystem() {
     if (theMode() === "auto") void loadLook();
   });
 }
-async function theBaseFor(mode) {
-  const want = mode === "auto" ? window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light" : mode;
+async function theBaseFor(mode2) {
+  const want = mode2 === "auto" ? window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light" : mode2;
   const all = await thePresets();
   const pick2 = all.find((one) => one.scheme === want);
   return pick2 === void 0 ? all[0]?.file ?? "default.json" : pick2.file;
@@ -2311,9 +2318,9 @@ async function loadLook() {
   const next = { ...theLook };
   try {
     watchTheSystem();
-    const mode = theMode();
+    const mode2 = theMode();
     const want = thePick();
-    const base = mode === "auto" ? await theBaseFor(mode) : want !== "" ? want : await theBaseFor(mode);
+    const base = mode2 === "auto" ? await theBaseFor(mode2) : want !== "" ? want : await theBaseFor(mode2);
     const got = await readLookAsset(base);
     if (!got.ok) return;
     const box = await got.json();
@@ -2329,6 +2336,7 @@ async function loadLook() {
       const box2 = await mine.json();
       for (const [name, value] of Object.entries(box2)) {
         if (name.startsWith("__")) continue;
+        if (mode2 === "auto" && name.startsWith("--color-")) continue;
         if (typeof value === "string" && value !== "") next[name] = value;
       }
     }
@@ -2421,7 +2429,7 @@ onDisplayScopeReady((prefix2) => {
   void loadLook();
 });
 
-// maintenance/plugin-release-0547-20261125/source/core/src/web/client/avatar-crop.ts
+// core/src/web/client/avatar-crop.ts
 function cropBounds(width, height, zoom, x, y) {
   const side = Math.min(width, height) / Math.max(1, zoom);
   return {
@@ -2640,7 +2648,7 @@ async function cropAvatar(file, save) {
   }
 }
 
-// maintenance/plugin-release-0547-20261125/source/core/src/web/client/speaker.ts
+// core/src/web/client/speaker.ts
 var NEUTRAL = "BOT";
 var NAME_LINE = /^[ \t]*-[ \t]*\*\*名字\*\*[ \t]*[：:][ \t]*([^。，,.;；!！?？\n（(]+)/m;
 function bodies_of(report) {
@@ -2748,7 +2756,7 @@ function loadUserLabel(force = false) {
   return labelRequest;
 }
 
-// maintenance/plugin-release-0547-20261125/source/core/src/web/client/bot-manager.ts
+// core/src/web/client/bot-manager.ts
 async function botDialog(shownName = speaker()) {
   const opener = document.activeElement;
   const response = await pageFetch("/infinity/bots", { cache: "no-store" });
@@ -2822,7 +2830,7 @@ async function botDialog(shownName = speaker()) {
   }
 }
 
-// maintenance/plugin-release-0547-20261125/source/core/src/web/client/shell.ts
+// core/src/web/client/shell.ts
 var STROKE = {
   fill: "none",
   stroke: "currentColor",
@@ -2928,13 +2936,13 @@ function searchBox(placeholder) {
 }
 var EMPTY_CHIPS = ["tokens", "messages", "batches", "paused"];
 function node(tag, cls, text2) {
-  const el3 = document.createElement(tag);
-  if (cls !== void 0) el3.className = cls;
+  const el5 = document.createElement(tag);
+  if (cls !== void 0) el5.className = cls;
   if (text2 !== void 0) {
-    if (typeof text2 === "string") el3.textContent = text2;
-    else coreSetUIText(el3, "textContent", text2);
+    if (typeof text2 === "string") el5.textContent = text2;
+    else coreSetUIText(el5, "textContent", text2);
   }
-  return el3;
+  return el5;
 }
 function groupEl(index, label, items, soon = []) {
   const box = node("div", "rail-group");
@@ -3376,7 +3384,7 @@ function createShell(root) {
   return { shell: shell2, topbar: shell2.bar };
 }
 
-// maintenance/plugin-release-0547-20261125/source/core/src/web/client/model-display.ts
+// core/src/web/client/model-display.ts
 function modelDisplayName(model) {
   const path = model.trim();
   const isFilePath = /^(?:[a-z]:[\\/]|\/|\\\\)/i.test(path);
@@ -3391,7 +3399,7 @@ function modelDisplayName(model) {
   return filename.replace(/\.gguf$/i, "");
 }
 
-// maintenance/plugin-release-0547-20261125/source/core/src/web/client/engine-events.ts
+// core/src/web/client/engine-events.ts
 var ENGINE_CHANGED = "engine-changed";
 function notifyEngineChanged() {
   if (typeof window !== "undefined" && typeof window.dispatchEvent === "function") {
@@ -3403,7 +3411,7 @@ function onEngineChanged(refresh2) {
   return () => window.removeEventListener(ENGINE_CHANGED, refresh2);
 }
 
-// maintenance/plugin-release-0547-20261125/source/core/src/web/client/qq-stickers.ts
+// core/src/web/client/qq-stickers.ts
 function qqStickers() {
   function element3(tag, text2 = "") {
     const e = document.createElement(tag);
@@ -3731,7 +3739,7 @@ function qqStickers() {
   } };
 }
 
-// maintenance/plugin-release-0547-20261125/source/core/src/web/client/qq-voice-setup.ts
+// core/src/web/client/qq-voice-setup.ts
 function voiceSetup(kind, selection) {
   const section = document.createElement("details");
   section.className = "qq-voice-setup";
@@ -3879,7 +3887,7 @@ function voiceSetup(kind, selection) {
   };
 }
 
-// maintenance/plugin-release-0547-20261125/source/core/src/web/client/plugin-display-cache.ts
+// core/src/web/client/plugin-display-cache.ts
 var scope = null;
 onDisplayScopeReady((prefix2) => {
   scope = prefix2 + "plugin-page-display.v1:";
@@ -3946,9 +3954,13 @@ function pluginDisplayEntries() {
     const [name, slot] = parts;
     if (parts.length !== 2 || !validName(name) || !slots.includes(slot) || readPluginDisplay(name, slot) === null) continue;
     const value = sessionStorage.getItem(k);
-    rows.set(name, (rows.get(name) ?? 0) + new TextEncoder().encode(k + value).length);
+    const row2 = rows.get(name) ?? { bytes: 0, records: 0, valueBytes: 0 };
+    row2.bytes += new TextEncoder().encode(k + value).length;
+    row2.valueBytes += new TextEncoder().encode(value).length;
+    row2.records++;
+    rows.set(name, row2);
   }
-  return Array.from(rows, ([name, bytes]) => ({ name, bytes }));
+  return Array.from(rows, ([name, entry]) => ({ name, ...entry }));
 }
 function clearPluginDisplay(name) {
   const k = key(name);
@@ -4015,7 +4027,7 @@ function fuzzyPluginMatch(name, id, query) {
   });
 }
 
-// maintenance/plugin-release-0547-20261125/source/core/src/web/client/qq-diagnostics.ts
+// core/src/web/client/qq-diagnostics.ts
 function element(tag, cls, text2) {
   const item = document.createElement(tag);
   item.className = cls;
@@ -4317,7 +4329,7 @@ function createQQEnvironment() {
   };
 }
 
-// maintenance/plugin-release-0547-20261125/source/core/src/web/client/voice-corpus-panel.ts
+// core/src/web/client/voice-corpus-panel.ts
 function voiceCorpusPanel() {
   const root = document.createElement("details");
   root.className = "voice-corpus";
@@ -4528,13 +4540,13 @@ function voiceCorpusPanel() {
   });
 }
 
-// maintenance/plugin-release-0547-20261125/source/core/src/web/client/config-presentation.ts
+// core/src/web/client/config-presentation.ts
 function configPresentation(root, state3) {
   root.setAttribute("data-config-state", state3);
   root.setAttribute("aria-busy", String(state3 === "loading"));
 }
 
-// maintenance/plugin-release-0547-20261125/source/core/src/web/client/qq-signals.ts
+// core/src/web/client/qq-signals.ts
 function serviceSignal(name, configured, running) {
   return {
     state: !configured ? "warn" : running ? "on" : "off",
@@ -4581,7 +4593,7 @@ function qqSignals(value, loaded2 = false) {
   ];
 }
 
-// maintenance/plugin-release-0547-20261125/source/core/src/web/client/download-dialog.ts
+// core/src/web/client/download-dialog.ts
 async function chooseASRSource(kind = "ASR", preferredSource) {
   const opener = document.activeElement;
   const dialog = document.createElement("dialog");
@@ -4593,14 +4605,14 @@ async function chooseASRSource(kind = "ASR", preferredSource) {
   coreSetUIText(text2, "textContent", kind === "ASR" ? corePhrase("SenseVoiceSmall INT8，约 241 MB，包含识别模型、词表、VAD 和运行依赖，完成后自动转写自检。") : kind === "视觉" ? corePhrase("Qwen3.5-0.8B Q4_K_M + F16 视觉投影，约 703 MB。校验大小和 SHA256 后安装；不含 llama.cpp 运行时。") : corePhrase("Fun-CosyVoice3-0.5B-2512，约 5.43 GB。自动准备运行环境、默认参考音频和性能配置，并执行合成自检。首次环境安装还需下载数 GB 依赖。"));
   const label = document.createElement("label");
   coreSetUIText(label, "textContent", corePhrase("下载源 "));
-  const select = document.createElement("select");
-  coreSetUIAttribute(select, "aria-label", corePhrase("下载源"));
-  select.append(
+  const select2 = document.createElement("select");
+  coreSetUIAttribute(select2, "aria-label", corePhrase("下载源"));
+  select2.append(
     new Option("国内镜像 · HF-Mirror（直连）", "mirror"),
     new Option("官方源 · Hugging Face（按下载代理设置）", "official")
   );
-  select.value = preferredSource === "official" ? "official" : "mirror";
-  label.append(select);
+  select2.value = preferredSource === "official" ? "official" : "mirror";
+  label.append(select2);
   const notice = document.createElement("p");
   notice.className = "avatar-crop-hint";
   coreSetUIText(notice, "textContent", corePhrase("国内镜像始终直连。官方源遵循设置中的下载代理。TTS 和 ASR 暂停后可换源续传，两种来源校验同一份模型。"));
@@ -4619,13 +4631,13 @@ async function chooseASRSource(kind = "ASR", preferredSource) {
   let result = null;
   cancel.addEventListener("click", () => dialog.close());
   start.addEventListener("click", () => {
-    result = select.value;
+    result = select2.value;
     dialog.close();
   });
   document.body.append(dialog);
   try {
     dialog.showModal();
-    select.focus();
+    select2.focus();
     await new Promise((resolve) => {
       dialog.addEventListener("close", () => resolve(), { once: true });
     });
@@ -4636,7 +4648,7 @@ async function chooseASRSource(kind = "ASR", preferredSource) {
   }
 }
 
-// maintenance/plugin-release-0547-20261125/source/core/src/web/client/infinity-controls.ts
+// core/src/web/client/infinity-controls.ts
 function infinityField(label, input2) {
   const box = document.createElement("label");
   box.className = "infinity-field";
@@ -4668,7 +4680,7 @@ function infinityVoiceHeading(title, download) {
   return row2;
 }
 
-// maintenance/plugin-release-0547-20261125/source/core/src/web/client/infinity-page.ts
+// core/src/web/client/infinity-page.ts
 function node2(tag, className, text2) {
   const element3 = document.createElement(tag);
   element3.className = className;
@@ -5476,21 +5488,21 @@ function infinityPage(shell2, pluginName = "") {
     ttsProcess.title = state3.tts.running && !state3.tts.managed && !(state3.tts.provider === "external" && state3.tts.service) ? "如需从 Core 停止外部 TTS，请选择外部服务并保存其系统服务名" : "";
     ttsPreview.disabled = commandsLocked || voiceBlocked || previewPending || !state3.tts.running || !state3.tts.voices;
   };
-  const fillSelect = (select, names, selected, blank) => {
-    select.replaceChildren();
+  const fillSelect = (select2, names, selected, blank) => {
+    select2.replaceChildren();
     if (blank) {
       const empty = document.createElement("option");
       empty.value = "";
       coreSetUIText(empty, "textContent", corePhrase("暂不选择"));
-      select.append(empty);
+      select2.append(empty);
     }
     for (const name of names) {
       const option = document.createElement("option");
       option.value = name;
       option.textContent = name;
-      select.append(option);
+      select2.append(option);
     }
-    select.value = selected;
+    select2.value = selected;
   };
   const fillQQForm = (state3) => {
     privateIds.value = state3.routing.privates.join("\n");
@@ -6195,7 +6207,7 @@ function infinityPage(shell2, pluginName = "") {
   };
 }
 
-// maintenance/plugin-release-0547-20261125/source/core/src/web/client/plugin-page-bridge.ts
+// core/src/web/client/plugin-page-bridge.ts
 function pluginPageBridge(options) {
   let busy = false;
   return (event) => {
@@ -6250,7 +6262,7 @@ function pluginPageBridge(options) {
   };
 }
 
-// maintenance/plugin-release-0547-20261125/source/core/src/web/client/page-load.ts
+// core/src/web/client/page-load.ts
 function pageLoad(root, label, retry) {
   const note = document.createElement("p");
   note.className = "infinity-hint page-load-status";
@@ -6285,7 +6297,7 @@ function pageLoad(root, label, retry) {
   };
 }
 
-// maintenance/plugin-release-0547-20261125/source/core/src/web/client/plugin-config-page.ts
+// core/src/web/client/plugin-config-page.ts
 function text(tag, className, value = "") {
   const node6 = document.createElement(tag);
   node6.className = className;
@@ -6599,7 +6611,7 @@ function pluginConfigPage(shell2, name) {
   } };
 }
 
-// maintenance/plugin-release-0547-20261125/source/core/src/web/client/plugin-ui-registry.ts
+// core/src/web/client/plugin-ui-registry.ts
 var adapters = /* @__PURE__ */ new Map();
 function registerPluginUI(name, adapter) {
   if (adapters.has(name)) throw new Error(`插件页面重复注册：${name}`);
@@ -6645,7 +6657,7 @@ function pluginSignals(plugin) {
   return provider && value ? provider.signals(value, plugin) : lifecycle(plugin);
 }
 
-// maintenance/plugin-release-0547-20261125/source/core/src/web/client/engine.ts
+// core/src/web/client/engine.ts
 async function ask(url, init) {
   try {
     const resp = await pageFetch(url, init);
@@ -6732,16 +6744,16 @@ async function saveEngineDraft(asked, typed) {
   return { profile, secret };
 }
 
-// maintenance/plugin-release-0547-20261125/source/core/src/web/client/engine-controls.ts
+// core/src/web/client/engine-controls.ts
 var selects = /* @__PURE__ */ new Map();
 var menus = /* @__PURE__ */ new Map();
 var serial = 0;
 var listening = false;
 function node3(tag, cls, text2 = "") {
-  const el3 = document.createElement(tag);
-  el3.className = cls;
-  el3.textContent = text2;
-  return el3;
+  const el5 = document.createElement(tag);
+  el5.className = cls;
+  el5.textContent = text2;
+  return el5;
 }
 function remember(box, close2) {
   menus.set(box, close2);
@@ -6883,29 +6895,29 @@ function combo(cell, items, onPick) {
   cell.openAll = () => list.open();
   return box;
 }
-function selectControl(select, label) {
+function selectControl(select2, label) {
   const box = node3("div", "engine-combo engine-select");
   const trigger = node3("button", "engine-input engine-select-trigger");
   trigger.type = "button";
-  trigger.id = `${select.id}-button`;
+  trigger.id = `${select2.id}-button`;
   trigger.setAttribute("aria-label", label);
   trigger.setAttribute("aria-haspopup", "listbox");
-  select.hidden = true;
-  select.setAttribute("aria-hidden", "true");
-  select.tabIndex = -1;
+  select2.hidden = true;
+  select2.setAttribute("aria-hidden", "true");
+  select2.tabIndex = -1;
   const sync = () => {
-    const chosen = Array.from(select.options).find((option) => option.value === select.value);
+    const chosen = Array.from(select2.options).find((option) => option.value === select2.value);
     trigger.textContent = chosen?.textContent ?? "上游默认";
-    trigger.disabled = select.disabled;
-    trigger.title = select.title;
+    trigger.disabled = select2.disabled;
+    trigger.title = select2.title;
   };
-  const list = menuFor(trigger, () => Array.from(select.options).map((option) => ({
+  const list = menuFor(trigger, () => Array.from(select2.options).map((option) => ({
     value: option.value,
     label: option.textContent ?? option.value
-  })), () => select.value, (item) => {
-    select.value = item.value;
+  })), () => select2.value, (item) => {
+    select2.value = item.value;
     sync();
-    select.dispatchEvent(new Event("change", { bubbles: true }));
+    select2.dispatchEvent(new Event("change", { bubbles: true }));
   });
   trigger.addEventListener("click", () => {
     if (trigger.disabled) return;
@@ -6914,15 +6926,15 @@ function selectControl(select, label) {
   });
   trigger.addEventListener("keydown", list.key);
   trigger.addEventListener("blur", list.close);
-  select.addEventListener("change", sync);
-  box.append(select, trigger, list.menu);
+  select2.addEventListener("change", sync);
+  box.append(select2, trigger, list.menu);
   remember(box, list.close);
-  selects.set(select, sync);
+  selects.set(select2, sync);
   sync();
   return box;
 }
 
-// maintenance/plugin-release-0547-20261125/source/core/src/web/client/chatgpt-auth.ts
+// core/src/web/client/chatgpt-auth.ts
 function chatgptAuth(readName, backendReady = true) {
   const root = document.createElement("div");
   root.className = "engine-chatgpt";
@@ -7102,7 +7114,7 @@ function chatgptAuth(readName, backendReady = true) {
   };
 }
 
-// maintenance/plugin-release-0547-20261125/source/core/src/web/client/engine-providers.ts
+// core/src/web/client/engine-providers.ts
 function isPlanProvider(preset) {
   return preset.auth === "chatgpt" || /\/api\/coding\/paas\/v4\/?$/.test(preset.base_url);
 }
@@ -7121,7 +7133,7 @@ function nextProviderName(base, names) {
   return name;
 }
 
-// maintenance/plugin-release-0547-20261125/source/core/src/web/client/engine-page.ts
+// core/src/web/client/engine-page.ts
 function readDrafts() {
   try {
     const stored = JSON.parse(readDisplaySession("engine-drafts") ?? "{}");
@@ -8241,7 +8253,7 @@ function handoffNote(windowTokens, outTokens) {
   return ` 输入硬阈 ${hard}；软提醒 ${Math.floor(hard * SOFT_RATIO)}，余下 15% 为后续增长预留。`;
 }
 
-// maintenance/plugin-release-0547-20261125/source/core/src/web/client/composer-popovers.ts
+// core/src/web/client/composer-popovers.ts
 function popoverPosition(anchor, height, view2) {
   const edge = 12;
   const gap = 10;
@@ -8390,7 +8402,7 @@ function wireComposerPopovers(entries, refresh2) {
   }
 }
 
-// maintenance/plugin-release-0547-20261125/source/core/src/web/client/cache-view.ts
+// core/src/web/client/cache-view.ts
 var object = (value) => typeof value === "object" && value !== null ? value : {};
 var number = (value) => typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : null;
 var count = (value) => {
@@ -8519,7 +8531,7 @@ function latestCacheRead(fetcher) {
   };
 }
 
-// maintenance/plugin-release-0547-20261125/source/core/src/web/client/console-introduction.ts
+// core/src/web/client/console-introduction.ts
 function mountConsoleIntroduction(root, composer2) {
   const guide = document.createElement("section");
   guide.className = "console-introduction";
@@ -8530,9 +8542,9 @@ function mountConsoleIntroduction(root, composer2) {
     composer2.toggleAttribute("data-introducing", pending5);
   };
   const line = (text2) => {
-    const el3 = document.createElement("p");
-    el3.textContent = text2;
-    return el3;
+    const el5 = document.createElement("p");
+    el5.textContent = text2;
+    return el5;
   };
   async function load() {
     try {
@@ -8618,7 +8630,7 @@ function mountConsoleIntroduction(root, composer2) {
   void load();
 }
 
-// maintenance/plugin-release-0547-20261125/source/core/src/web/client/tool-activity.ts
+// core/src/web/client/tool-activity.ts
 function toolReceiptFailed(name, text2) {
   return name !== "handoff_note" && /^\s*\[tool failed\]/.test(text2 || "");
 }
@@ -8672,7 +8684,7 @@ function rememberToolTitles(result, titles) {
   if (knowledge && !/^(记录时间|修订来历|第\s*\d)/.test(knowledge[2])) titles.set(knowledge[1], knowledge[2]);
 }
 
-// maintenance/plugin-release-0547-20261125/source/core/src/web/client/history-feed.ts
+// core/src/web/client/history-feed.ts
 function mergeHistory(history, live2) {
   const result = [];
   const known = /* @__PURE__ */ new Set();
@@ -8753,7 +8765,7 @@ var HistoryFeed = class {
   }
 };
 
-// maintenance/plugin-release-0547-20261125/source/core/src/web/client/chat.ts
+// core/src/web/client/chat.ts
 var ME = "user";
 var OTHER = "bot";
 var A_BATCH = "batch";
@@ -9093,9 +9105,9 @@ function appendTool(chat2, frame) {
   if (group.selected === step) showTool(group);
   return group.row;
 }
-function stickToTheBottom(el3) {
-  if (!el3) return;
-  for (let one = el3; one; one = one.parentElement) {
+function stickToTheBottom(el5) {
+  if (!el5) return;
+  for (let one = el5; one; one = one.parentElement) {
     if (one.scrollHeight > one.clientHeight + 1) {
       one.scrollTop = one.scrollHeight;
     }
@@ -9279,7 +9291,7 @@ function mountChat(host) {
   return view2;
 }
 
-// maintenance/plugin-release-0547-20261125/source/core/src/web/client/live.ts
+// core/src/web/client/live.ts
 var EXPORT_LABEL = "导出诊断";
 var SEND_LABEL = "▶";
 var HANDOFF_LABEL = "交接";
@@ -9963,7 +9975,7 @@ function chatPage(shell2) {
   };
 }
 
-// maintenance/plugin-release-0547-20261125/source/core/src/web/client/persona-memory.ts
+// core/src/web/client/persona-memory.ts
 function personaMemoryTail() {
   const tail = document.createElement("footer");
   tail.className = "persona-memory-tail";
@@ -9971,7 +9983,7 @@ function personaMemoryTail() {
   return tail;
 }
 
-// maintenance/plugin-release-0547-20261125/source/core/src/web/client/persona-page.ts
+// core/src/web/client/persona-page.ts
 var BOUNDARY_LINE_SHORT = "写入那条路：这一页能改她是谁 —— 「只听回环」不等于已鉴权。";
 var A_STAMP = /^\d{8}-\d{6}$/;
 var REPORT_ROUTE = "/persona";
@@ -10082,13 +10094,13 @@ function draftOf(segment) {
   };
 }
 function node4(tag, cls, text2) {
-  const el3 = document.createElement(tag);
-  if (cls !== void 0) el3.className = cls;
-  if (text2 !== void 0) el3.textContent = text2;
-  return el3;
+  const el5 = document.createElement(tag);
+  if (cls !== void 0) el5.className = cls;
+  if (text2 !== void 0) el5.textContent = text2;
+  return el5;
 }
-function surfaceOf(el3) {
-  let one = el3;
+function surfaceOf(el5) {
+  let one = el5;
   for (let hops = 0; one !== null && one !== void 0 && hops < 8; hops += 1) {
     if (one.classList !== void 0 && one.classList.contains("persona-body")) {
       return one;
@@ -10624,9 +10636,9 @@ function personaPage(shell2, options = {}) {
     surface.addEventListener("mouseup", followCaret);
   };
   const flushFocused = () => {
-    const el3 = document.activeElement;
-    if (el3 === null || el3 === void 0) return;
-    const surface = surfaceOf(el3);
+    const el5 = document.activeElement;
+    if (el5 === null || el5 === void 0) return;
+    const surface = surfaceOf(el5);
     if (surface !== null) surface.blur();
   };
   const segmentRow = (segment) => {
@@ -11009,7 +11021,7 @@ function personaPage(shell2, options = {}) {
   };
 }
 
-// maintenance/plugin-release-0547-20261125/source/core/src/web/client/display-date.ts
+// core/src/web/client/display-date.ts
 function displayDate(value) {
   if (!value) return "";
   if (!/^\d{4}-\d{2}-\d{2}T/.test(value)) return value;
@@ -11017,7 +11029,7 @@ function displayDate(value) {
   return Number.isNaN(date.getTime()) ? "日期未知" : `${date.getMonth() + 1} 月 ${date.getDate()} 日`;
 }
 
-// maintenance/plugin-release-0547-20261125/source/core/src/web/client/record-refresh.ts
+// core/src/web/client/record-refresh.ts
 function recordRefresh(root, read4) {
   let active2 = false;
   let running = false;
@@ -11068,7 +11080,7 @@ function recordRefresh(root, read4) {
   };
 }
 
-// maintenance/plugin-release-0547-20261125/source/core/src/web/client/memory-page.ts
+// core/src/web/client/memory-page.ts
 function recentPeople(everyone) {
   const recordedAt = (one) => {
     if (typeof one.recent_at === "number" && Number.isFinite(one.recent_at)) {
@@ -11130,16 +11142,16 @@ function memoryPage(shell2) {
   shell2.content.replaceChildren(root);
   const keepPosition = (render2) => {
     const parents = [];
-    for (let el3 = root; el3; el3 = el3.parentElement) parents.push([el3, el3.scrollTop, el3.scrollLeft]);
+    for (let el5 = root; el5; el5 = el5.parentElement) parents.push([el5, el5.scrollTop, el5.scrollLeft]);
     const x = window.scrollX, y = window.scrollY;
-    const inner = [...root.querySelectorAll(".memory-pull-content")].map((el3) => el3.scrollTop);
+    const inner = [...root.querySelectorAll(".memory-pull-content")].map((el5) => el5.scrollTop);
     render2();
-    root.querySelectorAll(".memory-pull-content").forEach((el3, i) => {
-      el3.scrollTop = inner[i] || 0;
+    root.querySelectorAll(".memory-pull-content").forEach((el5, i) => {
+      el5.scrollTop = inner[i] || 0;
     });
-    for (const [el3, top, left] of parents) {
-      el3.scrollTop = top;
-      el3.scrollLeft = left;
+    for (const [el5, top, left] of parents) {
+      el5.scrollTop = top;
+      el5.scrollLeft = left;
     }
     window.scrollTo(x, y);
   };
@@ -11479,7 +11491,7 @@ function memoryPage(shell2) {
   const drawSkillsContents = (answer) => {
     latestSkills = answer;
     if (composing) return;
-    const opened = new Set([...skillsBox.querySelectorAll("details[data-section]")].filter((el3) => el3.open).map((el3) => el3.dataset.section));
+    const opened = new Set([...skillsBox.querySelectorAll("details[data-section]")].filter((el5) => el5.open).map((el5) => el5.dataset.section));
     for (const child of [...skillsBox.children]) if (child !== toolbar) child.remove();
     const head2 = document.createElement("h2");
     head2.className = "memory-document-title";
@@ -11611,7 +11623,7 @@ function memoryPage(shell2) {
         more.addEventListener("click", () => {
           visibleLimits.set(said, limit + pageSize);
           drawSkills(latestSkills);
-          const updated = [...skillsBox.querySelectorAll(".memory-skill-section")].find((el3) => el3.querySelector("h3")?.textContent === said);
+          const updated = [...skillsBox.querySelectorAll(".memory-skill-section")].find((el5) => el5.querySelector("h3")?.textContent === said);
           const next = updated?.querySelectorAll("summary")[limit];
           next?.focus();
         });
@@ -11740,7 +11752,157 @@ function memoryPage(shell2) {
   };
 }
 
-// maintenance/plugin-release-0547-20261125/source/core/src/web/client/plugin-operation.ts
+// core/src/web/client/plugin-versions.ts
+var states = /* @__PURE__ */ new Map();
+var painters = /* @__PURE__ */ new Map();
+var el3 = (tag, text2 = "", cls = "") => {
+  const n = document.createElement(tag);
+  n.textContent = text2;
+  n.className = cls;
+  return n;
+};
+function pluginVersions(repo2, name, current2, blocked, install) {
+  const key2 = repo2 + "/" + name;
+  let state3 = states.get(key2);
+  if (!state3) {
+    state3 = { open: false, kind: "releases", page: 1, selected: "", error: "", loading: false };
+    states.set(key2, state3);
+  }
+  const s = state3;
+  const box = el3("details", "", "pw-versions");
+  box.open = s.open;
+  const summary2 = el3("summary", "版本与历史下载");
+  const body = el3("div", "", "pw-version-body");
+  box.append(summary2, body);
+  const link = (label, url) => {
+    const a = el3("a", label, "pw-button");
+    a.href = url;
+    a.target = "_blank";
+    a.rel = "noopener noreferrer";
+    return a;
+  };
+  const button3 = (label, click) => {
+    const b = el3("button", label, "pw-button");
+    b.type = "button";
+    b.onclick = click;
+    return b;
+  };
+  function draw() {
+    body.replaceChildren();
+    const controls = el3("div", "", "pw-version-controls");
+    const kind = el3("select");
+    kind.setAttribute("aria-label", "版本来源");
+    kind.add(new Option("正式发布与预发布", "releases"));
+    kind.add(new Option("全部版本标签", "tags"));
+    kind.value = s.kind;
+    kind.disabled = s.loading || blocked;
+    kind.onchange = () => {
+      s.kind = kind.value;
+      s.page = 1;
+      s.selected = "";
+      s.data = void 0;
+      void read4();
+    };
+    const refresh2 = button3(s.loading ? "正在读取…" : "刷新版本", () => {
+      void read4();
+    });
+    refresh2.disabled = s.loading || blocked;
+    controls.append(kind, refresh2);
+    body.append(controls);
+    if (s.error) {
+      const error = el3("p", s.error, "pw-operation");
+      error.setAttribute("role", "status");
+      body.append(error);
+    }
+    if (!s.data) {
+      body.append(el3("p", s.loading ? "正在读取版本…" : "展开后读取 GitHub 版本。"));
+      return;
+    }
+    if (!s.data.rows.length) {
+      body.append(el3("p", s.kind === "releases" ? "作者尚未创建 Release，可切换到“全部版本标签”。" : "作者尚未发布版本标签。"));
+    } else {
+      const select2 = el3("select");
+      select2.setAttribute("aria-label", "选择插件版本");
+      select2.disabled = blocked || s.loading;
+      for (const row3 of s.data.rows) select2.add(new Option(row3.tag + (row3.prerelease ? " · 预发布" : "") + (row3.date ? " · " + row3.date.slice(0, 10) : "") + (row3.tag.replace(/^v/, "") === current2 ? " · 当前版本" : ""), row3.tag));
+      if (!s.data.rows.some((row3) => row3.tag === s.selected)) s.selected = s.data.rows[0].tag;
+      select2.value = s.selected;
+      select2.onchange = () => {
+        s.selected = select2.value;
+        draw();
+      };
+      body.append(select2);
+      const row2 = s.data.rows.find((row3) => row3.tag === s.selected);
+      const actions = el3("div", "", "pw-version-controls");
+      const apply = button3(current2 ? "安装所选版本" : "安装此版本", () => install(row2));
+      apply.disabled = blocked || s.loading;
+      actions.append(apply, link("下载源码包 ↗", row2.download), link("发布说明 ↗", row2.source));
+      body.append(actions);
+      if (row2.notes) {
+        const notes = el3("details", "", "pw-version-notes");
+        notes.append(el3("summary", "查看版本说明"), el3("p", row2.notes));
+        body.append(notes);
+      }
+      body.append(el3("p", current2 ? "切换前请先停用插件。原安装包会备份，配置和缓存保留；旧版是否兼容现有配置，以作者说明为准。" : "按所选标签安装并核对插件清单，安装后默认停用。", "pw-version-hint"));
+    }
+    if (s.page > 1 || s.data.more) {
+      const pages = el3("div", "", "pw-version-controls");
+      const previous = button3("上一页", () => {
+        s.page--;
+        s.selected = "";
+        void read4();
+      });
+      previous.disabled = blocked || s.loading || s.page === 1;
+      const next = button3("下一页", () => {
+        s.page++;
+        s.selected = "";
+        void read4();
+      });
+      next.disabled = blocked || s.loading || !s.data.more;
+      pages.append(previous, el3("span", "第 " + s.page + " 页"), next);
+      body.append(pages);
+    }
+  }
+  async function read4() {
+    if (s.loading) return;
+    s.loading = true;
+    s.error = "";
+    draw();
+    try {
+      const r = await pageFetch("/plugin-versions?" + new URLSearchParams({ repository: repo2, page: String(s.page), kind: s.kind }), { cache: "no-store", signal: AbortSignal.timeout(2e4) }, 2e4);
+      if (!r.ok) throw Error("版本读取失败，请检查网络后重试。");
+      const data = await r.json();
+      if (!Array.isArray(data.rows)) throw Error("版本列表格式异常");
+      s.data = data;
+    } catch (error) {
+      s.error = error instanceof Error ? error.message : "版本读取失败";
+    } finally {
+      s.loading = false;
+      painters.get(key2)?.();
+    }
+  }
+  box.ontoggle = () => {
+    s.open = box.open;
+    if (box.open && !s.data) void read4();
+  };
+  painters.set(key2, draw);
+  draw();
+  if (s.open && !s.data && !s.error) void read4();
+  return box;
+}
+
+// core/src/web/client/plugin-origin.ts
+function githubRepository(value) {
+  return /^https:\/\/github\.com\/([\w.-]+\/[\w.-]+?)(?:\.git)?(?:\/|$)/.exec(value)?.[1] || "";
+}
+function pluginOrigin(plugin, repository = "") {
+  if (plugin.builtin === true) return "Core";
+  if (githubRepository(plugin.origin?.url || "") || githubRepository(plugin.repository || "") || githubRepository(repository)) return "GitHub";
+  return "本地导入";
+}
+var pluginOriginOrder = (group) => ({ "Core": 0, "GitHub": 1, "本地导入": 2, "来源待确认": 3 })[group];
+
+// core/src/web/client/plugin-operation.ts
 var state2;
 var continuation;
 var pluginOperation = () => state2;
@@ -11908,10 +12070,10 @@ async function runPluginOperation(name, action) {
   }
 }
 
-// maintenance/plugin-release-0547-20261125/source/core/src/web/client/plugin-guide-version.ts
+// core/src/web/client/plugin-guide-version.ts
 var PLUGIN_GUIDE_VERSION = true ? "v1.18" : "";
 
-// maintenance/plugin-release-0547-20261125/source/core/src/web/client/plugin-catalog.ts
+// core/src/web/client/plugin-catalog.ts
 var pluginCategories = [
   ["all", "全部"],
   ["communication", "通讯接入"],
@@ -11940,7 +12102,7 @@ function pluginRequirement(one) {
   return (one.full || "").toLowerCase() === "ar15mod3/infinity-comfyui" ? "需启用 QQ 连接" : "";
 }
 
-// maintenance/plugin-release-0547-20261125/source/core/src/web/client/plugin-platforms.ts
+// core/src/web/client/plugin-platforms.ts
 var platformNames = { windows: "Windows", linux: "Linux", macos: "macOS" };
 function pluginPlatforms(one) {
   const supported = Object.keys(platformNames).filter((id) => one.keywords?.includes(`platform-${id}`));
@@ -11958,7 +12120,7 @@ function platformSummary(info) {
   return values.length ? values.join(" / ") : "平台未声明";
 }
 
-// maintenance/plugin-release-0547-20261125/source/core/src/web/client/plugin-workspace.ts
+// core/src/web/client/plugin-workspace.ts
 var node5 = (tag, cls = "", text2 = "") => {
   const n = document.createElement(tag);
   n.className = cls;
@@ -11978,16 +12140,17 @@ var runtime = (p) => {
   return p.installed === false ? "未安装" : p.contract ? "不兼容" : p.lifecycle_error ? "运行异常" : p.restart_required ? p.loaded ? p.restart_action === "config" ? "运行中 · 配置待重启" : "仍在运行 · 重启后停用" : p.restart_action === "enable" ? "重启后启用" : "重启后完成停用" : p.loaded ? "运行中" : p.enabled ? "已启用 · 未运行" : "已停用";
 };
 var repo = (entry) => {
-  if (entry.local?.builtin) return "https://github.com/AR15MOD3/TelyinCore";
+  if (entry.local?.builtin) return "https://github.com/AR15MOD3/TelyinCore/tree/main/core/builtin/infinity/" + encodeURIComponent(entry.name);
   if (entry.market?.full && /^[\w.-]+\/[\w.-]+$/.test(entry.market.full)) return "https://github.com/" + entry.market.full;
   const url = entry.local?.origin?.url || "";
   const match = /^https:\/\/github\.com\/([\w.-]+\/[\w.-]+?)(?:\.git)?(?:\/|$)/.exec(url);
   if (match) return "https://github.com/" + match[1];
+  if (entry.local?.repository) return entry.local.repository;
   const remote = updateFor(entry.name)?.repository;
   return remote && /^[\w.-]+\/[\w.-]+$/.test(remote) ? "https://github.com/" + remote : "";
 };
-var originGroup = (entry) => entry.local?.builtin ? "Core" : repo(entry) ? "GitHub" : "本地导入";
-var originOrder = (entry) => ({ Core: 0, GitHub: 1, "本地导入": 2 })[originGroup(entry)];
+var originGroup = (entry) => pluginOrigin(entry.local || {}, repo(entry));
+var originOrder = (entry) => pluginOriginOrder(originGroup(entry));
 var platforms = (entry) => pluginPlatforms({ repository: repo(entry), version: entry.local?.version || entry.market?.version, keywords: entry.local?.keywords || entry.market?.keywords });
 function pluginWorkspace(shell2, view2 = "local") {
   const root = node5("section", "plugin-workspace page-world");
@@ -12024,6 +12187,14 @@ function pluginWorkspace(shell2, view2 = "local") {
     void read4();
   }, "pw-quiet");
   const searchActions = node5("div", "pw-search-actions");
+  const includeLocal = node5("input");
+  includeLocal.type = "checkbox";
+  includeLocal.setAttribute("aria-label", "显示内置与已安装");
+  if (view2 === "discover") {
+    const label = node5("label", "pw-include-local");
+    label.append(includeLocal, document.createTextNode("显示内置与已安装"));
+    searchActions.append(label);
+  }
   searchActions.append(refresh2);
   const navigation = node5("div", "pw-navigation");
   navigation.append(scope2, searchActions);
@@ -12076,10 +12247,20 @@ function pluginWorkspace(shell2, view2 = "local") {
     }
   }
   function discoverable() {
-    return localLoaded ? market.filter((m) => !locals.some((p) => p.name === m.name && (p.builtin || installed(p)))) : [];
+    if (!localLoaded) return [];
+    const rows = market.map((m) => ({ name: m.name, market: m, local: locals.find((p) => p.name === m.name) }));
+    if (includeLocal.checked) {
+      const names = new Set(rows.map((e) => e.name));
+      for (const p of locals) if (!names.has(p.name)) {
+        rows.push({ name: p.name, local: p });
+        names.add(p.name);
+      }
+      return rows;
+    }
+    return rows.filter((e) => !e.local?.builtin && !installed(e.local));
   }
   function entries() {
-    const all = view2 === "discover" ? discoverable().map((m) => ({ name: m.name, market: m, local: locals.find((p) => p.name === m.name) })) : locals.map((p) => ({ name: p.name, local: p, market: market.find((m) => m.name === p.name) }));
+    const all = view2 === "discover" ? discoverable() : locals.map((p) => ({ name: p.name, local: p, market: market.find((m) => m.name === p.name) }));
     return all.filter((e) => {
       const tags = [...e.local?.keywords || [], ...e.market?.keywords || [], ...e.market ? [pluginCategory(e.market), pluginCategoryLabel(e.market)] : []].map((tag) => tag.toLowerCase());
       const searchable = [e.name, e.local?.displayName, e.local?.description, e.market?.description, e.local?.author, e.market?.author, ...tags].join(" ").toLowerCase();
@@ -12087,7 +12268,7 @@ function pluginWorkspace(shell2, view2 = "local") {
       if (!terms.every((term) => term.startsWith("#") ? term.length === 1 || tags.some((tag) => tag === term.slice(1)) : searchable.includes(term))) return false;
       const f = filterValue;
       if (f === "all") return true;
-      if (view2 === "discover") return !!e.market && pluginCategory(e.market) === f;
+      if (view2 === "discover") return pluginCategory(e.market || { keywords: e.local?.keywords }) === f;
       if (f === "available") return installed(e.local) && !e.local?.builtin && updateFor(e.name)?.status === "available";
       return f === "running" ? !!e.local?.loaded : installed(e.local) && !e.local?.enabled && !e.local?.loaded && !e.local?.tracked && !e.local?.restart_required;
     }).sort((a, b) => view2 === "discover" ? 0 : originOrder(a) - originOrder(b) || Number(updateFor(b.name)?.status === "available") - Number(updateFor(a.name)?.status === "available") || a.name.localeCompare(b.name));
@@ -12095,6 +12276,11 @@ function pluginWorkspace(shell2, view2 = "local") {
   search.oninput = () => {
     page2 = 1;
     lastList = "";
+    render2();
+  };
+  includeLocal.onchange = () => {
+    page2 = 1;
+    lastList = lastDetail = "";
     render2();
   };
   function render2() {
@@ -12125,6 +12311,7 @@ function pluginWorkspace(shell2, view2 = "local") {
     }
     const counts = { local: locals.filter(installed).length, discover: discoverable().length, updates: locals.filter((p) => installed(p) && !p.builtin && updateFor(p.name)?.status === "available").length };
     search.disabled = busy || !!pluginOperation()?.busy;
+    includeLocal.disabled = search.disabled;
     scopeCount.textContent = !localLoaded || view2 === "discover" && !marketLoaded ? "正在读取…" : view2 === "local" ? `${counts.local} 个插件 · ${locals.filter((p) => installed(p) && p.loaded).length} 个运行中` : "";
     refresh2.textContent = busy ? "处理中…" : "刷新";
     refresh2.disabled = busy || !!pluginOperation()?.busy;
@@ -12163,7 +12350,7 @@ function pluginWorkspace(shell2, view2 = "local") {
       if (!shown.length) {
         const waiting = !localLoaded || view2 === "discover" && !marketLoaded;
         const failed = !localLoaded && localError || view2 === "discover" && !marketLoaded && marketError;
-        list.append(node5("p", "pw-empty", waiting ? failed ? "暂时无法列出插件，请刷新重试。" : "正在读取插件…" : !search.value && filterValue === "available" ? "暂无可更新的插件" : search.value || filterValue !== "all" ? "没有匹配的插件" : view2 === "discover" ? "暂无未安装的插件" : "暂无插件"));
+        list.append(node5("p", "pw-empty", waiting ? failed ? "暂时无法列出插件，请刷新重试。" : "正在读取插件…" : !search.value && filterValue === "available" ? "暂无可更新的插件" : search.value || filterValue !== "all" ? "没有匹配的插件" : view2 === "discover" ? "没有匹配的插件" : "暂无插件"));
       }
       for (const e of shown) {
         if (view2 === "local" && originGroup(e) !== group) {
@@ -12189,7 +12376,7 @@ function pluginWorkspace(shell2, view2 = "local") {
         copy.append(node5("span", "pw-entry-summary", text2));
         const state3 = node5("span", "pw-entry-state");
         const update2 = updateFor(e.name);
-        if (update2?.status === "available" && installed(e.local)) {
+        if (update2?.status === "available" && installed(e.local) && !e.local?.builtin) {
           state3.textContent = `${runtime(e.local)} · 可更新`;
           state3.dataset.tone = "update";
         } else if (e.local) {
@@ -12293,8 +12480,7 @@ function pluginWorkspace(shell2, view2 = "local") {
       actions.append(install);
     }
     if (exists && p?.builtin) {
-      const check2 = node5("a", "pw-button", "检查 Core 更新 ↗");
-      check2.href = "#/settings";
+      const check2 = button2("检查 Core 更新", () => openCoreUpdateDialog(check2));
       actions.append(check2);
     } else if (exists) {
       const check2 = button2(checkingUpdates || pluginUpdateSnapshot().checking ? "检查中…" : "检查更新", () => {
@@ -12325,7 +12511,20 @@ function pluginWorkspace(shell2, view2 = "local") {
       apply.disabled = busy || !!pluginOperation()?.busy;
       actions.append(apply);
     }
+    const versionRepo = !p?.builtin && source.startsWith("https://github.com/") ? source.slice("https://github.com/".length) : "";
+    const versions = versionRepo ? pluginVersions(versionRepo, e.name, exists ? p?.version || "" : "", busy || !!pluginOperation()?.busy, (row2) => {
+      void changeVersion(e, versionRepo, row2);
+    }) : void 0;
+    if (versions) {
+      const choose = button2(u?.status === "available" ? "选择更新版本" : "选择版本", () => {
+        versions.open = true;
+        versions.scrollIntoView({ block: "nearest" });
+      });
+      choose.disabled = busy || !!pluginOperation()?.busy;
+      actions.insertBefore(choose, actions.querySelector(".pw-remove"));
+    }
     detail.append(actions);
+    if (versions) detail.append(versions);
     const result = node5("p", "pw-operation", operationError);
     result.setAttribute("role", "status");
     detail.append(result);
@@ -12343,7 +12542,7 @@ function pluginWorkspace(shell2, view2 = "local") {
       if (u.error) update2.append(node5("p", "", u.error));
       if (u.status === "available") {
         const instructions = node5("details");
-        instructions.append(node5("summary", "", "查看升级步骤"), node5("p", "", "等待任务结束并备份自定义文件。卸载旧包后在「插件市场」安装新版，安装前核对市场版本。卸载将停用所有 Bot 共用的该插件，配置和缓存保留；重新安装后检查配置并按需启用。"));
+        instructions.append(node5("summary", "", "查看升级步骤"), node5("p", "", "停用插件后，点击“选择更新版本”，核对发布说明再安装。旧包会备份，配置和缓存保留，安装后按需启用。多个 Bot 共用安装包时，需要各 Bot 均已停用该插件。"));
         update2.append(instructions);
       }
       detail.append(update2);
@@ -12369,6 +12568,37 @@ function pluginWorkspace(shell2, view2 = "local") {
     if (p?.reload_mode) field("生效方式", p.reload_mode === "restart" ? "启用和停用需重启 Core 服务" : p.reload_mode === "hot" ? "支持热加载" : "声明无效");
     info.append(fields);
     detail.append(info);
+  }
+  async function changeVersion(e, repository, row2) {
+    if (busy || pluginOperation()?.busy || !alive) return;
+    if (e.local && (e.local.enabled || e.local.loaded || e.local.restart_required)) {
+      operationError = "请先停用插件；如提示需要重启，请完成重启后再切换版本。";
+      render2();
+      return;
+    }
+    const accepted = await confirmAction("安装所选版本", `将安装 ${row2.tag}${row2.prerelease ? "（预发布）" : ""}。原安装包会备份，配置和缓存保留，安装后保持停用。旧版可能不兼容新版配置，请先阅读发布说明。`, "安装", false, { className: "pw-confirm", detail: e.local?.displayName || e.name });
+    if (!accepted || !alive || busy) return;
+    busy = true;
+    operationError = "正在下载、核对并安装所选版本…";
+    render2();
+    try {
+      const r = await pageFetch("/market/install", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ version: { repository, tag: row2.tag, name: e.name, current: installed(e.local) ? e.local?.version || "" : "" } }) });
+      if (!r.ok) throw Error((await r.text()).trim() || "版本安装失败");
+      const result = await r.json();
+      if (!result.ok) throw Error(result.said || "版本安装失败");
+      operationError = result.said;
+      const token = ++epoch;
+      await readLocal(token);
+      if (view2 === "discover") await readMarket(token);
+      await checkPluginUpdates();
+      window.dispatchEvent(new Event("plugins-changed"));
+    } catch (error) {
+      operationError = error instanceof Error ? error.message : "版本安装失败";
+    } finally {
+      busy = false;
+      lastList = lastDetail = "";
+      render2();
+    }
   }
   async function checkUpdates() {
     if (checkingUpdates || busy) return;
@@ -12524,12 +12754,12 @@ function pluginWorkspace(shell2, view2 = "local") {
   } };
 }
 
-// maintenance/plugin-release-0547-20261125/source/core/src/web/client/plugin-market-page.ts
+// core/src/web/client/plugin-market-page.ts
 function pluginMarketPage(shell2) {
   return pluginWorkspace(shell2, "discover");
 }
 
-// maintenance/plugin-release-0547-20261125/source/core/src/web/client/infinity-plugin-page.ts
+// core/src/web/client/infinity-plugin-page.ts
 function infinityPluginPage(shell2) {
   const route2 = location.hash.replace(/^#\/?infinity\//, "");
   let name = "";
@@ -12541,7 +12771,7 @@ function infinityPluginPage(shell2) {
   return pluginPage(shell2, name);
 }
 
-// maintenance/plugin-release-0547-20261125/source/core/src/web/client/knowledge-page.ts
+// core/src/web/client/knowledge-page.ts
 var READ_FAILED2 = "读不到知识库那一格。";
 var NOT_WIRED2 = "知识库这一层没接上读法。";
 var NOTHING_YET = "知识库里还没有东西 —— 定下来的事写进那儿，这里就看得见。";
@@ -12617,8 +12847,8 @@ function knowledgePage(shell2) {
     };
     const pick2 = (index) => {
       at = index;
-      for (const el3 of toc.querySelectorAll(".one")) {
-        el3.classList.toggle("on", el3.dataset.at === String(index));
+      for (const el5 of toc.querySelectorAll(".one")) {
+        el5.classList.toggle("on", el5.dataset.at === String(index));
       }
       showBody(index);
     };
@@ -12716,7 +12946,7 @@ function knowledgePage(shell2) {
   };
 }
 
-// maintenance/plugin-release-0547-20261125/source/core/src/web/client/portrait-display.ts
+// core/src/web/client/portrait-display.ts
 function portraitOrigin(raw) {
   const group = /^group:qq:(\d+)\|sender=qq:(\d+)$/.exec(raw);
   if (group) return `QQ 群 ${group[1]} · 发言者 ${group[2]}`;
@@ -12726,7 +12956,7 @@ function portraitOrigin(raw) {
   return raw;
 }
 
-// maintenance/plugin-release-0547-20261125/source/core/src/web/client/people-page.ts
+// core/src/web/client/people-page.ts
 var READ_FAILED3 = "读不到画像那一格。";
 var NOT_WIRED3 = "画像这一层没接上读法。";
 var NOBODY_YET = "她还没记过谁 —— 她记下来的时候，这里就有第一条。";
@@ -13198,8 +13428,8 @@ function peoplePage(shell2) {
     const pick2 = (index) => {
       at = index;
       selectedWho = rows[index].who;
-      for (const [i, el3] of [...roster.querySelectorAll(".one")].entries()) {
-        el3.classList.toggle("on", i === index);
+      for (const [i, el5] of [...roster.querySelectorAll(".one")].entries()) {
+        el5.classList.toggle("on", i === index);
       }
       showFace(index);
     };
@@ -13264,7 +13494,7 @@ function peoplePage(shell2) {
   };
 }
 
-// maintenance/plugin-release-0547-20261125/source/core/src/web/client/experience-page.ts
+// core/src/web/client/experience-page.ts
 var READ_FAILED4 = "读不到经历那一格。";
 var NOT_WIRED4 = "经历这一层没接上读法。";
 var NOTHING_YET2 = "还没有经历记下来 —— 说过的话、写过的一段，都会落到这儿。";
@@ -13688,22 +13918,22 @@ function experiencePage(shell2) {
   };
 }
 
-// maintenance/plugin-release-0547-20261125/source/core/src/web/client/plugin-storage-settings.ts
+// core/src/web/client/plugin-storage-settings.ts
 var element2 = (tag, cls, label) => {
-  const el3 = document.createElement(tag);
-  el3.className = cls;
-  if (label) uiLabel(el3, label);
-  return el3;
+  const el5 = document.createElement(tag);
+  el5.className = cls;
+  if (label) uiLabel(el5, label);
+  return el5;
 };
 function pluginStorageSettings() {
   const root = element2("section", "settings-card plugin-storage");
-  root.append(element2("h3", "", "插件页面缓存"), element2("p", "pcs-scope", "当前档案 · 当前浏览器标签页"));
+  root.append(element2("h3", "", "插件页面状态"), element2("p", "pcs-scope", "当前 Bot · 当前浏览器标签页 · 页签、分页与展开状态"));
   const panel2 = element2("div", "pcs-panel");
   const toolbar = element2("div", "pcs-toolbar");
   const search = document.createElement("input");
   search.type = "search";
   search.maxLength = 128;
-  coreSetUIAttribute(search, "aria-label", corePhrase("搜索插件页面缓存"));
+  coreSetUIAttribute(search, "aria-label", corePhrase("搜索插件页面状态"));
   uiLabel(search, "名称、关键词或缩写", "placeholder");
   const filters = element2("div", "pcs-filters");
   let filter = "all";
@@ -13733,13 +13963,24 @@ function pluginStorageSettings() {
       cached = [];
     }
     const all = new Map(plugins.map((p) => [p.name, p]));
-    for (const entry of cached) if (!all.has(entry.name)) all.set(entry.name, { name: entry.name });
+    for (const entry of cached) if (!all.has(entry.name)) all.set(entry.name, { name: entry.name, unknown: true });
+    const groupOf2 = (p) => p.unknown ? "来源待确认" : pluginOrigin(p, updateFor(p.name)?.repository ? "https://github.com/" + updateFor(p.name).repository : "");
     const selected = [...all.values()].filter((p) => {
       const has = cached.some((c) => c.name === p.name);
       return (filter === "all" || (filter === "cached" ? has : !has)) && fuzzyPluginMatch(p.displayName || p.name, p.name, search.value);
-    }).sort((a, b) => (a.displayName || a.name).localeCompare(b.displayName || b.name));
+    }).sort((a, b) => pluginOriginOrder(groupOf2(a)) - pluginOriginOrder(groupOf2(b)) || (a.displayName || a.name).localeCompare(b.displayName || b.name));
     page2 = Math.min(page2, Math.max(0, Math.ceil(selected.length / 8) - 1));
+    let lastGroup = "";
     for (const plugin of selected.slice(page2 * 8, (page2 + 1) * 8)) {
+      const group = groupOf2(plugin);
+      if (group !== lastGroup) {
+        const heading2 = element2("div", "pcs-group");
+        heading2.dataset.origin = group;
+        const members = selected.filter((p) => groupOf2(p) === group);
+        heading2.append(element2("strong", "", group), element2("span", "", `${members.length} 个插件`));
+        rows.append(heading2);
+        lastGroup = group;
+      }
       const cache = cached.find((c) => c.name === plugin.name);
       const row2 = element2("div", "pcs-row");
       row2.dataset.plugin = plugin.name;
@@ -13750,9 +13991,10 @@ function pluginStorageSettings() {
       name.textContent = plugin.displayName || plugin.name;
       name.title = plugin.name;
       identity.append(icon2, name);
-      const state3 = element2("span", "pcs-type", cache ? "页面状态" : "无缓存");
+      const state3 = element2("span", "pcs-type", cache ? `${cache.records} 条状态` : "无记录");
       const size = element2("span", "pcs-size");
       size.textContent = cache ? `${cache.bytes} B` : "—";
+      if (cache) size.title = `记录序列化大小（UTF-8）：键名与作用域 ${cache.bytes - cache.valueBytes} B，状态值 ${cache.valueBytes} B；不是磁盘或内存占用。`;
       const clean = element2("button", "pcs-clean", "清理");
       clean.type = "button";
       clean.disabled = !ready2 || !cache || pluginDisplayProtected(plugin.name);
@@ -13765,13 +14007,13 @@ function pluginStorageSettings() {
       row2.append(identity, state3, size, clean);
       rows.append(row2);
     }
-    if (!selected.length) rows.append(element2("p", "pcs-empty", ready2 ? "没有匹配的插件页面缓存。" : "正在读取…"));
+    if (!selected.length) rows.append(element2("p", "pcs-empty", ready2 ? "没有匹配的插件页面状态。" : "正在读取…"));
     coreSetUIText(count4, "textContent", [selected.length, corePhrase(" 项"), " · ", selected.reduce((sum, p) => sum + (cached.find((c) => c.name === p.name)?.bytes ?? 0), 0), " B"]);
     position.textContent = `${page2 + 1} / ${Math.max(1, Math.ceil(selected.length / 8))}`;
     prev.disabled = page2 === 0;
     next.disabled = (page2 + 1) * 8 >= selected.length;
   };
-  for (const [value, label] of [["all", "全部"], ["cached", "有缓存"], ["empty", "无缓存"]]) {
+  for (const [value, label] of [["all", "全部"], ["cached", "有状态"], ["empty", "无状态"]]) {
     const button3 = element2("button", "", label);
     button3.type = "button";
     button3.setAttribute("aria-pressed", String(value === filter));
@@ -13815,13 +14057,14 @@ function pluginStorageSettings() {
   toolbar.append(search, filters);
   panel2.append(toolbar, rows, footer);
   root.append(panel2);
-  root.append(element2("p", "pcs-hint", "仅清理页签选择等临时显示状态，不重载表单。配置、聊天记录、记忆和未保存内容均不受影响。"));
-  root.append(element2("p", "pcs-hint", "用量仅含已登记的临时显示状态，不代表插件文件大小。"), message);
+  root.append(element2("p", "pcs-hint", "仅清理本标签页的显示状态，不影响配置、聊天、记忆或未保存内容。"));
+  root.append(element2("p", "pcs-hint", "大小按记录的键名与值以 UTF-8 计算，不是插件的磁盘缓存或浏览器实际内存占用。"), message);
   void (async () => {
     ready2 = await readyPluginDisplay();
     try {
       const answer = await getStatusJson("/plugins", 5e3);
       plugins = (answer.plugins ?? []).filter((p) => typeof p.name === "string" && p.installed !== false);
+      if (plugins.some((p) => p.repository === void 0)) await checkPluginUpdates();
     } catch {
       uiLabel(message, "插件列表读取失败；仍可查看本页已知的显示缓存。");
     }
@@ -13891,271 +14134,226 @@ function snowlumaSessionSettings() {
   return root;
 }
 
-// maintenance/plugin-release-0547-20261125/source/core/src/web/client/model-proxy-settings.ts
-var PROVIDERS = [
-  ["openai", "OpenAI / ChatGPT"],
-  ["google", "Google Gemini"],
-  ["anthropic", "Anthropic Claude"],
-  ["xai", "xAI Grok"]
-];
+// core/src/web/client/model-proxy-settings.ts
+var PROVIDERS = [["openai", "OpenAI / ChatGPT"], ["google", "Google Gemini"], ["anthropic", "Anthropic Claude"], ["xai", "xAI Grok"]];
+var el4 = (tag, cls = "", text2 = "") => {
+  const n = document.createElement(tag);
+  n.className = cls;
+  n.textContent = text2;
+  return n;
+};
+var modes = [["direct", "直接连接"], ["fallback", "代理优先，失败后直连"], ["required", "仅使用代理"]];
+var mode = (on, fallback) => !on ? "direct" : fallback ? "fallback" : "required";
+var select = (label, options) => {
+  const box = el4("label", "public-network-field", label), input2 = el4("select");
+  input2.setAttribute("aria-label", label);
+  for (const [value, text2] of options) input2.add(new Option(text2, value));
+  box.append(input2);
+  return { box, input: input2 };
+};
 function modelProxySettings() {
-  const root = document.createElement("section");
-  root.className = "settings-card model-proxy-settings";
+  const root = el4("section", "settings-card model-proxy-settings");
   configPresentation(root, "loading");
-  const h = document.createElement("h3");
-  coreSetUIText(h, "textContent", corePhrase("网络与下载"));
-  const note = document.createElement("p");
-  note.className = "set-note";
-  coreSetUIText(
-    note,
-    "textContent",
-    corePhrase("先选择下载源，再决定官方连接方式。镜像始终直连，模型 API 单独控制。")
-  );
-  const enabledLabel = document.createElement("label");
-  enabledLabel.className = "model-proxy-toggle";
-  const enabled = document.createElement("input");
-  enabled.type = "checkbox";
-  coreSetUIAttribute(enabled, "aria-label", corePhrase("启用模型代理"));
-  enabledLabel.append(enabled, coreUITextNode(corePhrase("模型 API")));
-  const label = document.createElement("label");
-  label.className = "model-proxy-address";
-  coreSetUIText(label, "textContent", corePhrase("代理地址"));
-  const address = document.createElement("input");
+  const header = el4("div", "model-proxy-header");
+  header.append(el4("h3", "", "网络与下载"));
+  const note = el4("p", "set-note", "下载与模型 API 分别选择连接方式，共用一个代理地址。");
+  const addressLabel = el4("label", "model-proxy-address", "代理地址");
+  const addressRow = el4("div", "model-proxy-address-row");
+  const address = el4("input", "engine-input engine-input-wide");
   address.type = "url";
-  address.className = "engine-input engine-input-wide";
-  coreSetUIAttribute(address, "aria-label", corePhrase("共用代理地址"));
-  address.placeholder = "http://127.0.0.1:7891";
   address.autocomplete = "off";
   address.spellcheck = false;
-  label.append(address);
-  const help = document.createElement("p");
-  help.className = "set-note";
-  coreSetUIText(help, "textContent", corePhrase("支持 HTTP(S) 代理，不支持带账号密码的地址。"));
-  const targets = document.createElement("fieldset");
-  targets.className = "model-proxy-targets";
-  const legend = document.createElement("legend");
-  coreSetUIText(legend, "textContent", corePhrase("官方模型接口"));
-  targets.append(legend);
-  const boxes = PROVIDERS.map(([id, name]) => {
-    const row2 = document.createElement("label");
-    row2.className = "model-proxy-provider";
-    const input2 = document.createElement("input");
+  address.placeholder = "http://127.0.0.1:7893";
+  address.setAttribute("aria-label", "共用代理地址");
+  const system = el4("button", "btn ghost", "填入系统代理");
+  system.type = "button";
+  addressRow.append(address, system);
+  addressLabel.append(addressRow);
+  const addressHint = el4("p", "set-note", "支持 HTTP(S) 代理；修改后保存生效。");
+  const policies = el4("div", "public-network-policies");
+  const download = el4("section", "public-network-policy");
+  download.append(el4("h4", "", "下载与插件市场"));
+  const source = select("来源顺序", [["mirror", "镜像优先"], ["official", "官方优先"]]);
+  const connection = select("官方连接方式", modes);
+  const downloadFlow = el4("p", "public-network-flow");
+  download.append(source.box, connection.box, downloadFlow);
+  const overrides = el4("details", "model-proxy-details");
+  const overrideSummary = el4("summary", "", "插件市场单独设置");
+  const separateLabel = el4("label", "model-proxy-provider");
+  const separate = el4("input");
+  separate.type = "checkbox";
+  separate.setAttribute("aria-label", "插件市场使用独立设置");
+  separateLabel.append(separate, "插件市场使用独立设置");
+  const marketFields = el4("div", "model-network-fields");
+  const marketSource = select("插件市场来源顺序", [["mirror", "镜像优先"], ["official", "官方优先"]]);
+  const marketConnection = select("插件市场官方连接方式", modes);
+  marketFields.append(marketSource.box, marketConnection.box);
+  const marketFlow = el4("p", "public-network-flow");
+  overrides.append(overrideSummary, separateLabel, marketFields, marketFlow);
+  download.append(overrides);
+  const downloadHint = el4("p", "public-network-caption", "用于 Core 更新、插件搜索与安装、模型和运行环境下载。镜像始终直连；校验摘要只向官方核验。");
+  download.append(downloadHint);
+  const model = el4("section", "public-network-policy");
+  model.append(el4("h4", "", "模型 API"));
+  const modelConnection = select("模型连接方式", modes);
+  modelConnection.box.classList.add("model-network-wide");
+  const modelFlow = el4("p", "public-network-flow");
+  model.append(modelConnection.box, modelFlow);
+  const providers = el4("details", "model-proxy-details");
+  const providerSummary = el4("summary");
+  const targets = el4("div", "model-proxy-targets");
+  const boxes = PROVIDERS.map(([id, title]) => {
+    const label = el4("label", "model-proxy-provider"), input2 = el4("input");
     input2.type = "checkbox";
-    input2.setAttribute("aria-label", name);
-    input2.checked = true;
-    row2.append(input2, name);
-    targets.append(row2);
+    input2.setAttribute("aria-label", title);
+    label.append(input2, title);
+    targets.append(label);
     return { id, input: input2 };
   });
-  const uses = document.createElement("div");
-  uses.className = "public-network-policies";
-  const select = (label2, entries) => {
-    const box = document.createElement("label");
-    box.className = "public-network-field";
-    box.append(label2);
-    const input2 = document.createElement("select");
-    input2.setAttribute("aria-label", label2);
-    for (const [value, text2] of entries) input2.add(new Option(text2, value));
-    box.append(input2);
-    return { box, input: input2 };
-  };
-  const policies = ["downloads", "market"].map((id) => {
-    const row2 = document.createElement("section");
-    row2.className = "public-network-policy";
-    const title = document.createElement("h4");
-    title.textContent = id === "downloads" ? "公共下载 · Core 更新、模型与运行环境" : "插件市场 · 搜索与安装";
-    const source = select(title.textContent + "：来源顺序", [["mirror", "镜像优先"], ["official", "官方优先"]]);
-    const transport = select(title.textContent + "：官方连接", [
-      ["direct", "直接连接"],
-      ["fallback", "代理优先，失败后直连"],
-      ["required", "仅使用代理"]
-    ]);
-    source.box.firstChild.textContent = "来源顺序";
-    transport.box.firstChild.textContent = "官方连接";
-    const flow = document.createElement("p");
-    flow.className = "public-network-flow";
-    const paintFlow = () => {
-      const official = transport.input.value === "direct" ? "官方直连" : transport.input.value === "fallback" ? "官方代理 → 官方直连" : "官方代理";
-      flow.textContent = source.input.value === "mirror" ? "镜像直连 → " + official : official + " → 镜像直连";
-    };
-    source.input.addEventListener("change", paintFlow);
-    transport.input.addEventListener("change", paintFlow);
-    row2.append(title, source.box, transport.box, flow);
-    uses.append(row2);
-    return { id, source: source.input, transport: transport.input, paintFlow };
-  });
-  const policyNote = document.createElement("p");
-  policyNote.className = "set-note";
-  policyNote.textContent = "箭头表示失败后的下一条路径。更新摘要与插件文件清单只向官方核验，遵守上面的官方连接设置。下载页明确指定来源时，以该次选择为准。";
-  uses.append(policyNote);
-  const scopeInputs = boxes.map((box) => box.input);
-  const policyInputs = policies.flatMap((p) => [p.source, p.transport]);
-  const hint = document.createElement("p");
-  hint.className = "set-note";
-  coreSetUIText(
-    hint,
-    "textContent",
-    corePhrase("OpenAI 包含 ChatGPT 登录和模型调用。代理失败时会报错，不会自动改走直连。")
-  );
-  const status = document.createElement("p");
-  status.className = "model-proxy-status";
+  providers.append(providerSummary, targets);
+  model.append(providers, el4("p", "public-network-caption", "仅连接尚未建立、模型请求尚未发送时允许直连回退；已发送请求和生成中断不重发。自定义 API 地址保持直连。"));
+  policies.append(download, model);
+  const actions = el4("div", "model-proxy-actions");
+  const save = el4("button", "btn", "保存"), reload = el4("button", "btn ghost", "重新读取");
+  save.type = reload.type = "button";
+  save.setAttribute("aria-label", "保存网络设置");
+  actions.append(save, reload);
+  const status = el4("p", "model-proxy-status");
   status.setAttribute("role", "status");
-  const actions = document.createElement("div");
-  actions.className = "model-proxy-actions";
-  const save = document.createElement("button");
-  save.className = "btn";
-  coreSetUIText(save, "textContent", corePhrase("保存"));
-  coreSetUIAttribute(save, "aria-label", corePhrase("保存代理设置"));
-  const system = document.createElement("button");
-  system.className = "btn ghost";
-  coreSetUIText(system, "textContent", corePhrase("填入系统代理"));
-  const reload = document.createElement("button");
-  reload.className = "btn ghost";
-  coreSetUIText(reload, "textContent", corePhrase("重新读取"));
-  const header = document.createElement("div");
-  header.className = "model-proxy-header";
-  header.append(h);
-  targets.insertBefore(enabledLabel, legend.nextSibling);
-  const details = document.createElement("details");
-  details.className = "model-proxy-details";
-  const summary2 = document.createElement("summary");
-  coreSetUIText(summary2, "textContent", corePhrase("模型 API 代理"));
-  details.append(summary2, targets, help, hint, reload);
-  actions.append(save, system);
-  root.append(header, note, label, uses, details, actions, status);
-  let revision = null, systemProxy = "", busy = false;
-  let baseline = null, saving = false, guarding = false;
-  const draft = () => JSON.stringify([enabled.checked, address.value, scopeInputs.map((input2) => input2.checked), policyInputs.map((input2) => input2.value)]);
-  const dirty = () => baseline !== null && draft() !== baseline;
+  root.append(header, note, addressLabel, addressHint, policies, actions, status);
+  let revision = null, systemProxy = "", busy = false, saving = false, baseline = "", guarding = false;
+  const fields = [address, source.input, connection.input, separate, marketSource.input, marketConnection.input, modelConnection.input, ...boxes.map((b) => b.input)];
+  const draft = () => JSON.stringify(fields.map((f) => f instanceof HTMLInputElement && f.type === "checkbox" ? f.checked : f.value));
+  const dirty = () => !!baseline && draft() !== baseline;
   const beforeUnload = (event) => {
-    if (!saving && !dirty()) return;
-    event.preventDefault();
-    event.returnValue = "";
+    if (saving || dirty()) {
+      event.preventDefault();
+      event.returnValue = "";
+    }
   };
-  const guardDraft = () => {
+  const guard = () => {
     const needed = saving || dirty();
     if (needed === guarding) return;
     guarding = needed;
     if (needed) window.addEventListener("beforeunload", beforeUnload);
     else window.removeEventListener("beforeunload", beforeUnload);
   };
-  for (const input2 of [enabled, address, ...scopeInputs, ...policyInputs]) {
-    input2.addEventListener("input", guardDraft);
-    input2.addEventListener("change", guardDraft);
-  }
-  const lock = (pending5) => {
-    busy = pending5;
-    for (const control of [enabled, address, ...scopeInputs, ...policyInputs, save]) {
-      control.disabled = pending5 || revision === null;
-    }
-    reload.disabled = pending5;
-    system.disabled = pending5 || revision === null || !systemProxy;
+  const path = (src, transport) => {
+    const official = transport === "direct" ? "官方直连" : transport === "fallback" ? "官方代理 → 官方直连" : "官方代理";
+    return src === "mirror" ? "镜像直连 → " + official : official + " → 镜像直连";
   };
-  const apply = (s) => {
-    revision = s.revision;
-    systemProxy = s.system_proxy ?? "";
-    enabled.checked = s.enabled;
-    address.value = s.proxy_url;
-    for (const box of boxes) box.input.checked = s.providers.includes(box.id);
-    for (const p of policies) {
-      p.source.value = s[`${p.id}_source`] || "mirror";
-      p.transport.value = !s[`${p.id}_enabled`] ? "direct" : s[`${p.id}_fallback`] ? "fallback" : "required";
-      p.paintFlow();
+  const paint4 = () => {
+    downloadFlow.textContent = path(source.input.value, connection.input.value);
+    marketFields.hidden = marketFlow.hidden = !separate.checked;
+    overrideSummary.textContent = separate.checked ? "插件市场 · 使用独立设置" : "插件市场 · 跟随下载设置";
+    marketFlow.textContent = path(marketSource.input.value, marketConnection.input.value);
+    modelFlow.textContent = modelConnection.input.value === "direct" ? "直接连接官方模型接口" : modelConnection.input.value === "fallback" ? "官方代理 → 官方直连（仅发送前连接失败）" : "仅通过代理连接；连接失败时报错";
+    const chosen = boxes.filter((b) => b.input.checked);
+    providerSummary.textContent = chosen.length === boxes.length ? "适用范围 · 全部官方供应商" : `适用范围 · 已选 ${chosen.length} 家官方供应商`;
+    system.hidden = !systemProxy;
+  };
+  const lock = (value) => {
+    busy = value;
+    for (const field of fields) field.disabled = value || revision === null;
+    save.disabled = value || revision === null;
+    reload.disabled = value;
+    system.disabled = value || revision === null || !systemProxy;
+  };
+  for (const field of fields) for (const event of ["input", "change"]) field.addEventListener(event, () => {
+    paint4();
+    guard();
+  });
+  separate.addEventListener("change", () => {
+    if (separate.checked) {
+      marketSource.input.value = source.input.value;
+      marketConnection.input.value = connection.input.value;
     }
+    paint4();
+    guard();
+  });
+  const apply = (settings) => {
+    revision = settings.revision;
+    systemProxy = settings.system_proxy || "";
+    address.value = settings.proxy_url;
+    source.input.value = settings.downloads_source || "mirror";
+    connection.input.value = mode(settings.downloads_enabled, settings.downloads_fallback);
+    marketSource.input.value = settings.market_source || "mirror";
+    marketConnection.input.value = mode(settings.market_enabled, settings.market_fallback);
+    separate.checked = source.input.value !== marketSource.input.value || connection.input.value !== marketConnection.input.value;
+    overrides.open = separate.checked;
+    modelConnection.input.value = mode(settings.enabled, settings.model_fallback);
+    for (const box of boxes) box.input.checked = settings.providers.includes(box.id);
+    paint4();
     baseline = draft();
-    guardDraft();
+    guard();
     configPresentation(root, "ready");
   };
   const read4 = async () => {
     lock(true);
-    coreSetUIText(status, "textContent", corePhrase("正在读取网络代理设置…"));
+    status.textContent = "正在读取网络设置…";
     try {
       const r = await pageFetch("/settings/model-proxy");
-      if (!r.ok) throw new Error("无法读取代理设置；请确认后端版本并重试。未用默认值覆盖。");
-      const value = await r.json();
-      if (!value.ok || !value.settings || typeof value.settings.revision !== "string") {
-        throw new Error("代理设置响应不完整，未覆盖。");
-      }
-      apply(value.settings);
-      status.textContent = "已读取 · 各用途独立生效";
-    } catch (error) {
+      const result = await r.json();
+      if (!r.ok || !result.ok || typeof result.settings?.revision !== "string") throw Error("无法读取网络设置，未用默认值覆盖。");
+      apply(result.settings);
+      status.textContent = "已读取当前设置";
+    } catch (e) {
       revision = null;
       configPresentation(root, "error");
-      coreSetUIText(
-        status,
-        "textContent",
-        error instanceof Error ? error.message : corePhrase("读取失败，未覆盖。")
-      );
+      status.textContent = e instanceof Error ? e.message : "读取失败，未覆盖。";
     } finally {
       lock(false);
     }
   };
-  save.addEventListener("click", () => {
+  save.onclick = () => {
     void (async () => {
       if (busy || revision === null) return;
-      if (enabled.checked && (!address.value.trim() || !boxes.some((x) => x.input.checked))) {
-        coreSetUIText(status, "textContent", corePhrase("启用前请填写代理地址并选择供应商。"));
+      const marketMode = separate.checked ? marketConnection.input.value : connection.input.value;
+      if ([connection.input.value, marketMode, modelConnection.input.value].some((m) => m !== "direct") && !address.value.trim()) {
+        status.textContent = "使用代理前，请填写代理地址。";
         return;
       }
-      if (policies.some((p) => p.transport.value !== "direct") && !address.value.trim()) {
-        coreSetUIText(status, "textContent", corePhrase("启用代理前请填写代理地址。"));
+      if (modelConnection.input.value !== "direct" && !boxes.some((b) => b.input.checked)) {
+        status.textContent = "请选择至少一家适用的模型供应商。";
         return;
       }
       saving = true;
-      guardDraft();
+      guard();
       lock(true);
-      coreSetUIText(status, "textContent", corePhrase("正在保存…"));
+      status.textContent = "正在保存…";
       try {
-        const r = await pageFetch("/settings/model-proxy", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            enabled: enabled.checked,
-            proxy_url: address.value.trim(),
-            providers: boxes.filter((x) => x.input.checked).map((x) => x.id),
-            ...Object.fromEntries(policies.flatMap((p) => [
-              [`${p.id}_enabled`, p.transport.value !== "direct"],
-              [`${p.id}_fallback`, p.transport.value === "fallback"],
-              [`${p.id}_source`, p.source.value]
-            ])),
-            revision
-          })
-        });
-        const value = await r.json().catch(() => ({}));
-        if (!r.ok || !value.ok || !value.settings) {
-          throw new Error(value.error || "保存未确认，请重新读取核对；未自动重试。");
-        }
-        apply(value.settings);
-        coreSetUIText(status, "textContent", corePhrase("已保存，下次请求生效。"));
-      } catch (error) {
-        coreSetUIText(
-          status,
-          "textContent",
-          error instanceof Error ? error.message : corePhrase("保存未确认，请重新读取核对。")
-        );
+        const r = await pageFetch("/settings/model-proxy", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ revision, proxy_url: address.value.trim(), enabled: modelConnection.input.value !== "direct", model_fallback: modelConnection.input.value === "fallback", providers: boxes.filter((b) => b.input.checked).map((b) => b.id), downloads_source: source.input.value, downloads_enabled: connection.input.value !== "direct", downloads_fallback: connection.input.value === "fallback", market_source: separate.checked ? marketSource.input.value : source.input.value, market_enabled: marketMode !== "direct", market_fallback: marketMode === "fallback" }) });
+        const result = await r.json();
+        if (!r.ok || !result.ok || !result.settings) throw Error(result.error || "保存未确认，请重新读取核对；未自动重试。");
+        apply(result.settings);
+        status.textContent = "已保存，下次请求生效。";
+      } catch (e) {
+        status.textContent = e instanceof Error ? e.message : "保存未确认，请重新读取核对。";
       } finally {
         saving = false;
-        guardDraft();
+        guard();
         lock(false);
       }
     })();
-  });
-  reload.addEventListener("click", () => {
-    if (busy) return;
-    if (dirty() && !window.confirm("重新读取将放弃尚未保存的代理草稿，继续吗？")) return;
-    void read4();
-  });
-  system.addEventListener("click", () => {
+  };
+  reload.onclick = () => {
+    void (async () => {
+      if (busy) return;
+      if (dirty() && !await confirmAction("重新读取网络设置", "尚未保存的修改将被替换。", "重新读取")) return;
+      void read4();
+    })();
+  };
+  system.onclick = () => {
     if (busy || !systemProxy) return;
     address.value = systemProxy;
-    coreSetUIText(status, "textContent", corePhrase("已填入，尚未保存。"));
-    guardDraft();
-  });
+    status.textContent = "已填入系统代理，尚未保存。";
+    guard();
+  };
   void read4();
   return root;
 }
 
-// maintenance/plugin-release-0547-20261125/source/core/src/web/client/settings-page.ts
+// core/src/web/client/settings-page.ts
 var GROUPS = [
   ["背景层级", [
     ["--color-canvas", "页面背景"],
@@ -14519,6 +14717,10 @@ function settingsPage(shell2) {
     const appearanceTitle = document.createElement("h3");
     coreSetUIText(appearanceTitle, "textContent", corePhrase("主题与配色"));
     left.append(appearanceTitle, theModeRow());
+    const modeHint = document.createElement("p");
+    modeHint.className = "set-note";
+    coreSetUIText(modeHint, "textContent", corePhrase("跟随系统自动切换明暗配色；选择预设或手动调色后，使用固定配色。"));
+    left.append(modeHint);
     markTheMode();
     const scheme = document.createElement("div");
     scheme.className = "set-scheme";
@@ -14600,10 +14802,11 @@ function settingsPage(shell2) {
       theLook[name] = value;
       editingPalette = true;
       try {
-        writeTheLook();
+        writeTheLook(false, name);
       } finally {
         editingPalette = false;
       }
+      markTheMode();
       void keepTheLook();
       if (code !== void 0) code.textContent = value;
     };
@@ -14719,7 +14922,7 @@ function settingsPage(shell2) {
   };
 }
 
-// maintenance/plugin-release-0547-20261125/source/core/src/web/client/pages.ts
+// core/src/web/client/pages.ts
 function page(row2, build) {
   return { ...row2, build };
 }
@@ -14874,8 +15077,8 @@ var live = null;
 function route(shell2, pages = PAGES) {
   const one = currentPage(pages);
   const selected = one.id === "infinity-entry" ? location.hash.replace(/^#\/?/, "") : one.id;
-  for (const el3 of shell2.railNav.querySelectorAll(".rail-item")) {
-    el3.classList.toggle("active", el3.dataset.page === selected);
+  for (const el5 of shell2.railNav.querySelectorAll(".rail-item")) {
+    el5.classList.toggle("active", el5.dataset.page === selected);
   }
   if (live !== null) live.stop();
   live = one.build(shell2);
@@ -14883,7 +15086,7 @@ function route(shell2, pages = PAGES) {
   return live;
 }
 
-// maintenance/plugin-release-0547-20261125/source/core/src/web/client/state.ts
+// core/src/web/client/state.ts
 var COUNTER_KEYS = ["tokens", "messages", "batches", "paused"];
 var ENGINE_KEYS = ["endpoint", "model", "profile", "model_available"];
 function count2(value) {
@@ -14908,7 +15111,7 @@ function counterChips(m) {
   ];
 }
 
-// maintenance/plugin-release-0547-20261125/source/core/src/web/client/main.ts
+// core/src/web/client/main.ts
 var READ_NAMES = [
   ...COUNTER_KEYS,
   ...ENGINE_KEYS,
@@ -14930,9 +15133,9 @@ function isChat(view2) {
   return typeof view2 === "object" && view2 !== null && typeof view2.append === "function";
 }
 function need(id) {
-  const el3 = document.getElementById(id);
-  if (el3 === null) throw new Error(`那一页的壳里少了 #${id}`);
-  return el3;
+  const el5 = document.getElementById(id);
+  if (el5 === null) throw new Error(`那一页的壳里少了 #${id}`);
+  return el5;
 }
 function anchors() {
   for (const id of ["rail", "topbar", "content", "bottom"]) need(id);

@@ -1269,6 +1269,69 @@ dialog.pw-confirm {
 .pw-operation-progress .pw-button {
   margin-top: 10px;
 }
+.pw-include-local {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--color-dim);
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.pw-include-local input {
+  margin: 0;
+  width: 14px;
+  height: 14px;
+  accent-color: var(--color-mint);
+}
+.pw-search-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+.pw-versions {
+  border-top: 1px solid var(--color-line);
+  padding-top: 16px;
+  margin-top: 16px;
+}
+.pw-versions>summary {
+  font-weight: 600;
+  cursor: pointer;
+  color: var(--color-ink);
+}
+.pw-version-body {
+  display: grid;
+  gap: 12px;
+  padding-top: 14px;
+  min-width: 0;
+}
+.pw-version-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.pw-version-body select {
+  max-width: 100%;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-chip);
+  background: var(--color-focus);
+  color: var(--color-ink);
+}
+.pw-version-hint,.pw-version-notes {
+  color: var(--color-dim);
+  font-size: 12px;
+  line-height: 1.7;
+}
+.pw-version-notes p {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 260px;
+  overflow: auto;
+}
 @layer base {
   :root {
     --ui-scroll-thumb: color-mix(in srgb, #5c5c60 30%, transparent);
@@ -2073,6 +2136,21 @@ dialog.pw-confirm {
   outline: 2px solid var(--color-mint);
   outline-offset: 3px;
 }
+.pcs-group {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  background: var(--color-focus);
+  border-bottom: 1px solid var(--color-line);
+  font-size: 12px;
+  color: var(--color-dim);
+}
+.pcs-group strong {
+  font-weight: 650;
+  color: var(--color-ink);
+}
 .model-proxy-settings {
   display: flex;
   flex-direction: column;
@@ -2239,6 +2317,86 @@ dialog.pw-confirm {
 @container (max-width: 500px) {
   .public-network-policy {
     grid-template-columns: minmax(0,1fr);
+  }
+}
+.model-proxy-address-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  min-width: 0;
+}
+.model-proxy-address-row .engine-input {
+  flex: 1;
+}
+.model-proxy-address-row .btn {
+  flex: none;
+  white-space: nowrap;
+  border: 1px solid var(--color-line);
+  background: var(--color-white);
+  border-radius: var(--radius-row);
+  padding: 9px 12px;
+  color: var(--color-dim);
+  font: inherit;
+  cursor: pointer;
+}
+.public-network-policy {
+  padding: 18px;
+  gap: 12px 16px;
+  grid-template-columns: 1fr 1fr;
+}
+.public-network-policy h4 {
+  font-size: 14px;
+  font-weight: 650;
+  margin: 0 0 3px;
+}
+.public-network-policy .model-proxy-details,.public-network-policy .public-network-caption,.model-network-wide {
+  grid-column: 1/-1;
+}
+.public-network-caption {
+  font-size: 12px;
+  color: var(--color-dim);
+  line-height: 1.7;
+}
+.model-network-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin: 12px 0;
+}
+.model-network-fields[hidden],.public-network-flow[hidden] {
+  display: none;
+}
+.model-proxy-details .model-proxy-provider {
+  margin-top: 12px;
+}
+.model-proxy-details {
+  padding-top: 12px;
+}
+.model-proxy-details summary {
+  color: var(--color-dim);
+  line-height: 1.8;
+}
+.model-proxy-targets {
+  margin: 4px 0 8px;
+}
+.model-proxy-actions {
+  border-top: 1px solid var(--color-line);
+  padding-top: 18px;
+}
+@container (max-width:500px) {
+  .model-network-fields {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width:560px) {
+  .model-proxy-address-row {
+    flex-wrap: wrap;
+  }
+  .model-proxy-address-row .engine-input {
+    flex-basis: 100%;
+  }
+  .model-network-fields {
+    grid-template-columns: 1fr;
   }
 }
 @layer theme, base, components, utilities;
@@ -6115,11 +6273,8 @@ form[data-introducing], .console-introduction[hidden] {
   @supports (color: color-mix(in lab, red, red)) {
     --workspace-line: color-mix(in srgb, var(--color-line) 78%, var(--color-white));
   }
-  --workspace-nav: color-mix(in srgb, #111a1b 93%, #ecedec);
-  @supports (color: color-mix(in lab, red, red)) {
-    --workspace-nav: color-mix(in srgb, var(--color-console) 93%, var(--color-rail));
-  }
-  --workspace-nav-text: var(--color-console-ink);
+  --workspace-nav: var(--color-rail);
+  --workspace-nav-text: var(--color-ink);
   --workspace-nav-rule: var(--workspace-nav-text);
   @supports (color: color-mix(in lab, red, red)) {
     --workspace-nav-rule: color-mix(in srgb, var(--workspace-nav-text) 24%, transparent);

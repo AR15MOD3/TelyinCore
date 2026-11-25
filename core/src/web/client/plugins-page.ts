@@ -54,6 +54,7 @@ export interface InstalledPlugin {
   /** 那一格目录在哪（详情面板上"安装位置"那一行 ）。 */
   readonly where?: string;
   /** **从哪儿来**（装的时候记下来的：哪条链接 ／ 谁写的 —— 空那一份 ＝ 不知道 ）。 */
+  readonly repository?: string;
   readonly origin?: { readonly source?: string; readonly url?: string; readonly by?: string };
   /** 关键字（包里的 `keywords` ）。 */
   readonly keywords?: readonly string[];

@@ -213,4 +213,4 @@ def capture_request(engine_root, context):
             or captured.kind != selection.kind):
         raise ValueError('review_request_selection_mismatch')
     verify(engine_root, context['policy_root'], context['bot'], selection, env=context['model_env'])
-    return selection, captured, engine.proxy_for(selection.base_url)
+    return selection, captured, engine.model_network(selection.base_url)

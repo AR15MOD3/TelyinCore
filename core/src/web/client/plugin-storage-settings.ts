@@ -1,18 +1,20 @@
+import {checkPluginUpdates, updateFor} from './plugin-updates';
+import {pluginOrigin, pluginOriginOrder, type PluginOrigin} from './plugin-origin';
 import {confirmAction} from './confirm-dialog';
 import {getStatusJson} from './status-json';
 import {uiLabel, coreSetUIAttribute, corePhrase, coreSetUIText} from './ui-language';
 import {readyPluginDisplay, pluginDisplayEntries, pluginDisplayProtected, clearPluginDisplay, fuzzyPluginMatch} from './plugin-display-cache';
-interface Plugin {name: string; displayName?: string; installed?: boolean;}
+interface Plugin {name: string; displayName?: string; installed?: boolean; builtin?:boolean; repository?:string; origin?:{url?:string}; unknown?:boolean;}
 const element = (tag: string, cls: string, label?: string): HTMLElement => {
   const el = document.createElement(tag); el.className = cls; if (label) uiLabel(el, label); return el;
 };
 export function pluginStorageSettings(): HTMLElement {
   const root = element('section', 'settings-card plugin-storage');
-  root.append(element('h3', '', '插件页面缓存'), element('p', 'pcs-scope', '当前档案 · 当前浏览器标签页'));
+  root.append(element('h3', '', '插件页面状态'), element('p', 'pcs-scope', '当前 Bot · 当前浏览器标签页 · 页签、分页与展开状态'));
   const panel = element('div', 'pcs-panel');
   const toolbar = element('div', 'pcs-toolbar');
   const search = document.createElement('input'); search.type = 'search'; search.maxLength = 128;
-  coreSetUIAttribute(search, 'aria-label', corePhrase('搜索插件页面缓存'));
+  coreSetUIAttribute(search, 'aria-label', corePhrase('搜索插件页面状态'));
   uiLabel(search, '名称、关键词或缩写', 'placeholder');
   const filters = element('div', 'pcs-filters');
   let filter = 'all'; let plugins: Plugin[] = []; let ready = false; let composing = false; let page = 0;
@@ -28,21 +30,30 @@ export function pluginStorageSettings(): HTMLElement {
     let cached: ReturnType<typeof pluginDisplayEntries>;
     try { cached = pluginDisplayEntries(); } catch { ready = false; uiLabel(message, '无法访问浏览器缓存，未清理任何数据。'); cached = []; }
     const all = new Map(plugins.map(p => [p.name, p]));
-    for (const entry of cached) if (!all.has(entry.name)) all.set(entry.name, {name:entry.name});
+    for (const entry of cached) if (!all.has(entry.name)) all.set(entry.name, {name:entry.name,unknown:true});
+    const groupOf=(p:Plugin):PluginOrigin=>p.unknown?'来源待确认':pluginOrigin(p,updateFor(p.name)?.repository?'https://github.com/'+updateFor(p.name)!.repository:'');
     const selected = [...all.values()].filter(p => {
       const has = cached.some(c => c.name === p.name);
       return (filter === 'all' || (filter === 'cached' ? has : !has)) && fuzzyPluginMatch(p.displayName || p.name, p.name, search.value);
-    }).sort((a,b) => (a.displayName || a.name).localeCompare(b.displayName || b.name));
+    }).sort((a,b) => pluginOriginOrder(groupOf(a))-pluginOriginOrder(groupOf(b)) || (a.displayName || a.name).localeCompare(b.displayName || b.name));
     page = Math.min(page, Math.max(0, Math.ceil(selected.length / 8) - 1));
+    let lastGroup='';
     for (const plugin of selected.slice(page * 8, (page + 1) * 8)) {
+      const group=groupOf(plugin);
+      if(group!==lastGroup){
+        const heading=element('div','pcs-group');heading.dataset.origin=group;
+        const members=selected.filter(p=>groupOf(p)===group);
+        heading.append(element('strong','',group),element('span','',`${members.length} 个插件`));rows.append(heading);lastGroup=group;
+      }
       const cache = cached.find(c => c.name === plugin.name);
       const row = element('div', 'pcs-row'); row.dataset.plugin = plugin.name;
       const identity = element('div', 'pcs-identity');
       const icon = element('span', 'pcs-icon'); icon.textContent = (plugin.displayName || plugin.name).slice(0, 1).toUpperCase();
       const name = element('span', 'pcs-name'); name.textContent = plugin.displayName || plugin.name; name.title = plugin.name;
       identity.append(icon, name);
-      const state = element('span', 'pcs-type', cache ? '页面状态' : '无缓存');
+      const state = element('span', 'pcs-type', cache ? `${cache.records} 条状态` : '无记录');
       const size = element('span', 'pcs-size'); size.textContent = cache ? `${cache.bytes} B` : '—';
+      if(cache)size.title=`记录序列化大小（UTF-8）：键名与作用域 ${cache.bytes-cache.valueBytes} B，状态值 ${cache.valueBytes} B；不是磁盘或内存占用。`;
       const clean = element('button', 'pcs-clean', '清理') as HTMLButtonElement;
       clean.type = 'button'; clean.disabled = !ready || !cache || pluginDisplayProtected(plugin.name);
       coreSetUIAttribute(clean, 'aria-label', [corePhrase('清理'), ' ', plugin.displayName || plugin.name]);
@@ -52,12 +63,12 @@ export function pluginStorageSettings(): HTMLElement {
       };
       row.append(identity, state, size, clean); rows.append(row);
     }
-    if (!selected.length) rows.append(element('p', 'pcs-empty', ready ? '没有匹配的插件页面缓存。' : '正在读取…'));
+    if (!selected.length) rows.append(element('p', 'pcs-empty', ready ? '没有匹配的插件页面状态。' : '正在读取…'));
     coreSetUIText(count, 'textContent', [selected.length, corePhrase(' 项'), ' · ', selected.reduce((sum,p) => sum + (cached.find(c => c.name === p.name)?.bytes ?? 0),0), ' B']);
     position.textContent = `${page + 1} / ${Math.max(1, Math.ceil(selected.length / 8))}`;
     prev.disabled = page === 0; next.disabled = (page + 1) * 8 >= selected.length;
   };
-  for (const [value,label] of [['all','全部'],['cached','有缓存'],['empty','无缓存']]) {
+  for (const [value,label] of [['all','全部'],['cached','有状态'],['empty','无状态']]) {
     const button = element('button','',label) as HTMLButtonElement; button.type='button'; button.setAttribute('aria-pressed', String(value === filter));
     button.onclick = () => { filter=value; page=0; for (const child of filters.children) child.setAttribute('aria-pressed',String(child === button)); draw(); }; filters.append(button);
   }
@@ -67,13 +78,14 @@ export function pluginStorageSettings(): HTMLElement {
   search.onkeydown = e => { if (e.key === 'Escape' && !e.isComposing) { search.value = ''; page = 0; draw(); } };
   prev.onclick = () => { page--; draw(); }; next.onclick = () => { page++; draw(); };
   toolbar.append(search, filters); panel.append(toolbar, rows, footer); root.append(panel);
-  root.append(element('p', 'pcs-hint', '仅清理页签选择等临时显示状态，不重载表单。配置、聊天记录、记忆和未保存内容均不受影响。'));
-  root.append(element('p', 'pcs-hint', '用量仅含已登记的临时显示状态，不代表插件文件大小。'), message);
+  root.append(element('p', 'pcs-hint', '仅清理本标签页的显示状态，不影响配置、聊天、记忆或未保存内容。'));
+  root.append(element('p', 'pcs-hint', '大小按记录的键名与值以 UTF-8 计算，不是插件的磁盘缓存或浏览器实际内存占用。'), message);
   void (async () => {
     ready = await readyPluginDisplay();
     try {
       const answer = await getStatusJson<{plugins?:Plugin[]}>('/plugins', 5000);
       plugins = (answer.plugins ?? []).filter(p => typeof p.name === 'string' && p.installed !== false);
+      if(plugins.some(p=>p.repository===undefined))await checkPluginUpdates(); // Older hosts lack public repository metadata.
     } catch { uiLabel(message, '插件列表读取失败；仍可查看本页已知的显示缓存。'); }
     if (!ready) uiLabel(message, '档案身份尚未确认，暂不允许清理。');
     draw();

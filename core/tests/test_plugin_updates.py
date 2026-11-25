@@ -33,21 +33,20 @@ def test_origin_conflict_and_builtin_are_not_requested(tmp_path):
     checker.check_batch()
     assert {r['status'] for r in checker.read()['rows']}=={'managed','unsupported'}
 
-def test_bundled_qq_uses_official_repo_even_before_repository_field(tmp_path):
+def test_bundled_qq_is_managed_even_with_old_independent_update_cache(tmp_path):
     name = 'core-infinity-qq'
     bundled = tmp_path/'builtin/infinity'/name
-    installed = tmp_path/'extensions'/name
-    for folder in (bundled, installed):
-        folder.mkdir(parents=True)
-        (folder/'package.json').write_text(json.dumps({'name': name, 'version': '0.9.0'}))
-    def upstream(repo):
-        assert repo == 'AR15MOD3/core-infinity-qq'
-        return {'name': name, 'version': '0.9.2'}
-    checker = PluginUpdates(tmp_path, upstream)
+    bundled.mkdir(parents=True)
+    (bundled/'package.json').write_text(json.dumps({'name':name,'version':'0.9.0'}))
+    install(tmp_path,name,version='0.9.0',repo='AR15MOD3/core-infinity-qq')
+    checker=PluginUpdates(tmp_path,lambda repo:pytest.fail('must not fetch independent QQ'))
+    checker._save({'schema':1,'attempts':[], 'cache':{'ar15mod3/core-infinity-qq':
+        {'name':name,'version':'0.9.2','checkedAt':checker.clock(),'attemptAt':checker.clock()}}})
+    assert checker.read()['available']==0
+    row=checker.read()['rows'][0]
+    assert row['status']=='managed' and not row['repository']
     checker.check_batch()
-    assert checker.read()['rows'][0]['status'] == 'available'
-    install(tmp_path, name, repo='other/fork')
-    assert checker.read()['rows'][0]['status'] == 'unsupported'
+    assert not checker._state()['cache']
 
 
 def test_cached_comparison_and_failed_refresh_do_not_claim_latest(tmp_path):

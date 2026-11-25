@@ -259,7 +259,7 @@ async function refresh(): Promise<void> {
     bar.model.dataset.empty = st.machine === null || st.machine.model === null ? 'true' : 'false';
     bar.model.textContent = st.machine === null || st.machine.model === null
       ? '—' : modelDisplayName(st.machine.model);
-    bar.model.title = st.machine?.model ?? '';
+    bar.model.title = (st.machine?.model ? st.machine.model + ' · ' : '') + '打开模型配置';
     // 缓存那一格：今天没有缓存这回事 ⇒ 它报的是**这台机器上过了多少 token 的上下文**
     //   （`paused` 那两格另说）—— 一个格子一个真数，而不是一个装饰。
     // **这一格现在读 `/usage` 的 `total`** （ 与右下角那块**同源** ⇒ 两个显示
@@ -267,7 +267,6 @@ async function refresh(): Promise<void> {
     shell.counters(counterChips(
       total === null ? st.machine : { ...st.machine, tokens: total },
     ));
-    coreSetUIText(bar.status, 'title', (localHealth === false ? corePhrase("本地模型离线，回复请求会失败") : machineStatus(st.machine)));
     where = '画那一页';
     // **这一句删掉了**（2026-10-05）：`isEngine` 与 `renderEngine` **全树都没有定义**
     // ⇒ 每次 `refresh()` 都抛 `ReferenceError` ⇒ 被外层 `catch` 吞成「读不到」，
@@ -283,13 +282,12 @@ async function refresh(): Promise<void> {
     console.error('refresh 抛在：', where, exc);
     conn.dataset.on = 'false';
     conn.dataset.model = 'unknown';
-    coreSetUIText(conn, 'title', [corePhrase("抛在「"), where, corePhrase("」："), String(exc), corePhrase("")]);
-    coreSetUIText(conn, 'textContent', [corePhrase("读不到（"), where, corePhrase("）")]);
+    coreSetUIText(conn, 'title', corePhrase("无法刷新连接状态，请检查服务后重试。"));
+    coreSetUIText(conn, 'textContent', corePhrase("状态读取失败"));
     bar.model.dataset.empty = 'true';
     bar.model.textContent = '—';
     bar.model.title = ''; 
     shell.counters(COUNTER_KEYS.map((key) => [key, '—'] as const)); // 一格一格写 `—`
-    coreSetUIText(bar.status, 'title', corePhrase("读不到（推的那条通道另说）"));
   }
 }
 

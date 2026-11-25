@@ -1,3 +1,4 @@
+import { showTextDetail } from './text-detail';
 import { uiLabel } from './ui-language';
 import { corePhrase, coreSetUIAttribute, coreSetUIText } from './ui-language';
 import { displayDate } from './display-date';
@@ -80,7 +81,7 @@ export interface A_Hers {
   readonly name: string;
   /** **相对 `persona/`** 的名字 ⇒ 拿它调 `POST /open` 。 */
   readonly key: string;
-  /** 盘上的**真字节数**（ `0` ＝ **还是空的** —— 这一页不许编 ）。 */
+  /** 盘上的**真字节数**（ `0` ＝ **暂无内容** —— 这一页不许编 ）。 */
   readonly size: number;
   /** **非空的行数**（ 空文件就是 `0` —— 那一行右边要写「N 行」）。 */
   readonly lines?: number;
@@ -93,7 +94,7 @@ export interface A_Hers {
 export interface MemoryAnswer {
   /** 那一张表（一个都没有 ⇒ 空那一串 —— 那是**一个答案** ）。 */
   readonly everyone: readonly A_Person[];
-  /** **心里悬着的事**（2026-10-07，作者拍的「①a」）—— **只读**：
+  /** **待讨论事**（2026-10-07，作者拍的「①a」）—— **只读**：
    * 这一页**不批 ／ 不催 ／ 不画期限**（那三条是定下的）； 缺这一格照旧能画 。 */
   readonly pending?: readonly A_Heart[];
   /** **它定下来的那些事**（2026-10-07「②」）—— 同样**只读**（不写、不排序、不算时间）。 */
@@ -106,7 +107,7 @@ export interface MemoryAnswer {
    *
    * · `name` ＝ 那一份的名字（`自述` ／ `世界认知` ／ `习惯` ）
    * · `key` ＝ **相对 `persona/`** 的名字 ⇒ 那一页拿它调 `POST /open`
-   * · `size` ＝ 盘上的**真字节数** （ 而"0"就是**还是空的** —— 那一页不许编 ）
+   * · `size` ＝ 盘上的**真字节数** （ 而"0"就是**暂无内容** —— 那一页不许编 ）
    * ⚠️ 缺这一格 ⇒ 那四行只画「浮现」那一行 （ 不许编 ）。
    */
   readonly hers?: readonly A_Hers[];
@@ -224,9 +225,9 @@ export interface A_Heart {
   readonly how_many?: number;
 }
 
-const READ_FAILED = '读不到记忆那一格。';
-const NOT_WIRED = '记忆这一层没接上读法。';
-const NOTHING_HANGING = '心里没有悬着的事。';
+const READ_FAILED = '记忆加载失败，请重试。';
+const NOT_WIRED = '当前服务暂不支持查看记忆。';
+const NOTHING_HANGING = '暂无待处理事项。';
 
 /** 那一页。 */
 const RUN_STATE: readonly (readonly [string, string])[] = [
@@ -269,14 +270,16 @@ export function memoryPage(shell: Chrome): Panel {
   const head = document.createElement('header');
   head.className = 'memory-head';
   head.append(title, note);
-  root.append(head);
+  const scroll = document.createElement('div');
+  scroll.className = 'page-scroll memory-scroll';
+  root.append(head, scroll);
   // ⚠️ **"挂上去"那一步**（少了它左栏点得动、正文是空的 —— 真驱动浏览器抓到过一次 ）
   shell.content.replaceChildren(root);
 
   // Polling may replace content, but must not move the reading position.
   const keepPosition = (render: () => void): void => {
     const parents: Array<[HTMLElement, number, number]> = [];
-    for (let el: HTMLElement | null = root; el; el = el.parentElement) parents.push([el, el.scrollTop, el.scrollLeft]);
+    for (let el: HTMLElement | null = scroll; el; el = el.parentElement) parents.push([el, el.scrollTop, el.scrollLeft]);
     const x = window.scrollX, y = window.scrollY;
     const inner = [...root.querySelectorAll<HTMLElement>('.memory-pull-content')].map(el => el.scrollTop);
     render();
@@ -286,7 +289,6 @@ export function memoryPage(shell: Chrome): Panel {
   };
   const draw = (answer: MemoryAnswer | null): void => keepPosition(() => drawContents(answer));
   const drawContents = (answer: MemoryAnswer | null): void => {
-    const expanded = new Set([...root.querySelectorAll<HTMLDetailsElement>('.memory-entry')].filter(e => e.open).map(e => e.id));
     for (const old of root.querySelectorAll('.memory-row')) { old.remove(); }
     if (answer === null) { note.textContent = READ_FAILED; return; }
     if (!answer.wired) { note.textContent = NOT_WIRED; return; }
@@ -300,17 +302,17 @@ export function memoryPage(shell: Chrome): Panel {
     // 查证一下有没有影响」）—— 查证的结论是： **功能上不影响** （三处各是各的字面量）
     // 而 **看的人会以为是两样** ⇒ 干脆**抽成一处** ：
     // · 名字用的那个是 **树里的权威名** —— `telyincore/unresolved.py` 的抬头与
-    // `tools.py` 那两件工具的说明，写的都是「**还没放下的事**」；
+    // `tools.py` 那两件工具的说明，写的都是「**未完成事项**」；
     // · 而"三格数"与"那几样"**都从这一处取** ⇒ **再也不会两样** 。
     const THE_THREE: readonly (readonly [string, string, string])[] = [
-      ['proposal', '心里悬着的', '暂无待处理事项。'],
-      ['selfmade', '留下的', '暂无留下的记录。'],
-      ['unfixed', '还没放下的', '暂无未完成事项。'],
+      ['proposal', '待讨论', '暂无待处理事项。'],
+      ['selfmade', '自我记录', '暂无自我记录。'],
+      ['unfixed', '未完成事项', '暂无未完成事项。'],
     ];
     const nameOf = (kind: string): string =>
       THE_THREE.find((one) => one[0] === kind)?.[1] ?? kind;
     const blurbOf = (kind: string): string => {
-      const said = THE_THREE.find((one) => one[0] === kind)?.[2] ?? '这一格还没有东西。';
+      const said = THE_THREE.find((one) => one[0] === kind)?.[2] ?? '暂无记录。';
       // **2026-10-10：到顶了就说出来** —— 与上面那个 `kind` **同一个成法** ：
       // 那一格是**服务算好的** （`launch.see_pending()` 每一条带一个 `full` ），
       // 因为 `web.py` 够了不到那两本的上限 、而这页也够不到 。
@@ -318,27 +320,27 @@ export function memoryPage(shell: Chrome): Panel {
       // ⇒ 页上不说， 那就是**悄悄丢东西** 。
       const one = mine.find((it) => (it.kind ?? 'proposal') === kind);
       if (one !== undefined && one.full === true) {
-        return said + ' 这本已经到顶了 —— 再写就会压掉最旧的。';
+        return said + ' 已达记录上限，新增记录会替换最旧记录。';
       }
       return said;
     };
 
-    // ── **她最近写下的那一句**（2026-10-08 照 v10 稿：薄荷底那一块）────────────
-    // 取她自己那一本的**最新一条** ； 一条都没有 ⇒ 照实说"还是空的" （不编 ）。
+    // ── **她最近的自我记录**（2026-10-08 照 v10 稿：薄荷底那一块）────────────
+    // 取她自己那一本的**最新一条** ； 一条都没有 ⇒ 照实说"暂无内容" （不编 ）。
     const star = document.createElement('div');
     star.className = selfmade.length === 0
       ? 'memory-star memory-row is-empty' : 'memory-star memory-row';
     const starLbl = document.createElement('div');
     starLbl.className = 'lbl';
-    coreSetUIText(starLbl, 'textContent', corePhrase("最近写下的那一句"));
+    coreSetUIText(starLbl, 'textContent', corePhrase("最近的自我记录"));
     const starSay = document.createElement('p');
     starSay.className = selfmade.length === 0 ? 'say void' : 'say';
-    coreSetUIText(starSay, 'textContent', (selfmade.length === 0 ? corePhrase("还是空的 —— 这边还没写下过第一句。") : String(selfmade[selfmade.length - 1].text)));
+    coreSetUIText(starSay, 'textContent', (selfmade.length === 0 ? corePhrase("暂无自我记录。") : String(selfmade[selfmade.length - 1].text)));
     const starBy = document.createElement('p');
     starBy.className = 'by';
-    coreSetUIText(starBy, 'textContent', corePhrase("只在这边回头看的时候才会写；不是每天都有。"));
+    coreSetUIText(starBy, 'textContent', corePhrase("Bot 在整理记忆时更新。"));
     star.append(starLbl, starSay, starBy);
-    root.append(star);
+    scroll.append(star);
     // **顶上那三格数**（2026-10-08 照 v10 稿）—— 而**三个数都是现算的**
     // （ 稿子里那三格的词我换成了真算得出的： 数不许编 ）。
     const howMany = (kind: string): number =>
@@ -383,7 +385,7 @@ export function memoryPage(shell: Chrome): Panel {
     // **那四行的真身**（2026-10-08 作者："好好检查一下 —— 它们指向的是
     // 文件夹里真实存在的文件" ）： 前三行是 `persona/她写的/*.md` **那三份真文件**
     // （由 `/memory` 的 `hers` 交上来 ）， 而第四行「浮现」**不落成文件** 。
-    // ⚠️ **值只说真话**： 那三份各 **0 字节** ⇒ 写"还是空的"
+    // ⚠️ **值只说真话**： 那三份各 **0 字节** ⇒ 写"暂无内容"
     // （ 原来那四行**是编的** —— "10 条"／"还有 9 行"／"还没有长出来" 全都没有底 ）。
     const hers = answer.hers ?? [];
     // 「那一行右边」要的两个数： **行数** 与 **最后写于**（ 都从 `hers` 现取
@@ -394,10 +396,10 @@ export function memoryPage(shell: Chrome): Panel {
       hers.find((one) => one.key === k)?.at ?? '';
     const ROWS: (readonly [string, string, string, string])[] = [];
     for (const one of hers) {
-      ROWS.push([one.name, one.size === 0 ? '还是空的' : String(one.size) + ' 字节',
+      ROWS.push([one.name, one.size === 0 ? '暂无内容' : String(one.size) + ' 字节',
                  one.size === 0 ? 'void' : '', one.key]);
     }
-    ROWS.push(['浮现', '今天没有浮出什么；只在有话说的时候才出现。', 'void', '']);
+    ROWS.push(['浮现', '暂无主动记录。', 'void', '']);
     for (const [key, value, cls, keyOf] of ROWS) {
       const li = document.createElement('li');
       const line = document.createElement('div');
@@ -460,8 +462,8 @@ export function memoryPage(shell: Chrome): Panel {
       list.append(li);
     }
     documents.append(list);
-    root.append(documents);
-    root.append(skillsBox);
+    scroll.append(documents);
+    scroll.append(skillsBox);
     // ── **她写下的那几样**（2026-10-08 照 v10 稿：两列 ＋ 一条绿竖线 ）────
     // ⚠️ **这一块用的是 `.memory-pull`**（ 两列 ）—— 而它**不是** `.memory-cards`
     // （ 那一条是给"它自己写的那几份"用的、单列 ）： 两处**形状不同** 。
@@ -469,8 +471,8 @@ export function memoryPage(shell: Chrome): Panel {
     pull.className = 'memory-row memory-pull';
     const pullHead = document.createElement('h2');
     pullHead.className = 'memory-sec memory-row';
-    coreSetUIText(pullHead, 'textContent', corePhrase("记下的事"));
-    root.append(pullHead);
+    coreSetUIText(pullHead, 'textContent', corePhrase("记忆记录"));
+    scroll.append(pullHead);
     const CARDS: readonly (readonly [string, A_Heart[], boolean])[] = [
       ['proposal', proposals, false],
       ['selfmade', selfmade, false],
@@ -505,11 +507,10 @@ export function memoryPage(shell: Chrome): Panel {
       const latest = [...merged.values()].reverse();
       const shown = latest.slice(0, 1);
       for (const { one: each, how } of shown) {
-        const entry = document.createElement('details');
+        const entry = document.createElement('section');
         entry.className = 'memory-entry';
         entry.id = 'memory-entry-' + encodeURIComponent(kindOf + ':' + (each.proposal?.id || String(each.ts || '') + ':' + each.text.slice(0, 160)));
-        entry.open = expanded.has(entry.id);
-        const summary = document.createElement('summary');
+        const summary = document.createElement('h3');
         const short = (value: string): string => value.replace(/\s+/g, ' ').slice(0, 160);
         summary.textContent = each.proposal
           ? short(each.source + ' · ' + each.proposal.section + '：' + each.proposal.why)
@@ -526,7 +527,7 @@ export function memoryPage(shell: Chrome): Panel {
           body.append(original);
           const state = document.createElement('p');
           state.className = 'when';
-          coreSetUIText(state, 'textContent', corePhrase("尚未落定 · 请在对话中交流，由她决定修改、保留或暂缓。"));
+          coreSetUIText(state, 'textContent', corePhrase("待讨论。可在对话中确认修改、保留或暂缓。"));
           body.append(state);
         }
         if (each.ts) {
@@ -549,7 +550,7 @@ export function memoryPage(shell: Chrome): Panel {
       pull.append(one);
     }
     // 先挂上记事，再呈现人和世界入口，避免空状态插在两组内容之间。
-    root.append(pull);
+    scroll.append(pull);
     // ── 人那一块 ────────────────────────────────────────────────────────────
     // ⚠️ 照 v10 稿，它在**那几样之后、那条尾之前** （ 不是开头 ）。
     const people = document.createElement('section');
@@ -579,8 +580,9 @@ export function memoryPage(shell: Chrome): Panel {
         who.title = one.who;
         const said = document.createElement('p');
         said.className = 'memory-person-standing';
-        // 那一行**照实说**：说过什么就写什么，没说过就写「（还没给过说法）」
-        said.textContent = one.standing || '（还没给过说法）';
+        // 那一行**照实说**：说过什么就写什么，没说过就写「」
+        said.textContent = one.standing || '';
+        said.hidden = !one.standing;
         said.title = said.textContent;
         const meta = document.createElement('span');
         meta.className = 'memory-person-meta';
@@ -589,14 +591,14 @@ export function memoryPage(shell: Chrome): Panel {
         if (one.blocked) {
           const blocked = document.createElement('span');
           blocked.className = 'memory-person-blocked';
-          coreSetUIText(blocked, 'textContent', corePhrase("拉黑着"));
+          coreSetUIText(blocked, 'textContent', corePhrase("已屏蔽"));
           item.append(blocked);
         }
         plist.append(item);
       }
       people.append(plist);
     }
-    root.append(people);
+    scroll.append(people);
 
     // v10 里第四张卡是"它主动找过你"（ 那一格今天只有一句实话：还没有送到手机的那条路 ）
     const quietOne = document.createElement('div');
@@ -617,7 +619,7 @@ export function memoryPage(shell: Chrome): Panel {
     };
     if (sent === undefined) {
       // 服务那一侧还没交上来（老进程）⇒ 照实说没接上，不编一个 0
-      coreSetUIText(qp, 'textContent', corePhrase("这一格还没接上。"));
+      coreSetUIText(qp, 'textContent', corePhrase("当前服务暂不支持。"));
     } else if (!sent.how_many) {
       coreSetUIText(qp, 'textContent', corePhrase("暂无主动请求。"));
     } else {
@@ -648,7 +650,7 @@ export function memoryPage(shell: Chrome): Panel {
   //    `root.querySelectorAll('.memory-row')` 全删 —— 带上它，做法块会在
   //    每次 /memory 刷新时被一起清掉（页上看就是"刷一下就没了"）。
   skillsBox.className = 'memory-skills';
-  root.append(skillsBox);
+  scroll.append(skillsBox);
 
   let latestSkills: SkillsAnswer | null = null;
   const visibleLimits = new Map<string, number>();
@@ -671,7 +673,6 @@ export function memoryPage(shell: Chrome): Panel {
     latestSkills = answer;
     if (composing) return;
 
-    const opened = new Set([...skillsBox.querySelectorAll<HTMLDetailsElement>('details[data-section]')].filter(el => el.open).map(el => el.dataset.section));
     // Keep the search input mounted: detaching it cancels native IME composition.
     for (const child of [...skillsBox.children]) if (child !== toolbar) child.remove();
     const head = document.createElement('h2');
@@ -682,28 +683,28 @@ export function memoryPage(shell: Chrome): Panel {
     if (answer === null) {
       const bad = document.createElement('p');
       bad.className = 'memory-quiet';
-      coreSetUIText(bad, 'textContent', corePhrase("做法这一格读不到（服务没答）。"));
+      coreSetUIText(bad, 'textContent', corePhrase("技能加载失败，请重试。"));
       skillsBox.append(bad);
       return;
     }
     if (!answer.wired) {
       const off = document.createElement('p');
       off.className = 'memory-quiet';
-      coreSetUIText(off, 'textContent', corePhrase("这一台没有接做法读口。"));
+      coreSetUIText(off, 'textContent', corePhrase("当前服务暂不支持查看技能。"));
       skillsBox.append(off);
       return;
     }
 
-    const maintenance = document.createElement('details'); maintenance.className = 'memory-skill-maintenance';
-    maintenance.dataset.section = 'maintenance'; maintenance.open = opened.has('maintenance');
-    const maintenanceTitle = document.createElement('summary');
+    const maintenance = document.createElement('section'); maintenance.className = 'memory-skill-maintenance';
+    maintenance.dataset.section = 'maintenance';
+    const maintenanceTitle = document.createElement('h3');
     maintenance.append(maintenanceTitle);
     // 整理状态属于维护信息，与技能正文分层。
     const status = answer.status ?? { state: 'unknown' };
     const runline = document.createElement('p');
     runline.className = 'memory-quiet';
     const pending = Number(status.recovery_pending ?? 0);
-    coreSetUIText(runline, 'textContent', [[((status.state === 'unknown' && (answer.active_count ?? answer.active?.length ?? 0) === 0 ? corePhrase("尚无整理记录") : [corePhrase("整理状态："), stateName(String(status.state))])), ((pending > 0 ? [[corePhrase("（"), String(pending)], corePhrase(" 笔停在半路）")] : corePhrase("")))], ((status.why && status.state !== 'unknown' ? [corePhrase(" —— "), String(status.why)] : corePhrase("")))]);
+    coreSetUIText(runline, 'textContent', [[((status.state === 'unknown' && (answer.active_count ?? answer.active?.length ?? 0) === 0 ? corePhrase("尚无整理记录") : [corePhrase("整理状态："), stateName(String(status.state))])), ((pending > 0 ? [[corePhrase("（"), String(pending)], corePhrase(" 项未完成）")] : corePhrase("")))], ((status.why && status.state !== 'unknown' ? [corePhrase(" —— "), String(status.why)] : corePhrase("")))]);
     maintenance.append(runline);
     const index = answer.index_status;
     if (index) {
@@ -725,12 +726,12 @@ export function memoryPage(shell: Chrome): Panel {
       const bits: string[] = [];
       if (detail.partial) {
         const committed = detail.committed ?? [];
-        const names = committed.length > 0 ? committed.join('、') : '（没有落下的文件）';
+        const names = committed.length > 0 ? committed.join('、') : '无已保存文件';
         // ⚠️ **两种话分开说**（2026-10-18 补验三）：办完了是"曾经…已经办完"，
         //    没办完才是"还欠着" —— 一句写死会把历史欠项冒充成当前欠项。
-        bits.push((detail.resolved === true ? '曾经部分提交：' : '上一趟部分提交：') + names
-          + (detail.resolved === true ? ' —— 后续动作已经办完'
-            : detail.followup_uncertain ? ' —— 后续投递结果待核对' : ' —— 文件写了，后续动作还欠着'));
+        bits.push((detail.resolved === true ? '此前已保存：' : '上次已保存：') + names
+          + (detail.resolved === true ? ' · 后续操作已完成'
+            : detail.followup_uncertain ? ' —— 后续投递结果待核对' : ' · 文件已保存，后续操作未完成'));
       }
       if (detail.error) bits.push('上一次失败：' + (detail.error_class === 'PersonaShapeRefused' ? '文档结构保护拒绝了本次改写；已保存的内容保留，草稿待复核。' : String(detail.error)));
       if (detail.failed_at) bits.push('中断于 ' + detail.failed_at);
@@ -760,26 +761,25 @@ export function memoryPage(shell: Chrome): Panel {
         const empty = document.createElement('p'); empty.className = 'memory-skill-empty'; coreSetUIText(empty, 'textContent', corePhrase("尚未记录")); section.append(empty);
       }
       for (const one of filtered.slice(0, limit)) {
-        const item = document.createElement('details'); item.className = 'memory-skill-entry';
-        item.dataset.section = one.id; item.open = opened.has(one.id);
-        const title = document.createElement('summary');
+        const item = document.createElement('section'); item.className = 'memory-skill-entry';
+        item.dataset.section = one.id;
+        const title = document.createElement('h3');
         const name = document.createElement('span'); name.textContent = one.title;
-        const affordance = document.createElement('span'); affordance.className = 'memory-skill-affordance'; coreSetUIText(affordance, 'textContent', (item.open ? corePhrase("收起正文") : corePhrase("查看正文")));
         const overview = document.createElement('span'); overview.className = 'memory-skill-overview';
         const excerpt = document.createElement('span'); excerpt.className = 'memory-skill-excerpt';
         excerpt.textContent = (one.body || '').split('\n').find(line => line.trim())?.slice(0, 140) || '暂无正文';
-        overview.append(name, excerpt); title.append(overview, affordance); item.append(title);
-        item.addEventListener('toggle', () => { coreSetUIText(affordance, 'textContent', (item.open ? corePhrase("收起正文") : corePhrase("查看正文"))); });
+        overview.append(name, excerpt); title.append(overview); item.append(title);
         const body = document.createElement('div'); body.className = 'memory-skill-body';
         body.textContent = one.body ?? (one.state === 'missing' ? '正文文件缺失。' : '正文未提供，请更新服务后重试。'); item.append(body);
         const metadata = document.createElement('div'); metadata.className = 'memory-skill-metadata';
         coreSetUIText(metadata, 'textContent', [[[((one.recorded_at ? [[corePhrase("记录于 "), displayDate(one.recorded_at)], corePhrase(" · ")] : corePhrase(""))), corePhrase("历史 ")], String(one.history ?? 0)], corePhrase(" 版")]);
         coreSetUIText(metadata, 'title', [[[one.id, corePhrase(" · 版本 ")], one.version], ((one.recorded_at ? [corePhrase(" · "), one.recorded_at] : corePhrase("")))]);
-        item.append(metadata);
-        if (one.references?.length) {
-          const refs = document.createElement('div'); refs.className = 'memory-skill-references';
-          coreSetUIText(refs, 'textContent', [corePhrase("关联资料："), one.references.join('、')]); item.append(refs);
-        }
+        const more = document.createElement('button'); more.type = 'button'; more.className = 'compact-more';
+        more.textContent = '显示全部'; more.setAttribute('aria-label', '显示全部：' + one.title);
+        more.onclick = () => showTextDetail(one.title, [body.textContent, metadata.textContent,
+          one.references?.length ? '关联资料：' + one.references.join('、') : ''].filter(Boolean).join('\n\n'));
+        const footer = document.createElement('div'); footer.className = 'memory-skill-footer';
+        footer.append(metadata, more); item.append(footer);
         section.append(item);
       }
       if (filtered.length > limit) {
@@ -788,15 +788,9 @@ export function memoryPage(shell: Chrome): Panel {
         more.addEventListener('click', () => {
           visibleLimits.set(said, limit + pageSize); drawSkills(latestSkills);
           const updated = [...skillsBox.querySelectorAll<HTMLElement>('.memory-skill-section')].find(el => el.querySelector('h3')?.textContent === said);
-          const next = updated?.querySelectorAll<HTMLElement>('summary')[limit]; next?.focus();
+          const next = updated?.querySelectorAll<HTMLElement>('h3')[limit]; next?.focus();
         });
         section.append(more);
-      }
-      if (limit > pageSize) {
-        const less = document.createElement('button'); less.type = 'button'; less.className = 'memory-skill-more';
-        coreSetUIText(less, 'textContent', corePhrase("收起")); coreSetUIAttribute(less, 'aria-label', [corePhrase("收起"), said]);
-        less.addEventListener('click', () => { visibleLimits.delete(said); drawSkills(latestSkills); });
-        section.append(less);
       }
       skillsBox.append(section);
     };
@@ -822,7 +816,7 @@ export function memoryPage(shell: Chrome): Panel {
       const box = document.createElement('div');
       const lbl = document.createElement('div');
       lbl.className = 'memory-star-label';
-      coreSetUIText(lbl, 'textContent', [[corePhrase("操作账（最近 "), String(ops.length)], corePhrase(" 笔）")]);
+      coreSetUIText(lbl, 'textContent', [[corePhrase("操作记录（最近 "), String(ops.length)], corePhrase(" 笔）")]);
       box.append(lbl);
       const ul = document.createElement('ul');
       ul.className = 'memory-list';

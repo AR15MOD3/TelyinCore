@@ -1,3 +1,4 @@
+import { showTextDetail } from './text-detail';
 import { corePhrase, coreSetUIAttribute, coreSetUIText } from './ui-language';
 import { pageLoad } from './page-load';
 import { confirmAction } from './confirm-dialog';
@@ -39,7 +40,7 @@ export const BOUNDARY = '写入那条路：这一页能改她是谁。边界照�
   + '—— 那不等于已鉴权：这一台机器上的谁都改得动它。';
 
 /** **那一句边界的短版**（挂在"写进去了"那一句后面 —— 抬头里那句长的太占地方）。 */
-const BOUNDARY_LINE_SHORT = '写入那条路：这一页能改她是谁 —— 「只听回环」不等于已鉴权。';
+const BOUNDARY_LINE_SHORT = '修改会写入人设文件。仅限本机访问不等于账号鉴权。';
 
 /** ⚠️⚠️ **这里从前有一句 `export const NO_FILE_LINE = '这一段还没有文件'`** ——
  * **2026-09-30 作者又看一眼，把那句话本身圈掉**：「关于这个，也去掉。」
@@ -308,7 +309,7 @@ export function outcomeOf(status: number, body: string): SaveOutcome {
   if (status === 400 && isCollision(body)) {
     return { kind: 'collision', line: COLLISION_LINE };
   }
-  return { kind: 'refused', line: `这一版没写成（服务回 ${status}）：${body.trim()}` };
+  return { kind: 'refused', line: `保存失败（HTTP ${status}）：${body.trim()}` };
 }
 
 /** 保存那一版**留在行尾那一格里的提示**（参考那一页在光标那一行后面挂一句
@@ -670,7 +671,7 @@ export function personaPage(shell: Chrome, options: Partial<PersonaDeps> = {}): 
 
   // 2026-10-11: compact title and one metadata row; save feedback appears only as needed.
   const title = node('h1', 'persona-title', '人设 · PERSONA');
-  const count = node('span', 'persona-count', '0 段 · 渲染后约 0 tokens');
+  const count = node('span', 'persona-count', '正在加载…');
   const saveHint = node('span', 'persona-hint', '修改后保存 · Ctrl+S');
   const saveButton = node('button', 'btn persona-save', '保存');
   saveButton.type = 'button';
@@ -680,11 +681,11 @@ export function personaPage(shell: Chrome, options: Partial<PersonaDeps> = {}): 
   coreSetUIText(reloadButton, 'title', corePhrase("重新读取已保存的人设"));
   const status = node('div', 'persona-status');
   const statusLine = node('span', 'persona-status-line');
-  const receipt = node('details', 'persona-receipt');
+  const receipt = node('button', 'persona-receipt', '查看详情') as HTMLButtonElement;
+  receipt.type = 'button';
   receipt.hidden = true;
-  const receiptSummary = node('summary', 'persona-receipt-summary', '详情');
   const receiptText = node('p', 'persona-receipt-text');
-  receipt.append(receiptSummary, receiptText);
+  receipt.addEventListener('click', () => showTextDetail('操作详情', receiptText.textContent || ''));
   status.append(statusLine, receipt);
   status.dataset.state = 'idle';
   status.setAttribute('role', 'status');
@@ -737,7 +738,11 @@ export function personaPage(shell: Chrome, options: Partial<PersonaDeps> = {}): 
   otherBox.append(otherList);
   otherBox.hidden = true; // 一行都没有的时候，那一块整个不出现
 
-  stack.append(head, nav, list, otherBox, personaMemoryTail());
+  const workspace = node('div', 'persona-workspace');
+  const scroll = node('div', 'page-scroll persona-scroll');
+  scroll.append(list, otherBox);
+  workspace.append(nav, scroll);
+  stack.append(head, workspace, personaMemoryTail());
   column.append(stack);
   shell.content.replaceChildren(column);
 
@@ -758,7 +763,7 @@ export function personaPage(shell: Chrome, options: Partial<PersonaDeps> = {}): 
     coreSetUIText(statusLine, 'textContent', (long ? corePhrase("操作未完成，请查看详情。") : line));
     receiptText.textContent = detail || (long ? line : '');
     receipt.hidden = receiptText.textContent === '';
-    receipt.open = false;
+
     status.dataset.state = state;
     status.hidden = line === '';
   };
@@ -771,7 +776,7 @@ export function personaPage(shell: Chrome, options: Partial<PersonaDeps> = {}): 
         ? null : (drafts.get(segment.file) ?? draftOf(segment));
       tokens += draft === null ? 0 : tokenEstimate(draft.lines.join('\n'));
     }
-    coreSetUIText(count, 'textContent', [corePhrase(""), segments.length, corePhrase(" 段 · 渲染后约 "), tokens, corePhrase(" tokens")]);
+    coreSetUIText(count, 'textContent', [corePhrase(""), segments.length, corePhrase(" 段 · 约 "), tokens, corePhrase(" tokens")]);
     coreSetUIText(saveHint, 'textContent', (dirty.length > 0 ? [corePhrase(""), dirty.length, corePhrase(" 段未保存 · Ctrl+S 保存当前章节")] : corePhrase("修改后保存 · Ctrl+S")));
     saveHint.dataset.dirty = String(dirty.length > 0);
     coreSetUIText(saveButton, 'textContent', (saving ? corePhrase("保存中…") : corePhrase("保存")));
@@ -896,26 +901,7 @@ export function personaPage(shell: Chrome, options: Partial<PersonaDeps> = {}): 
    *     `破甲` 从前落在第 10 行 `## 亲密与放开` 上，那一块的顶在 `−170.44`、**旗子在
    *     `−320.65`**、8 行被藏 ⇒ 他那一句「破甲的导航跳转还是有问题」量到的就是它）。
    */
-  const scrollerOf = (): HTMLElement => {
-    // ⚠️⚠️ **向上那一跳不写死 `parentElement`**：那一台 DOM 替身**只有 `parent`**
-    //    （它没有 `parentElement` —— 本波实测：`Cannot read properties of undefined
-    //    (reading 'parentElement')`，而那一条判据跑到这一页时整页**跑不起来**）。
-    //    ⇒ 两个都认：先 `parentElement`，没有再退回 `parent`。
-    const up = (node: HTMLElement): HTMLElement | null =>
-      (node.parentElement ?? (node as unknown as { parent?: HTMLElement | null }).parent ?? null);
-    for (let node = up(column); node !== null; node = up(node)) {
-      // ⚠️ `getComputedStyle` 在那一台替身上也不一定有（那一条判据只判结构 ＋ 属性，
-      //    不判布局）⇒ 读不到就**当它不是滚动那一格**，继续往上走。
-      let flow = '';
-      try {
-        flow = window.getComputedStyle(node).overflowY;
-      } catch {
-        flow = '';
-      }
-      if (flow === 'auto' || flow === 'scroll') return node;
-    }
-    return column;
-  };
+  const scrollerOf = (): HTMLElement => scroll;
 
   /** **落点与粘住的那一条之间留的那一点空** —— 它**就是**"现在这一块"那条线用的
    *  同一个数（下面 `trackActive()` 里那一处）：两处各写一个数，跳过去之后**高亮的那一项
@@ -942,20 +928,7 @@ export function personaPage(shell: Chrome, options: Partial<PersonaDeps> = {}): 
    *  ⚠️ 那一台 DOM 替身上没有 `getComputedStyle`（与 `scrollerOf()` 同一条余量）——
    *     读不到就**只算那一条的高**，不抛。
    */
-  const theLine = (): number => {
-    const flow = scrollerOf();
-    // A vertical chapter rail sits beside the document, so its height must not
-    // be subtracted from the chapter landing point. The compact rail sits above it.
-    if (sideRail()) return 20;
-    let stuck = 0;
-    try {
-      stuck = (Number.parseFloat(window.getComputedStyle(flow).paddingTop) || 0)
-        + (Number.parseFloat(window.getComputedStyle(nav).top) || 0);
-    } catch {
-      stuck = 0;
-    }
-    return stuck + nav.getBoundingClientRect().height + NAV_GAP;
-  };
+  const theLine = (): number => NAV_GAP;
 
   const jump = (row: HTMLElement): void => {
     const scroller = scrollerOf();
@@ -1024,8 +997,8 @@ export function personaPage(shell: Chrome, options: Partial<PersonaDeps> = {}): 
       // 那一枚记号：**有未保存的改动** —— 一件事一个词，读得出来。
       // ⚠️ **"只读"那一枚今天不在这儿了**（本波的账在上面）。
       if (row.dataset.dirty === 'true') item.append(node('span', 'persona-navmark', '未保存'));
-      coreSetUIText(item, 'title', [corePhrase(""), nameOfRow(row), corePhrase(" —— 点一下跳到那一块")]);
-      if (row.dataset.dirty === 'true') item.title += '（有没保存的改动）';
+      coreSetUIText(item, 'title', [corePhrase(""), nameOfRow(row), corePhrase(" · 点击查看章节")]);
+      if (row.dataset.dirty === 'true') item.title += '（未保存）';
       item.addEventListener('click', () => {
         jumpAndMark(row, index);
       });
@@ -1566,7 +1539,7 @@ export function personaPage(shell: Chrome, options: Partial<PersonaDeps> = {}): 
       // ⚠️⚠️ **而"为什么不能改"那一句今天不摆了**（作者 2026-09-30：这种解释不要）——
       //    服务那一份里的 `why_read_only` 照旧交回来，这一页**不读它**。
       // 正文本身照旧一行一行摆出来（看不见内容就没法判断要不要动它）。
-      middle.append(node('p', 'persona-lock', '这一份人不能改'));
+      middle.append(node('p', 'persona-lock', '此内容为只读'));
     }
     // **本波（2026-09-30 第三次）：没有文件的那一段，正文那一列整个空着** ——
     // 作者把那一句"这一段还没有文件"圈起来说「关于这个，也去掉。」⇒ 那个
@@ -1613,7 +1586,7 @@ export function personaPage(shell: Chrome, options: Partial<PersonaDeps> = {}): 
     //    「关于卡片，**你没有把字也一起删掉**。`你定的/存在方式.md`，这个字还留在页面上」
     //    ⇒ 这一格从此只摆**落点记号**：有文件 ⇒ 一枚点；没有文件 ⇒ 那一句
     // "这一段还没有文件"（ 那是**状态**，不是路径 —— 它照旧在）。
-    //    ⚠️ **路径的名字这一页不再画**（上一刀留下的那一行平字也一起走）：见 `presenceMark()`。
+    //    ⚠️ **路径的名字这一页不再画**（上一刀自我记录那一行平字也一起走）：见 `presenceMark()`。
     //    ⚠️ **这一格今天没有 `title`**（从前那一句是"这一段的落点：…"—— 而名字就在这一格上；
     //       一句悬停文字去解释"这一格是什么"＝作者 2026-09-30 说的那类解释）⇒ 没有加回来。
     right.append(presenceMark(draft === null ? 0 : 1));
@@ -1822,7 +1795,7 @@ export function personaPage(shell: Chrome, options: Partial<PersonaDeps> = {}): 
     if (saving || (dirty.length > 0 && !discard)) return;
     const edits = editEpoch;
     const epoch = ++readEpoch; readHint.start(); saveButton.disabled = true;
-    say('正在读那十段…', 'busy');
+    say('正在加载人设…', 'busy');
     try {
       const response = await send(REPORT_ROUTE, { headers: { Accept: 'application/json' } });
       if (!response.ok) {
@@ -1875,8 +1848,8 @@ export function personaPage(shell: Chrome, options: Partial<PersonaDeps> = {}): 
           cell.value = value; cell.readOnly = readonly; conflictBox.append(cell); return cell;
         };
         conflictBox.replaceChildren();
-        area('persona-merge-base', '读时正文', draft.base ?? '', true);
-        area('persona-merge-remote', '盘上新版', remote, true);
+        area('persona-merge-base', '编辑前版本', draft.base ?? '', true);
+        area('persona-merge-remote', '已保存的最新版本', remote, true);
         const merged = area('persona-merge-text', '手动合并稿（请对照新版编辑）', draft.lines.join('\n'), false);
         const apply = node('button', 'btn persona-merge-apply', '使用合并稿（尚未保存）');
         apply.setAttribute('type', 'button'); conflictBox.append(apply);
@@ -1893,9 +1866,9 @@ export function personaPage(shell: Chrome, options: Partial<PersonaDeps> = {}): 
           }
           draft.lines.splice(0, draft.lines.length, ...linesOf(merged.value));
           draft.revision = revision; draft.base = remote; markDirty(name);
-          const scroll = column.scrollTop;
+          const scrollTop = scroll.scrollTop;
           list.replaceChildren(...segments.map(segmentRow));
-          column.scrollTop = scroll;
+          scroll.scrollTop = scrollTop;
           markDirty(name); refreshHead(); refreshNav(); conflictBox.hidden = true;
           say('合并稿已放回编辑区，尚未保存。请核对后再保存。', 'warn');
         });
@@ -1911,7 +1884,7 @@ export function personaPage(shell: Chrome, options: Partial<PersonaDeps> = {}): 
                           expect: string): Promise<SaveOutcome | null> => {
     const stamp = now();
     if (!isAStamp(stamp)) {
-      say(`这一页自己挑出来的那串时间戳不成形状：${stamp}`, 'bad');
+      say(`保存时间格式无效：${stamp}`, 'bad');
       return null;
     }
     const target = /^(宪法\.md|角色设定\.md)#([a-z][a-z-]{0,63})$/.exec(name);
@@ -1926,7 +1899,7 @@ export function personaPage(shell: Chrome, options: Partial<PersonaDeps> = {}): 
         body: JSON.stringify(ask),
       });
     } catch (exc) {
-      say(`没递出去：${(exc as Error).message}`, 'bad');
+      say(`提交失败：${(exc as Error).message}`, 'bad');
       return null;
     }
     const body = await response.text();
@@ -1991,7 +1964,7 @@ export function personaPage(shell: Chrome, options: Partial<PersonaDeps> = {}): 
       say('请选中需要保存的未保存章节；其他草稿会保留。', 'warn'); return;
     }
     if (names.length === 0) {
-      say('没有改动 —— 这一下没碰盘（要读盘上现在那一份，按「重载」）', 'warn'); return;
+      say('没有需要保存的修改。可点击“重载”获取最新内容。', 'warn'); return;
     }
     saving = true; saveButton.disabled = true; reloadButton.disabled = true; refreshHead();
     try {
@@ -2013,7 +1986,7 @@ export function personaPage(shell: Chrome, options: Partial<PersonaDeps> = {}): 
           if (at >= 0) dirty.splice(at, 1);
         } else {
           markDirty(name); // Compare with the just-acknowledged baseline, including an in-flight undo.
-          say('提交的那一版已保存；在途新输入仍是未保存草稿。', 'warn');
+          say('已保存提交的内容；保存期间新增的修改仍需保存。', 'warn');
         }
         markAllSaved(); refreshHead();
       }
@@ -2033,7 +2006,7 @@ export function personaPage(shell: Chrome, options: Partial<PersonaDeps> = {}): 
       let accepted = false;
       try {
         accepted = await confirmAction('放弃未保存草稿？',
-          '重载会放弃所有未保存草稿，并读取盘上新版。', '放弃草稿并重载');
+          '重载会放弃所有未保存草稿，并读取已保存的最新版本。', '放弃草稿并重载');
       } finally { confirmingReload = false; }
       if (!accepted || saving || pageStopped) return;
     }
@@ -2081,7 +2054,7 @@ export function personaPage(shell: Chrome, options: Partial<PersonaDeps> = {}): 
       pageStopped = true; readEpoch++;
       flushFocused();
       if (dirty.length > 0) {
-        const line = `这一页有 ${dirty.length} 段改过、没保存 —— 离开这一页就丢了`;
+        const line = `有 ${dirty.length} 段修改未保存，请保存后再离开。`;
         say(line, 'warn');
         const item = shell.railNav.querySelector('.rail-item[data-page="persona"]');
         if (item !== null) item.setAttribute('title', line);

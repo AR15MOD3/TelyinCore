@@ -30,6 +30,9 @@
 @import "./terminal-style.css";
 @import "./ui-chrome.css";
 @import "./workspace-layout.css";
+@import "./profile-refresh.css";
+@import "./page-frames.css";
+@import "./rail-layout.css";
 
 /* 源只登记这一处（这一页自己的目录）——
    ⚠️ **为什么不用它默认的自动探测**：默认是从当下工作目录往下扫（这里就是仓根），会把
@@ -873,7 +876,7 @@
     color: var(--color-dim);
   }
 
-  .line.tool > summary {
+  .line.tool > :is(summary, h3) {
     cursor: pointer;
     padding: 6px 10px;
     display: flex;
@@ -882,7 +885,7 @@
     list-style: none;
   }
 
-  .line.tool > summary::-webkit-details-marker {
+  .line.tool > :is(summary, h3)::-webkit-details-marker {
     display: none;
   }
 
@@ -1629,7 +1632,7 @@
     display: none;
   }
 
-  .page-knowledge .group[open] .group-head {
+  .page-knowledge .group:is([open], section) .group-head {
     color: var(--color-ink);
     font-weight: 600;
   }
@@ -2955,7 +2958,7 @@
   .cache-summary-row { padding: 5px 0; color: var(--color-dim); font-size: 13px; }
   .cache-summary-note, .cache-diagnostics { color: var(--color-faint); font-size: 11px;
     margin-top: 8px; }
-  .cache-diagnostics > summary { cursor: pointer; }
+  .cache-diagnostics > :is(summary, h3) { cursor: pointer; }
   .composer-cache-details .usage-note { margin-top: 6px; }
   .composer-cache svg { flex: none; width: 14px; height: 14px; }
 
@@ -4782,7 +4785,7 @@
   background: var(--color-wash);
 }
 
-.line.tool > summary {
+.line.tool > :is(summary, h3) {
   padding: 0;
 }
 
@@ -5547,7 +5550,7 @@
     padding-top: 8px;
     border-top: 1px solid var(--color-line);
   }
-  .composer-popover .cache-diagnostics > summary { padding: 3px 0; }
+  .composer-popover .cache-diagnostics > :is(summary, h3) { padding: 3px 0; }
   .composer-ring, .composer-when, .composer-cache {
     min-height: 28px;
     padding: 3px 8px;
@@ -5649,7 +5652,7 @@ body.rail-resizing, .rail-resizing .rail-resizer { transition: none; }
 .qq-sticker-tags { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-top: 7px; }
 .qq-sticker-tags span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: 1.5; padding: 1px 6px; font-size: 11px; border-radius: var(--radius-pill); background: var(--color-focus); color: var(--color-dim); }
 .qq-sticker-footer { position: relative; border-top: 1px solid var(--color-line); padding: 0 12px; }
-.qq-sticker-details summary { cursor: pointer; width: fit-content; padding: 11px 0; font-size: 12px; color: var(--color-dim); }
+.qq-sticker-details :is(summary, h3) { cursor: pointer; width: fit-content; padding: 11px 0; font-size: 12px; color: var(--color-dim); }
 .qq-sticker-details dl { margin: 0 0 14px; display: grid; gap: 4px; }
 .qq-sticker-details dt { color: var(--color-faint); font-size: 11px; }
 .qq-sticker-details dd { margin: 0 0 5px; color: var(--color-ink); font-size: 13px; line-height: 1.6; overflow-wrap: anywhere; white-space: pre-wrap; }

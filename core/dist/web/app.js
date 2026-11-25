@@ -294,286 +294,6 @@ function startPluginUpdates() {
   });
 }
 
-// core/src/web/client/package-updates.ts
-var last;
-var pending3;
-var installing = false;
-function paint3(card, state3) {
-  if (installing) return;
-  const current2 = card.querySelector("[data-version]");
-  const notice = card.querySelector("[data-update-message]");
-  card.dataset.updateState = state3.status;
-  const platform = { win: "Windows", linux: "Linux" }[state3.platform] ?? "";
-  const version = (value) => value.replace(/^beta\./, "");
-  const target = state3.pendingVersion || (state3.status === "available" ? state3.latest : void 0);
-  card.querySelector("h3").textContent = state3.pendingVersion ? "更新已就绪" : state3.status === "available" ? "发现新版本" : state3.status === "current" ? "已是最新版本" : state3.status === "unavailable" ? "检查更新失败" : "版本更新";
-  current2.textContent = target && state3.current ? version(state3.current) + " → " + version(target) : state3.current ? "v" + version(state3.current) : "版本未识别";
-  card.querySelector("[data-update-platform]").textContent = [platform, state3.current, state3.localPreview ? "本机验收源" : state3.channel === "acceptance" ? "验收更新" : ""].filter(Boolean).join(" · ");
-  const links = card.querySelector("[data-update-links]");
-  links.replaceChildren();
-  const history = card.querySelector("[data-update-history]");
-  const receipt = state3.lastInstall;
-  history.hidden = !receipt;
-  if (receipt) {
-    const source = { mirror: "GitHub 镜像", official: "GitHub 官方源", cache: "本地缓存", offline: "离线更新包", preview: "本机验收源" }[receipt.source];
-    const route2 = receipt.route === "proxy" ? " · 代理" : receipt.route === "direct" ? " · 直连" : "";
-    const previous = receipt.base ? receipt.base.replace(/^beta\./, "") + " → " + receipt.version.replace(/^beta\./, "") + "　" : "";
-    history.textContent = previous + "上次安装来源　" + source + route2;
-  }
-  const install = card.querySelector("[data-install]");
-  install.hidden = !(state3.pendingVersion || state3.installable && state3.status === "available");
-  install.textContent = state3.pendingVersion ? "安装并重启" : "更新并重启";
-  if (state3.pendingVersion) {
-    notice.textContent = "已下载并校验。安装会重启 Core，短暂中断会话。";
-  } else if (state3.status === "available") {
-    const tag = state3.platform + (state3.channel === "acceptance" ? "-acceptance-" : "-") + state3.latest;
-    const file = `Telyincore_${state3.platform}_${state3.current}_to_${state3.latest}_update.zip`;
-    const base = state3.releaseUrl?.split("/releases/tag/")[0];
-    const direct = base?.startsWith("https://github.com/") && state3.releaseUrl === base + "/releases/tag/" + tag && state3.downloadUrl === base + "/releases/download/" + tag + "/" + file;
-    notice.textContent = state3.required ? "请先更新再唤醒 Bot。安装会重启 Core。" : state3.installable ? "安装会重启 Core，短暂中断会话。" : "此版本需要手动下载安装。";
-    if (direct && state3.downloadUrl && !state3.installable) {
-      const download = document.createElement("a");
-      download.href = state3.downloadUrl;
-      download.download = file;
-      download.className = "package-download";
-      download.textContent = "下载更新包";
-      links.append(download);
-    } else if (!state3.installable) {
-      notice.textContent = state3.required ? "请先更新再唤醒 Bot。请从发布说明获取更新包。" : "请从发布说明获取适用的更新包。";
-    }
-    if (state3.releaseUrl?.startsWith("https://github.com/")) {
-      const notes = document.createElement("a");
-      notes.href = state3.releaseUrl;
-      notes.target = "_blank";
-      notes.rel = "noopener noreferrer";
-      notes.textContent = "查看发布说明";
-      links.append(notes);
-    }
-  } else if (state3.status === "current") {
-    notice.textContent = "当前无需更新。";
-  } else if (state3.status === "ahead") {
-    notice.textContent = "本机版本高于当前公开版本 " + state3.latest + "。";
-  } else {
-    notice.textContent = state3.status === "unavailable" ? "暂时无法确认新版本，请稍后重试。" : state3.message || "暂时无法检查更新。";
-  }
-  const details = card.querySelector("[data-update-details]");
-  const detailText = state3.status === "unavailable" ? state3.message : state3.checkRoute;
-  details.querySelector("[data-update-connection]").textContent = detailText || "";
-  links.hidden = !links.childElementCount;
-  const timing = card.querySelector("[data-update-timing]");
-  const time = (stamp) => new Date(stamp * 1e3).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-  timing.textContent = [
-    state3.checkedAt ? "最近检查 " + time(state3.checkedAt) : "",
-    state3.status === "unavailable" ? state3.nextCheckAt ? "服务运行期间将于 " + time(state3.nextCheckAt) + " 左右自动重试，也可立即重试。" : "可立即重试；服务运行期间也会自动检查。" : ""
-  ].filter(Boolean).join(" · ");
-  timing.hidden = !timing.textContent;
-  card.querySelector("[data-check-update]").textContent = state3.status === "unavailable" ? "重新检查" : "检查更新";
-}
-function paintTopbar(checking = false) {
-  const button3 = document.querySelector(".topbar-update");
-  if (!button3) return;
-  const available2 = last?.status === "available" && !!last.latest;
-  const failed = last?.status === "unavailable";
-  const version = last?.current ? "v" + last.current.replace(/^beta\./, "") : "版本";
-  button3.classList.toggle("has-update", !checking && available2);
-  button3.classList.toggle("check-failed", !checking && failed);
-  button3.setAttribute("aria-busy", String(checking));
-  button3.querySelector(".topbar-version-label").textContent = checking ? version + " · 检查中" : available2 ? "新版 " + last.latest.replace(/^beta\./, "") : failed ? version + " · 检查失败" : last?.status === "unconfigured" ? version + " · 未配置更新源" : last?.status === "unknown" ? "版本未识别" : version;
-  button3.title = checking ? "正在检查更新" : failed ? "暂时无法确认是否有新版本，点击查看原因并重试" : available2 ? "发现新版本 " + last.latest + "，查看版本更新" : last?.status === "current" ? "已确认是最新发布版本，点击查看详情" : "版本更新 · 查看详情";
-  button3.setAttribute("aria-label", button3.title);
-}
-async function check(force = false) {
-  if (pending3) {
-    if (!force) return pending3;
-    await pending3;
-    if (pending3) return pending3;
-  }
-  if (force || !last) paintTopbar(true);
-  pending3 = (async () => {
-    let state3;
-    try {
-      const reply = await fetch(
-        "/package-update" + (force ? "?refresh=1" : ""),
-        { cache: "no-store", signal: AbortSignal.timeout(2e4) }
-      );
-      if (!reply.ok) throw new Error();
-      state3 = await reply.json();
-    } catch {
-      state3 = {
-        platform: last?.platform ?? "",
-        current: last?.current ?? null,
-        status: "unavailable",
-        message: "暂时无法连接 Core 检查更新。"
-      };
-    }
-    last = state3;
-    document.querySelectorAll(".package-update-card").forEach((card) => paint3(card, state3));
-    paintTopbar();
-  })().finally(() => {
-    pending3 = void 0;
-  });
-  return pending3;
-}
-function openCoreUpdateDialog(opener) {
-  const dialog = document.createElement("dialog");
-  dialog.className = "avatar-crop-dialog package-update-dialog";
-  dialog.setAttribute("aria-label", "版本更新");
-  const close2 = document.createElement("button");
-  close2.type = "button";
-  close2.textContent = "关闭";
-  close2.addEventListener("click", () => dialog.close());
-  close2.className = "package-update-close";
-  close2.textContent = "×";
-  close2.setAttribute("aria-label", "关闭");
-  close2.title = "关闭";
-  dialog.append(close2, packageUpdateCard());
-  dialog.addEventListener("close", () => {
-    dialog.remove();
-    opener.focus();
-  }, { once: true });
-  document.body.append(dialog);
-  dialog.showModal();
-}
-function startPackageUpdates() {
-  const row2 = document.querySelector(".topbar-status");
-  if (row2 && !row2.querySelector(".topbar-update")) {
-    const button3 = document.createElement("button");
-    button3.type = "button";
-    button3.className = "topbar-update";
-    const mark = document.createElement("span");
-    mark.className = "topbar-version-mark";
-    mark.setAttribute("aria-hidden", "true");
-    const label = document.createElement("span");
-    label.className = "topbar-version-label";
-    label.textContent = "版本";
-    button3.append(mark, label);
-    button3.title = "版本更新 · 检查更新";
-    button3.setAttribute("aria-haspopup", "dialog");
-    button3.setAttribute("aria-label", button3.title);
-    button3.addEventListener("click", () => openCoreUpdateDialog(button3));
-    row2.append(button3);
-  }
-  void check();
-  window.setInterval(() => {
-    if (!document.hidden) void check();
-  }, 60 * 1e3);
-  window.addEventListener("core-control-refresh", () => {
-    if (!document.hidden) void check();
-  });
-  document.addEventListener("visibilitychange", () => {
-    if (!document.hidden) void check();
-  });
-}
-function packageUpdateCard() {
-  const card = document.createElement("section");
-  card.className = "settings-card package-update-card";
-  const title = document.createElement("h3");
-  title.textContent = "版本更新";
-  const current2 = document.createElement("p");
-  current2.dataset.version = "";
-  const notice = document.createElement("p");
-  notice.dataset.updateMessage = "";
-  notice.setAttribute("role", "status");
-  const button3 = document.createElement("button");
-  button3.type = "button";
-  button3.dataset.checkUpdate = "";
-  button3.className = "settings-language-button";
-  button3.textContent = "检查更新";
-  button3.addEventListener("click", async () => {
-    button3.disabled = true;
-    notice.textContent = "正在检查…";
-    try {
-      await check(true);
-    } finally {
-      button3.disabled = false;
-    }
-  });
-  const install = document.createElement("button");
-  install.type = "button";
-  install.className = "settings-language-button";
-  install.dataset.install = "";
-  install.hidden = true;
-  install.addEventListener("click", async () => {
-    if (installing) return;
-    const targetVersion = last?.pendingVersion || last?.latest;
-    if (!targetVersion) return;
-    installing = true;
-    install.disabled = true;
-    notice.textContent = "正在下载并校验，安装完成后会自动重启…";
-    let waitingForTransfer = true;
-    const showProgress = window.setInterval(async () => {
-      try {
-        const response = await fetch("/package-update", { cache: "no-store", signal: AbortSignal.timeout(2e3) });
-        if (!response.ok) return;
-        const state3 = await response.json();
-        if (waitingForTransfer && state3.installProgress) notice.textContent = state3.installProgress;
-      } catch {
-      }
-    }, 2e3);
-    try {
-      const response = await fetch("/package-update/install", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: "{}"
-      });
-      if (!response.ok) {
-        const detail = await response.json().catch(() => ({}));
-        throw new Error(detail.error || "更新未完成，请重试");
-      }
-      waitingForTransfer = false;
-      window.clearInterval(showProgress);
-      notice.textContent = "正在重启，等待新版 Core 就绪…";
-      const deadline = Date.now() + 12e4;
-      while (Date.now() < deadline) {
-        await new Promise((resolve) => setTimeout(resolve, 1500));
-        try {
-          const state3 = await fetch("/package-update", { cache: "no-store", signal: AbortSignal.timeout(4e3) });
-          if (state3.ok && (await state3.json()).current === targetVersion) {
-            window.location.reload();
-            return;
-          }
-        } catch {
-        }
-      }
-      notice.textContent = "尚未收到新版 Core 的就绪回应。请查看启动器状态。";
-    } catch (error) {
-      notice.textContent = error instanceof Error ? error.message : "更新失败，请重试。";
-    } finally {
-      waitingForTransfer = false;
-      window.clearInterval(showProgress);
-      installing = false;
-      install.disabled = false;
-    }
-  });
-  const history = document.createElement("p");
-  history.dataset.updateHistory = "";
-  history.hidden = true;
-  const timing = document.createElement("p");
-  timing.dataset.updateTiming = "";
-  timing.hidden = true;
-  const details = document.createElement("details");
-  details.dataset.updateDetails = "";
-  details.hidden = true;
-  const summary2 = document.createElement("summary");
-  summary2.textContent = "更新详情";
-  const platform = document.createElement("p");
-  platform.dataset.updatePlatform = "";
-  const connection = document.createElement("p");
-  connection.dataset.updateConnection = "";
-  details.append(summary2, platform, connection, timing, history);
-  details.hidden = false;
-  const links = document.createElement("div");
-  links.dataset.updateLinks = "";
-  const actions = document.createElement("div");
-  actions.className = "package-update-actions";
-  actions.append(button3, install);
-  card.append(title, current2, notice, links, details, actions);
-  if (last) paint3(card, last);
-  else notice.textContent = "正在读取版本信息…";
-  void check();
-  return card;
-}
-
 // core/src/web/client/ui-phrases.ts
 var traditional = {
   "国内镜像始终直连。切换到官方源时，按下方用途使用代理。": "國內鏡像一律直連。切換到官方來源時，依下方用途使用代理。",
@@ -1592,6 +1312,7 @@ var traditional = {
   "许可证": "許可證",
   "设为当前": "設爲當前",
   "设置": "設置",
+  "高级设置": "進階設定",
   "设置 · SETTINGS": "設置 · SETTINGS",
   "设置 —— 主题 ／ 颜色 ／ 预设": "設置 —— 主題 ／ 顏色 ／ 預設",
   "识别模型": "識別模型",
@@ -1790,7 +1511,102 @@ var traditional = {
   "；本 Bot 已启用语音发送": "；本 Bot 已啓用語音發送",
   "；本 Bot 未启用语音发送": "；本 Bot 未啓用語音發送",
   "；语音设置已保存，后续动作未确认。请刷新检查后再决定；未自动回滚或重试。": "；語音設置已保存，後續動作未確認。請刷新檢查後再決定；未自動回滾或重試。",
-  "🗑 确认删除": "🗑 確認刪除"
+  "🗑 确认删除": "🗑 確認刪除",
+  "画像加载失败，请重试。": "畫像加載失敗，請重試。",
+  "当前服务暂不支持查看画像。": "當前服務暫不支持查看畫像。",
+  "暂无画像记录。": "暫無畫像記錄。",
+  "暂无人物。": "暫無人物。",
+  "搜索姓名或账号": "搜索姓名或賬號",
+  "已达记录上限，新增记录会替换最旧记录": "已達記錄上限，新增記錄會替換最舊記錄",
+  " 条记录": " 條記錄",
+  "展开全部": "展開全部",
+  "账号信息不完整，请刷新后再操作。": "賬號信息不完整，請刷新後再操作。",
+  "尚未设置账号关联。": "尚未設置賬號關聯。",
+  "请填写平台账号。": "請填寫平臺賬號。",
+  "账号关联已变化，请刷新后重新确认。": "賬號關聯已變化，請刷新後重新確認。",
+  "经历加载失败，请重试。": "經歷加載失敗，請重試。",
+  "当前服务暂不支持查看经历。": "當前服務暫不支持查看經歷。",
+  "暂无经历。保存的对话和记录会显示在这里。": "暫無經歷。保存的對話和記錄會顯示在這裏。",
+  " 条 · ": " 條 · ",
+  "日期未知": "日期未知",
+  "知识库加载失败，请重试。": "知識庫加載失敗，請重試。",
+  "当前服务暂不支持查看知识库。": "當前服務暫不支持查看知識庫。",
+  "暂无知识库内容。": "暫無知識庫內容。",
+  "暂无文档。": "暫無文檔。",
+  "没有匹配结果。": "沒有匹配結果。",
+  "暂无正文。": "暫無正文。",
+  "搜索文档名称": "搜索文檔名稱",
+  "记忆加载失败，请重试。": "記憶加載失敗，請重試。",
+  "当前服务暂不支持查看记忆。": "當前服務暫不支持查看記憶。",
+  "待讨论": "待討論",
+  "未完成事项": "未完成事項",
+  "暂无自我记录。": "暫無自我記錄。",
+  "暂无记录。": "暫無記錄。",
+  "最近的自我记录": "最近的自我記錄",
+  "Bot 在整理记忆时更新。": "Bot 在整理記憶時更新。",
+  "暂无内容": "暫無內容",
+  "暂无主动记录。": "暫無主動記錄。",
+  "记忆记录": "記憶記錄",
+  "待讨论。可在对话中确认修改、保留或暂缓。": "待討論。可在對話中確認修改、保留或暫緩。",
+  "当前服务暂不支持。": "當前服務暫不支持。",
+  "技能加载失败，请重试。": "技能加載失敗，請重試。",
+  "当前服务暂不支持查看技能。": "當前服務暫不支持查看技能。",
+  "无已保存文件": "無已保存文件",
+  "此前已保存：": "此前已保存：",
+  " · 后续操作已完成": " · 後續操作已完成",
+  " · 文件已保存，后续操作未完成": " · 文件已保存，後續操作未完成",
+  "操作记录（最近 ": "操作記錄（最近 ",
+  "图片读取失败": "圖片讀取失敗",
+  "当前浏览器无法处理图片": "當前瀏覽器無法處理圖片",
+  "图片转换失败": "圖片轉換失敗",
+  "请选择 JPEG、PNG、WebP 或 GIF 图片": "請選擇 JPEG、PNG、WebP 或 GIF 圖片",
+  "无法打开图片，文件格式不支持或已损坏": "無法打開圖片，文件格式不支持或已损壞",
+  "图片压缩后仍超过 6 MB，请先缩小图片": "圖片壓縮後仍超過 6 MB，請先縮小圖片",
+  "输入消息…": "輸入消息…",
+  "已发送图片": "已發送圖片",
+  "待发送图片": "待發送圖片",
+  "移除图片": "移除圖片",
+  "查看上下文用量明细": "查看上下文用量明細",
+  "整理当前对话摘要，并在新的上下文中继续。": "整理當前對話摘要，並在新的上下文中繼續。",
+  "相关记忆会在后台整理。": "相關記憶會在後臺整理。",
+  "执行结果": "執行結果",
+  "工具参数与结果": "工具參數與結果",
+  "等待结果": "等待結果",
+  "仅有结果": "僅有結果",
+  "未返回结果正文。": "未返回結果正文。",
+  "尚未收到结果。": "尚未收到結果。",
+  " 条结果": " 條結果",
+  "，查看参数和结果": "，查看參數和結果",
+  "该模型的输出上限为 ": "該模型的輸出上限爲 ",
+  " token，已自动调整": " token，已自動調整",
+  "服务商或模型目录声明支持图片输入": "服務商或模型目錄聲明支持圖片輸入",
+  "服务商声明仅支持文本输入": "服務商聲明僅支持文本輸入",
+  "尚未确认图片能力，可手动设置": "尚未確認圖片能力，可手動設置",
+  "根据模型信息自动设置，也可手动调整": "根據模型信息自動設置，也可手動調整",
+  "未选择模型": "未選擇模型",
+  "删除草稿": "刪除草稿",
+  "已填入默认值，请检查后保存。": "已填入默認值，請檢查後保存。",
+  " 已保存密钥，输入新值可替换": " 已保存密鑰，輸入新值可替換",
+  "请先选择模型，再设为当前": "請先選擇模型，再設爲當前",
+  "加载中…": "加載中…",
+  "正在加载人设…": "正在加載人設…",
+  "此内容为只读": "此內容爲只讀",
+  "没有需要保存的修改。可点击“重载”获取最新内容。": "沒有需要保存的修改。可點擊“重載”獲取最新內容。",
+  " · 点击查看章节": " · 點擊查看章節",
+  "（未保存）": "（未保存）",
+  "内容背景": "內容背景",
+  "标签文字": "標頁文字",
+  "普通标签": "普通標頁",
+  "强调标签": "強調標頁",
+  "暂无已安装插件。": "暫無已安裝插件。",
+  "暂时无法连接 GitHub。": "暫時無法連接 GitHub。",
+  "未声明版本": "未聲明版本",
+  "暂无简介": "暫無簡介",
+  "未声明接口版本": "未聲明接口版本",
+  "未声明": "未聲明",
+  "（缓存结果，正在刷新）": "（緩存結果，正在刷新）",
+  "接口不兼容": "接口不兼容",
+  "页面未连接": "頁面未連接"
 };
 
 // core/src/web/client/display-storage.ts
@@ -1946,6 +1762,544 @@ function onUILanguage(listener) {
 }
 onDisplayScopeReady(() => setUILanguage(readDisplayLocal("ui-language") === "zh-Hant" ? "zh-Hant" : "zh-Hans", false));
 
+// core/src/web/client/text-detail.ts
+function showTextDetail(title, text2) {
+  const opener = document.activeElement;
+  const dialog = document.createElement("dialog");
+  dialog.className = "avatar-crop-dialog text-detail-dialog";
+  dialog.setAttribute("aria-label", title);
+  const heading2 = document.createElement("h2");
+  heading2.textContent = title;
+  const body = document.createElement("div");
+  body.className = "text-detail-body";
+  body.textContent = text2;
+  const actions = document.createElement("div");
+  actions.className = "avatar-crop-actions";
+  const close2 = document.createElement("button");
+  close2.type = "button";
+  coreSetUIText(close2, "textContent", corePhrase("关闭"));
+  close2.onclick = () => dialog.close();
+  actions.append(close2);
+  dialog.append(heading2, body, actions);
+  document.body.append(dialog);
+  dialog.addEventListener("close", () => {
+    dialog.remove();
+    if (opener?.isConnected) opener.focus();
+  }, { once: true });
+  dialog.showModal();
+  close2.focus();
+}
+
+// core/src/web/client/package-updates.ts
+var last;
+var pending3;
+var installing = false;
+function paint3(card, state3) {
+  if (installing) return;
+  const current2 = card.querySelector("[data-version]");
+  const notice = card.querySelector("[data-update-message]");
+  card.dataset.updateState = state3.status;
+  const platform = { win: "Windows", linux: "Linux" }[state3.platform] ?? "";
+  const version = (value) => value.replace(/^beta\./, "");
+  const target = state3.pendingVersion || (state3.status === "available" ? state3.latest : void 0);
+  card.querySelector("h3").textContent = state3.pendingVersion ? "更新已就绪" : state3.status === "available" ? "发现新版本" : state3.status === "current" ? "已是最新版本" : state3.status === "unavailable" ? "检查更新失败" : "版本更新";
+  current2.textContent = target && state3.current ? version(state3.current) + " → " + version(target) : state3.current ? "v" + version(state3.current) : "版本未识别";
+  card.querySelector("[data-update-platform]").textContent = [platform, state3.current, state3.localPreview ? "本机验收源" : state3.channel === "acceptance" ? "验收更新" : ""].filter(Boolean).join(" · ");
+  const links = card.querySelector("[data-update-links]");
+  links.replaceChildren();
+  const history = card.querySelector("[data-update-history]");
+  const receipt = state3.lastInstall;
+  history.hidden = !receipt;
+  if (receipt) {
+    const source = { mirror: "GitHub 镜像", official: "GitHub 官方源", cache: "本地缓存", offline: "离线更新包", preview: "本机验收源" }[receipt.source];
+    const route2 = receipt.route === "proxy" ? " · 代理" : receipt.route === "direct" ? " · 直连" : "";
+    const previous = receipt.base ? receipt.base.replace(/^beta\./, "") + " → " + receipt.version.replace(/^beta\./, "") + "　" : "";
+    history.textContent = previous + "上次安装来源　" + source + route2;
+  }
+  const install = card.querySelector("[data-install]");
+  install.hidden = !(state3.pendingVersion || state3.installable && state3.status === "available");
+  install.textContent = state3.pendingVersion ? "安装并重启" : "更新并重启";
+  if (state3.pendingVersion) {
+    notice.textContent = "已下载并校验。安装会重启 Core，短暂中断会话。";
+  } else if (state3.status === "available") {
+    const tag = state3.platform + (state3.channel === "acceptance" ? "-acceptance-" : "-") + state3.latest;
+    const file = `Telyincore_${state3.platform}_${state3.current}_to_${state3.latest}_update.zip`;
+    const base = state3.releaseUrl?.split("/releases/tag/")[0];
+    const direct = base?.startsWith("https://github.com/") && state3.releaseUrl === base + "/releases/tag/" + tag && state3.downloadUrl === base + "/releases/download/" + tag + "/" + file;
+    notice.textContent = state3.required ? "请先更新再唤醒 Bot。安装会重启 Core。" : state3.installable ? "安装会重启 Core，短暂中断会话。" : "此版本需要手动下载安装。";
+    if (direct && state3.downloadUrl && !state3.installable) {
+      const download = document.createElement("a");
+      download.href = state3.downloadUrl;
+      download.download = file;
+      download.className = "package-download";
+      download.textContent = "下载更新包";
+      links.append(download);
+    } else if (!state3.installable) {
+      notice.textContent = state3.required ? "请先更新再唤醒 Bot。请从发布说明获取更新包。" : "请从发布说明获取适用的更新包。";
+    }
+    if (state3.releaseUrl?.startsWith("https://github.com/")) {
+      const notes = document.createElement("a");
+      notes.href = state3.releaseUrl;
+      notes.target = "_blank";
+      notes.rel = "noopener noreferrer";
+      notes.textContent = "查看发布说明";
+      links.append(notes);
+    }
+  } else if (state3.status === "current") {
+    notice.textContent = "当前无需更新。";
+  } else if (state3.status === "ahead") {
+    notice.textContent = "本机版本高于当前公开版本 " + state3.latest + "。";
+  } else {
+    notice.textContent = state3.status === "unavailable" ? "暂时无法确认新版本，请稍后重试。" : state3.message || "暂时无法检查更新。";
+  }
+  const details = card.querySelector("[data-update-details]");
+  const detailText = state3.status === "unavailable" ? state3.message : state3.checkRoute;
+  details.querySelector("[data-update-connection]").textContent = detailText || "";
+  links.hidden = !links.childElementCount;
+  const timing = card.querySelector("[data-update-timing]");
+  const time = (stamp) => new Date(stamp * 1e3).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  timing.textContent = [
+    state3.checkedAt ? "最近检查 " + time(state3.checkedAt) : "",
+    state3.status === "unavailable" ? state3.nextCheckAt ? "服务运行期间将于 " + time(state3.nextCheckAt) + " 左右自动重试，也可立即重试。" : "可立即重试；服务运行期间也会自动检查。" : ""
+  ].filter(Boolean).join(" · ");
+  timing.hidden = !timing.textContent;
+  card.querySelector("[data-check-update]").textContent = state3.status === "unavailable" ? "重新检查" : "检查更新";
+  card.querySelector("[data-update-inspect]").disabled = false;
+}
+function paintTopbar(checking = false) {
+  const button3 = document.querySelector(".topbar-update");
+  if (!button3) return;
+  const available2 = last?.status === "available" && !!last.latest;
+  const failed = last?.status === "unavailable";
+  const version = last?.current ? "v" + last.current.replace(/^beta\./, "") : "版本";
+  button3.classList.toggle("has-update", !checking && available2);
+  button3.classList.toggle("check-failed", !checking && failed);
+  button3.setAttribute("aria-busy", String(checking));
+  button3.querySelector(".topbar-version-label").textContent = checking ? version + " · 检查中" : available2 ? "新版 " + last.latest.replace(/^beta\./, "") : failed ? version + " · 检查失败" : last?.status === "unconfigured" ? version + " · 未配置更新源" : last?.status === "unknown" ? "版本未识别" : version;
+  button3.title = checking ? "正在检查更新" : failed ? "暂时无法确认是否有新版本，点击查看原因并重试" : available2 ? "发现新版本 " + last.latest + "，查看版本更新" : last?.status === "current" ? "已确认是最新发布版本，点击查看详情" : "版本更新 · 查看详情";
+  button3.setAttribute("aria-label", button3.title);
+}
+async function check(force = false) {
+  if (pending3) {
+    if (!force) return pending3;
+    await pending3;
+    if (pending3) return pending3;
+  }
+  if (force || !last) paintTopbar(true);
+  pending3 = (async () => {
+    let state3;
+    try {
+      const reply = await fetch(
+        "/package-update" + (force ? "?refresh=1" : ""),
+        { cache: "no-store", signal: AbortSignal.timeout(2e4) }
+      );
+      if (!reply.ok) throw new Error();
+      state3 = await reply.json();
+    } catch {
+      state3 = {
+        platform: last?.platform ?? "",
+        current: last?.current ?? null,
+        status: "unavailable",
+        message: "暂时无法连接 Core 检查更新。"
+      };
+    }
+    last = state3;
+    document.querySelectorAll(".package-update-card").forEach((card) => paint3(card, state3));
+    paintTopbar();
+  })().finally(() => {
+    pending3 = void 0;
+  });
+  return pending3;
+}
+function openCoreUpdateDialog(opener) {
+  const dialog = document.createElement("dialog");
+  dialog.className = "avatar-crop-dialog package-update-dialog";
+  dialog.setAttribute("aria-label", "版本更新");
+  const close2 = document.createElement("button");
+  close2.type = "button";
+  close2.textContent = "关闭";
+  close2.addEventListener("click", () => dialog.close());
+  close2.className = "package-update-close";
+  close2.textContent = "×";
+  close2.setAttribute("aria-label", "关闭");
+  close2.title = "关闭";
+  dialog.append(close2, packageUpdateCard());
+  dialog.addEventListener("close", () => {
+    dialog.remove();
+    opener.focus();
+  }, { once: true });
+  document.body.append(dialog);
+  dialog.showModal();
+}
+function startPackageUpdates() {
+  const row2 = document.querySelector(".topbar-status");
+  if (row2 && !row2.querySelector(".topbar-update")) {
+    const button3 = document.createElement("button");
+    button3.type = "button";
+    button3.className = "topbar-update";
+    const mark = document.createElement("span");
+    mark.className = "topbar-version-mark";
+    mark.setAttribute("aria-hidden", "true");
+    const label = document.createElement("span");
+    label.className = "topbar-version-label";
+    label.textContent = "版本";
+    const caption = document.createElement("span");
+    caption.className = "topbar-update-caption";
+    caption.textContent = "检查更新";
+    button3.append(caption, mark, label);
+    button3.title = "版本更新 · 检查更新";
+    button3.setAttribute("aria-haspopup", "dialog");
+    button3.setAttribute("aria-label", button3.title);
+    button3.addEventListener("click", () => openCoreUpdateDialog(button3));
+    row2.append(button3);
+  }
+  void check();
+  window.setInterval(() => {
+    if (!document.hidden) void check();
+  }, 60 * 1e3);
+  window.addEventListener("core-control-refresh", () => {
+    if (!document.hidden) void check();
+  });
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) void check();
+  });
+}
+function packageUpdateCard() {
+  const card = document.createElement("section");
+  card.className = "settings-card package-update-card";
+  const title = document.createElement("h3");
+  title.textContent = "版本更新";
+  const current2 = document.createElement("p");
+  current2.dataset.version = "";
+  const notice = document.createElement("p");
+  notice.dataset.updateMessage = "";
+  notice.setAttribute("role", "status");
+  const button3 = document.createElement("button");
+  button3.type = "button";
+  button3.dataset.checkUpdate = "";
+  button3.className = "settings-language-button";
+  button3.textContent = "检查更新";
+  button3.addEventListener("click", async () => {
+    button3.disabled = true;
+    notice.textContent = "正在检查…";
+    try {
+      await check(true);
+    } finally {
+      button3.disabled = false;
+    }
+  });
+  const install = document.createElement("button");
+  install.type = "button";
+  install.className = "settings-language-button";
+  install.dataset.install = "";
+  install.hidden = true;
+  install.addEventListener("click", async () => {
+    if (installing) return;
+    const targetVersion = last?.pendingVersion || last?.latest;
+    if (!targetVersion) return;
+    installing = true;
+    install.disabled = true;
+    notice.textContent = "正在下载并校验，安装完成后会自动重启…";
+    let waitingForTransfer = true;
+    const showProgress = window.setInterval(async () => {
+      try {
+        const response = await fetch("/package-update", { cache: "no-store", signal: AbortSignal.timeout(2e3) });
+        if (!response.ok) return;
+        const state3 = await response.json();
+        if (waitingForTransfer && state3.installProgress) notice.textContent = state3.installProgress;
+      } catch {
+      }
+    }, 2e3);
+    try {
+      const response = await fetch("/package-update/install", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "{}"
+      });
+      if (!response.ok) {
+        const detail = await response.json().catch(() => ({}));
+        throw new Error(detail.error || "更新未完成，请重试");
+      }
+      waitingForTransfer = false;
+      window.clearInterval(showProgress);
+      notice.textContent = "正在重启，等待新版 Core 就绪…";
+      const deadline = Date.now() + 12e4;
+      while (Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+        try {
+          const state3 = await fetch("/package-update", { cache: "no-store", signal: AbortSignal.timeout(4e3) });
+          if (state3.ok && (await state3.json()).current === targetVersion) {
+            window.location.reload();
+            return;
+          }
+        } catch {
+        }
+      }
+      notice.textContent = "尚未收到新版 Core 的就绪回应。请查看启动器状态。";
+    } catch (error) {
+      notice.textContent = error instanceof Error ? error.message : "更新失败，请重试。";
+    } finally {
+      waitingForTransfer = false;
+      window.clearInterval(showProgress);
+      installing = false;
+      install.disabled = false;
+    }
+  });
+  const history = document.createElement("p");
+  history.dataset.updateHistory = "";
+  history.hidden = true;
+  const timing = document.createElement("p");
+  timing.dataset.updateTiming = "";
+  timing.hidden = true;
+  const details = document.createElement("section");
+  details.dataset.updateDetails = "";
+  details.hidden = true;
+  const summary2 = document.createElement("h3");
+  summary2.textContent = "更新详情";
+  const platform = document.createElement("p");
+  platform.dataset.updatePlatform = "";
+  const connection = document.createElement("p");
+  connection.dataset.updateConnection = "";
+  details.append(summary2, platform, connection, timing, history);
+  details.hidden = true;
+  const inspect = document.createElement("button");
+  inspect.type = "button";
+  inspect.className = "infinity-text-link";
+  inspect.textContent = "查看更新详情";
+  inspect.dataset.updateInspect = "";
+  inspect.disabled = true;
+  inspect.onclick = () => showTextDetail(
+    "更新详情",
+    [platform, connection, timing, history].filter((e) => !e.hidden).map((e) => e.textContent).filter(Boolean).join("\n\n") || notice.textContent || "版本信息正在读取，请稍后重试。"
+  );
+  const links = document.createElement("div");
+  links.dataset.updateLinks = "";
+  const actions = document.createElement("div");
+  actions.className = "package-update-actions";
+  actions.append(button3, install);
+  card.append(title, current2, notice, links, details, inspect, actions);
+  if (last) paint3(card, last);
+  else notice.textContent = "正在读取版本信息…";
+  void check();
+  return card;
+}
+
+// core/src/web/client/quick-search.ts
+function installQuickSearch(rail) {
+  const nav = rail.querySelector(".rail-nav");
+  if (!nav) return;
+  const trigger = document.createElement("button");
+  trigger.type = "button";
+  trigger.className = "rail-search";
+  trigger.append(icon("search"), document.createTextNode("搜索"));
+  const key2 = document.createElement("kbd");
+  key2.textContent = /Mac|iPhone|iPad/.test(navigator.platform) ? "⌘ K" : "Ctrl K";
+  trigger.append(key2);
+  trigger.setAttribute("aria-label", "搜索页面和插件");
+  trigger.setAttribute("aria-controls", "rail-search-panel");
+  trigger.setAttribute("aria-expanded", "false");
+  trigger.setAttribute("aria-keyshortcuts", "Control+K Meta+K");
+  rail.querySelector(".rail-brand")?.after(trigger);
+  const panel2 = document.createElement("section");
+  panel2.id = "rail-search-panel";
+  panel2.className = "rail-search-panel";
+  panel2.hidden = true;
+  panel2.setAttribute("aria-label", "搜索页面和插件");
+  const header = document.createElement("div");
+  header.className = "rail-search-field";
+  const input2 = document.createElement("input");
+  input2.type = "search";
+  input2.placeholder = "搜索页面或插件";
+  input2.setAttribute("role", "combobox");
+  input2.setAttribute("aria-label", "搜索页面和插件");
+  input2.setAttribute("aria-expanded", "false");
+  input2.setAttribute("aria-controls", "quick-search-results");
+  input2.setAttribute("aria-autocomplete", "list");
+  const close2 = document.createElement("button");
+  close2.type = "button";
+  close2.append(icon("close"));
+  close2.setAttribute("aria-label", "关闭搜索");
+  close2.title = "关闭搜索（Esc）";
+  const count4 = document.createElement("p");
+  count4.className = "rail-search-count";
+  const list = document.createElement("div");
+  list.id = "quick-search-results";
+  list.className = "rail-search-results";
+  list.setAttribute("role", "listbox");
+  list.setAttribute("aria-label", "搜索结果");
+  const note = document.createElement("p");
+  note.className = "rail-search-note";
+  note.setAttribute("role", "status");
+  const footer = document.createElement("p");
+  footer.className = "rail-search-help";
+  footer.textContent = "↑ ↓ 选择 · Enter 打开 · Esc 返回";
+  header.append(icon("search"), input2, close2);
+  panel2.append(header, count4, list, note, footer);
+  trigger.after(panel2);
+  let selected = 0, matches = [], plugins = [], epoch = 0;
+  let previous = null;
+  const words = {
+    live: "聊天 控制台 console chat",
+    engine: "模型 API 接口 密钥 model",
+    persona: "人设 角色 persona",
+    memory: "记忆 memory",
+    people: "画像 人物 QQ 账号关联 profile",
+    experience: "经历 对话历史 history",
+    knowledge: "知识库 knowledge",
+    plugin: "插件市场 安装 market",
+    infinity: "插件总览 已安装 更新 plugins"
+  };
+  const catalog = () => {
+    const map = /* @__PURE__ */ new Map();
+    for (const link of nav.querySelectorAll("a.rail-item[href]")) {
+      const href = link.getAttribute("href");
+      const id = href.replace(/^#\//, "");
+      map.set(href, {
+        title: link.querySelector(".rail-label")?.textContent || link.textContent || id,
+        kind: id.startsWith("infinity/") ? "插件配置" : "页面",
+        words: words[id] || id,
+        href
+      });
+    }
+    for (const hit2 of plugins) if (!map.has(hit2.href)) map.set(hit2.href, hit2);
+    map.set("#/settings", { title: "高级设置", kind: "页面", words: "外观 主题 配色 存储 网络 代理 settings", href: "#/settings" });
+    return [...map.values()];
+  };
+  const dismiss = (restoreFocus = true) => {
+    if (panel2.hidden) return;
+    epoch++;
+    panel2.hidden = true;
+    trigger.hidden = false;
+    nav.hidden = false;
+    document.body.classList.remove("rail-searching");
+    trigger.setAttribute("aria-expanded", "false");
+    input2.setAttribute("aria-expanded", "false");
+    if (restoreFocus) {
+      if (previous instanceof HTMLElement && previous.isConnected) previous.focus();
+      else trigger.focus();
+    }
+  };
+  const choose = (hit2) => {
+    dismiss();
+    location.hash = hit2.href;
+    if (document.body.classList.contains("compact-menu-open"))
+      document.querySelector(".compact-menu-toggle")?.click();
+  };
+  const paint4 = () => {
+    const query = input2.value.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    matches = catalog().filter((hit2) => query.every((q) => (hit2.title + " " + hit2.words).toLowerCase().includes(q)));
+    selected = Math.min(selected, Math.max(0, matches.length - 1));
+    list.replaceChildren();
+    count4.textContent = query.length ? `找到 ${matches.length} 项` : "页面与插件";
+    matches.forEach((hit2, i) => {
+      const row2 = document.createElement("div");
+      row2.className = "rail-search-hit";
+      row2.id = "quick-search-hit-" + i;
+      row2.setAttribute("role", "option");
+      row2.setAttribute("aria-selected", String(i === selected));
+      const label = document.createElement("span");
+      label.textContent = hit2.title;
+      const kind = document.createElement("small");
+      kind.textContent = hit2.kind;
+      row2.append(label, kind);
+      row2.onclick = () => choose(hit2);
+      list.append(row2);
+    });
+    if (matches.length) input2.setAttribute("aria-activedescendant", "quick-search-hit-" + selected);
+    else {
+      input2.removeAttribute("aria-activedescendant");
+      const empty = document.createElement("p");
+      empty.className = "rail-search-empty";
+      empty.textContent = "没有找到页面或插件，试试其他关键词。";
+      list.append(empty);
+    }
+  };
+  const open = async () => {
+    if (document.querySelector('dialog[open], [role="alertdialog"]')) return;
+    if (window.matchMedia("(max-width: 720px)").matches && !document.body.classList.contains("compact-menu-open"))
+      document.querySelector(".compact-menu-toggle")?.click();
+    if (!panel2.hidden) {
+      input2.focus();
+      return;
+    }
+    previous = document.activeElement;
+    trigger.hidden = true;
+    nav.hidden = true;
+    panel2.hidden = false;
+    document.body.classList.add("rail-searching");
+    trigger.setAttribute("aria-expanded", "true");
+    input2.setAttribute("aria-expanded", "true");
+    input2.value = "";
+    selected = 0;
+    plugins = [];
+    note.textContent = "正在读取插件…";
+    paint4();
+    input2.focus();
+    const mine = ++epoch;
+    try {
+      const data = await getStatusJson("/plugins");
+      if (mine !== epoch || panel2.hidden) return;
+      plugins = (data.plugins || []).filter((p) => p.installed !== false).map((p) => ({
+        title: p.displayName || p.name,
+        kind: "插件配置",
+        words: p.name,
+        href: "#/infinity/" + encodeURIComponent(p.name)
+      }));
+      note.textContent = "";
+      paint4();
+    } catch {
+      if (mine === epoch && !panel2.hidden) note.textContent = "插件暂不可用，仍可搜索页面。";
+    }
+  };
+  trigger.onclick = () => {
+    void open();
+  };
+  close2.onclick = () => dismiss();
+  input2.oninput = () => {
+    selected = 0;
+    paint4();
+    list.scrollTop = 0;
+  };
+  panel2.addEventListener("keydown", (e) => {
+    if (e.isComposing) return;
+    if (e.key === "Escape") {
+      e.preventDefault();
+      e.stopPropagation();
+      dismiss();
+    }
+  });
+  input2.addEventListener("keydown", (e) => {
+    if (e.isComposing || !matches.length) return;
+    if (e.key === "Enter") {
+      e.preventDefault();
+      choose(matches[selected]);
+    }
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault();
+      selected = (selected + (e.key === "ArrowDown" ? 1 : -1) + matches.length) % matches.length;
+      paint4();
+      document.getElementById("quick-search-hit-" + selected)?.scrollIntoView({ block: "nearest" });
+    }
+  });
+  document.addEventListener("click", (event) => {
+    if (panel2.hidden) return;
+    const path = event.composedPath();
+    if (path.includes(trigger) || path.includes(header) || path.some((node6) => node6 instanceof Element && node6.classList.contains("rail-search-hit"))) return;
+    if (event.target === list) {
+      const box = list.getBoundingClientRect();
+      if (event.clientX >= box.left + list.clientLeft + list.clientWidth) return;
+    }
+    dismiss(false);
+  }, true);
+  window.addEventListener("hashchange", () => dismiss(false));
+  document.addEventListener("keydown", (e) => {
+    if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === "k") {
+      e.preventDefault();
+      if (!e.repeat) void open();
+    }
+  });
+}
+
 // core/src/web/client/rail-resize.ts
 var WIDTH_KEY = "telyincore.rail-width";
 var DEFAULT_WIDTH = 280;
@@ -1988,7 +2342,7 @@ function installRailResize(root, rail) {
   const animations = /* @__PURE__ */ new Set();
   const apply = (dragging = false) => {
     width = dragging ? dragRailWidth(preferred, window.innerWidth) : clampRailWidth(preferred, window.innerWidth);
-    const nextCompact = width < 134;
+    const nextCompact = width < 200;
     const reduced = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true;
     const changing = initialized && compact2 !== nextCompact && !reduced;
     if (changing) {
@@ -1996,10 +2350,10 @@ function installRailResize(root, rail) {
       animations.clear();
     }
     const movers = changing ? Array.from(rail.querySelectorAll?.(
-      ".rail-item > .icon, .rail-avatar, .rail-action, .rail-brandmark"
+      ".rail-item > .icon, .rail-search > .icon, .rail-action, .rail-mark"
     ) ?? []) : [];
     const before = movers.map((element3) => element3.getBoundingClientRect());
-    if (changing && nextCompact) {
+    if (changing && nextCompact && !dragging) {
       for (const label of rail.querySelectorAll?.(
         ".rail-label, .rail-brandname, .rail-name"
       ) ?? []) {
@@ -2026,8 +2380,14 @@ function installRailResize(root, rail) {
           }],
           { duration: 120, easing: "ease-out" }
         );
-        animation.onfinish = () => ghost.remove();
-        animation.oncancel = () => ghost.remove();
+        animation.onfinish = () => {
+          ghost.remove();
+          animations.delete(animation);
+        };
+        animation.oncancel = () => {
+          ghost.remove();
+          animations.delete(animation);
+        };
         animations.add(animation);
       }
     }
@@ -2041,17 +2401,22 @@ function installRailResize(root, rail) {
         const animation = element3.animate([
           { transform: `translate(${from.left - after.left}px, ${from.top - after.top}px)` },
           { transform: "translate(0, 0)" }
-        ], { duration: 260, easing: "cubic-bezier(.22, 1, .36, 1)" });
+        ], { duration: dragging ? 120 : 260, easing: "cubic-bezier(.22, 1, .36, 1)" });
         animations.add(animation);
+        animation.onfinish = () => animations.delete(animation);
+        animation.oncancel = () => animations.delete(animation);
       });
-      if (!nextCompact) {
+      if (!nextCompact && !dragging) {
         for (const label of rail.querySelectorAll?.(
           ".rail-label, .rail-brandname, .rail-name"
         ) ?? []) {
-          animations.add(label.animate(
+          const animation = label.animate(
             [{ opacity: 0 }, { opacity: 1 }],
             { duration: 200, delay: 60, fill: "backwards", easing: "ease-out" }
-          ));
+          );
+          animations.add(animation);
+          animation.onfinish = () => animations.delete(animation);
+          animation.oncancel = () => animations.delete(animation);
         }
       }
     }
@@ -2231,7 +2596,7 @@ function assetUrl(name) {
 // core/src/web/client/look.ts
 var THE_LOOK_ROWS = [
   ["--color-ink", "正文"],
-  ["--color-dim", "次要的字"],
+  ["--color-dim", "次要文字"],
   ["--color-canvas", "底色"],
   ["--color-line", "分隔线"],
   ["--color-mint", "强调"],
@@ -2861,7 +3226,8 @@ var ICONS = {
   note: "M5.2 3.2h6.4l3.2 3.2v10.4H5.2zM11.4 3.2v3.4h3.4M7.6 10.2h4.8M7.6 13.2h4.8",
   layers: "M10 3.2l6.4 3.3-6.4 3.3-6.4-3.3zM3.6 10.2l6.4 3.3 6.4-3.3M3.6 13.4l6.4 3.3 6.4-3.3",
   search: "M8.5 3.5a5 5 0 1 0 0 10 5 5 0 0 0 0-10zM12 12l4.5 4.5",
-  close: "M5.5 5.5l9 9M14.5 5.5l-9 9"
+  close: "M5.5 5.5l9 9M14.5 5.5l-9 9",
+  edit: "M11.8 4.2l4 4M3.5 16.5l4.5-1 9-9a1.5 1.5 0 0 0 0-2.1l-1.4-1.4a1.5 1.5 0 0 0-2.1 0l-9 9z"
 };
 function icon(name) {
   const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
@@ -3104,7 +3470,7 @@ async function pressTheGate(button3) {
 }
 var RAIL_ACTIONS = [
   { key: "run", glyph: "▶", title: "唤醒 / 静候：恢复处理或暂停新请求" },
-  { key: "settings", glyph: "⚙", title: "设置 —— 主题 ／ 颜色 ／ 预设" },
+  { key: "settings", glyph: "⚙", title: "高级设置" },
   {
     key: "shutdown",
     glyph: "⏻",
@@ -3193,9 +3559,8 @@ async function uploadAvatar(blob, signal) {
   await loadAvatar();
   return true;
 }
-function railFoot() {
-  const foot = node("div", "rail-foot");
-  const who = node("div", "rail-who");
+function botIdentity() {
+  const who = node("div", "rail-who bot-context");
   const face = node("span", "rail-avatar", speaker().slice(0, 1));
   face.setAttribute("data-avatar-loading", "true");
   coreSetUIText(face, "title", corePhrase("选择图片并裁剪头像"));
@@ -3228,16 +3593,24 @@ function railFoot() {
   who.append(face, picker);
   const name = node("button", "rail-name", speaker());
   coreSetUIText(name, "title", corePhrase("双击修改显示名（不更改文件夹名）"));
-  name.addEventListener("dblclick", () => {
+  const editName = () => {
     void botDialog(name.textContent || speaker()).catch((error) => {
       void notifyAction("显示名无法更新", String(error));
     });
-  });
-  who.append(name);
-  foot.append(who);
+  };
+  name.addEventListener("dblclick", editName);
+  const copy = node("div", "bot-context-copy");
+  const caption = node("span", "bot-context-caption");
+  coreSetUIText(caption, "textContent", corePhrase("当前 Bot"));
+  copy.append(caption, name);
+  who.append(copy);
   void loadAvatar();
   void loadLook();
-  const actions = node("div", "rail-actions");
+  return who;
+}
+function railFoot() {
+  const foot = node("div", "rail-foot");
+  const secondary = node("div", "rail-secondary");
   for (const { key: key2, title, glyph } of RAIL_ACTIONS) {
     const button3 = node("button", `rail-action rail-${key2}`, glyph);
     button3.title = title;
@@ -3262,23 +3635,27 @@ function railFoot() {
         void shutItDown(button3);
       });
     }
-    actions.append(button3);
+    if (key2 === "settings") {
+      const label = node("span", "rail-action-label");
+      uiLabel(label, "高级设置");
+      button3.append(label);
+      secondary.prepend(button3);
+    } else secondary.append(button3);
   }
-  foot.append(actions);
+  foot.prepend(secondary);
   return foot;
 }
-function topbar() {
+function topbar(identity) {
   const bar2 = node("header", "topbar");
   const summary2 = node("div", "topbar-summary");
   const right = node("div", "topbar-right");
-  right.append(
-    node("span", "topbar-providerlabel", corePhrase("当前模型")),
-    node("span", "topbar-model", "—"),
-    providerChip()
-  );
+  const modelLink = node("a", "topbar-model", "—");
+  modelLink.href = "#/engine";
+  modelLink.setAttribute("aria-label", "打开模型配置");
+  right.append(node("span", "topbar-providerlabel", corePhrase("当前模型")), modelLink, providerChip());
   summary2.append(node("div", "topbar-chips"), right);
   const row2 = node("div", "topbar-status");
-  row2.append(node("span", "sdot"), node("span", "topbar-name", speaker()));
+  row2.append(identity);
   bar2.append(summary2, row2);
   return bar2;
 }
@@ -3293,9 +3670,10 @@ function createShell(root) {
   brand.title = "TelyinCore";
   brand.append(mark, node("span", "rail-brandname", "TelyinCore"));
   const nav = node("nav", "rail-nav");
+  const identity = botIdentity();
   const foot = railFoot();
   rail.append(brand, nav, foot);
-  const bar2 = topbar();
+  const bar2 = topbar(identity);
   bar2.id = "topbar";
   const content = node("main", "content");
   content.id = "content";
@@ -3326,10 +3704,10 @@ function createShell(root) {
   });
   root.replaceChildren(rail, column, menuToggle);
   installRailResize(root, rail);
+  installQuickSearch(rail);
   const query = (cls) => bar2.querySelector(cls);
-  const face = foot.querySelector(".rail-avatar");
-  const railName = foot.querySelector(".rail-name");
-  const topName = query(".topbar-name");
+  const face = identity.querySelector(".rail-avatar");
+  const railName = identity.querySelector(".rail-name");
   const chips = query(".topbar-chips");
   const counters = (pairs) => {
     chips.replaceChildren();
@@ -3357,8 +3735,7 @@ function createShell(root) {
       chips,
       right: query(".topbar-right"),
       model: query(".topbar-model"),
-      provider: query(".topbar-provider"),
-      status: query(".sdot")
+      provider: query(".topbar-provider")
     },
     counters,
     /** 第 **i** 组的落点（页表那一列里第 i 个组 —— 壳只认**位次**）。
@@ -3370,15 +3747,11 @@ function createShell(root) {
       if (previous) previous.replaceWith(next);
       else nav.append(next);
     },
-    /** **把那个名字写进那三处**（`.rail-avatar` 的首字 ／ `.rail-name` ／ `.topbar-name`）
-     * —— 名字从她自己的档案读（`speaker.ts`），而壳自己**不 fetch**：入口读好递进来。 */
+    /** Refresh the current Bot identity from the shared display-name source. */
     setSpeaker(name) {
       face.textContent = name.slice(0, 1);
       railName.textContent = name;
-      topName.textContent = name;
-      for (const label of [railName, topName]) {
-        label.setAttribute("data-name-loading", String(!speakerReady()));
-      }
+      railName.setAttribute("data-name-loading", String(!speakerReady()));
     }
   };
   return { shell: shell2, topbar: shell2.bar };
@@ -3424,11 +3797,11 @@ var guide = [
   ["图片与表情", "qq_list_custom_faces", "列出收藏表情"],
   ["图片与表情", "qq_inspect_custom_face", "识别表情包内容"],
   ["图片与表情", "qq_collect_sticker", "收藏表情包"],
-  ["图片与表情", "qq_correct_sticker", "按 owner 的纠正更新表情资料"],
+  ["图片与表情", "qq_correct_sticker", "按用户纠正更新表情资料"],
   ["图片与表情", "qq_send_custom_face", "发送收藏表情"],
   ["图片与表情", "qq_send_saved_image", "发回收到的图片或 GIF"],
   ["主动分享", "qq_sharing_preview", "审核拟分享的内容"],
-  ["主动分享", "qq_share_to_owner", "向 owner 分享"]
+  ["主动分享", "qq_share_to_owner", "向主人分享"]
 ];
 function el2(tag, cls = "", text2 = "") {
   const item = document.createElement(tag);
@@ -3450,7 +3823,7 @@ function qqToolbox() {
   search.placeholder = "搜索用途或工具名";
   search.setAttribute("aria-label", search.placeholder);
   const list = el2("div", "qq-tools-groups");
-  card.append(header, el2("p", "qq-diagnostic-description", "已注册的工具仍受当前会话、账号权限和服务配置限制。展开可查看说明和参数。"), search, list);
+  card.append(header, el2("p", "qq-diagnostic-description", "已注册的工具仍受当前会话、账号权限和服务配置限制。下方列出各项说明和参数。"), search, list);
   root.append(card);
   let data;
   let state3 = "正在读取";
@@ -3472,18 +3845,23 @@ function qqToolbox() {
       const section = el2("section", "qq-tools-section");
       section.append(el2("h4", "", group));
       for (const row2 of filtered.filter((row3) => row3.group === group)) {
-        const item = el2("details", "qq-tool-item");
-        const line = el2("summary");
+        const item = el2("section", "qq-tool-item");
+        const line = el2("h3");
         const label = el2("span", "qq-tool-label");
         label.append(el2("span", "", row2.title), el2("code", "", row2.name));
         line.append(label, el2("small", row2.tool ? "qq-tool-on" : "", row2.tool ? "已注册" : data ? "未注册" : "待核实"));
         item.append(line);
-        if (row2.tool) {
-          item.append(el2("p", "", row2.tool.description));
-          if (row2.tool.parameters.length) item.append(el2("p", "qq-tool-params", "参数 · " + row2.tool.parameters.map((p) => p + (row2.tool.required.includes(p) ? "（必填）" : "")).join("、")));
-        } else {
-          item.append(el2("p", "", "官方 QQ 插件的功能说明。当前注册状态以本 Bot 加载的插件和配置为准。"));
-        }
+        const description = row2.tool?.description || "官方 QQ 插件的功能说明。当前注册状态以本 Bot 加载的插件和配置为准。";
+        item.append(el2("p", "qq-tool-description", description));
+        const more = el2("button", "compact-more", "显示全部");
+        more.type = "button";
+        more.setAttribute("aria-label", "显示全部：" + row2.title);
+        more.onclick = () => showTextDetail(row2.title, [
+          row2.name,
+          description,
+          row2.tool?.parameters.length ? "参数 · " + row2.tool.parameters.map((p) => p + (row2.tool.required.includes(p) ? "（必填）" : "")).join("、") : ""
+        ].filter(Boolean).join("\n\n"));
+        item.append(more);
         section.append(item);
       }
       list.append(section);
@@ -3728,9 +4106,9 @@ function qqStickers() {
       const top = element3("div");
       top.className = "qq-sticker-overview";
       top.append(preview, body);
-      const details = element3("details");
+      const details = element3("button", "查看详情");
       details.className = "qq-sticker-details";
-      details.append(element3("summary", "详情"));
+      details.type = "button";
       const fields = element3("dl");
       for (const [label, value] of [
         ["添加来源", face.addedBy || "账号原有·来源未记录"],
@@ -3738,7 +4116,7 @@ function qqStickers() {
         ["标签", face.tags.join(" · ") || "暂无标签"],
         [face.editedReason ? "手动备注" : face.addedBy === "Bot 自主收藏" ? "收藏理由" : "使用想法", face.reason || "尚未记录"]
       ]) fields.append(element3("dt", label), element3("dd", value));
-      details.append(fields);
+      details.onclick = () => showTextDetail("表情详情", Array.from(fields.children).map((e) => e.textContent || "").join("\n"));
       const actions = element3("div");
       actions.className = "qq-sticker-actions";
       actions.append(button3("编辑", () => edit(face)), button3("删除", () => {
@@ -3850,7 +4228,7 @@ function qqStickers() {
 // core/src/web/client/qq-voice-setup.ts
 function voiceSetup(kind, selection) {
   const section = document.createElement("details");
-  section.className = "qq-voice-setup";
+  section.className = "qq-voice-setup compact-disclosure";
   section.setAttribute("aria-label", kind === "tts" ? "TTS 首次配置" : "ASR 首次配置");
   const summary2 = document.createElement("summary");
   summary2.textContent = "首次配置";
@@ -3924,9 +4302,6 @@ function voiceSetup(kind, selection) {
         result.textContent = "未能预选随包音频，可重试或选择自己的 WAV。";
       }
     };
-    section.addEventListener("toggle", () => {
-      if (section.open && !file.files?.length) void selectDefault();
-    });
     file.addEventListener("change", () => {
       restore.hidden = !file.files?.length;
       if (restore.hidden) void selectDefault();
@@ -3983,8 +4358,9 @@ function voiceSetup(kind, selection) {
     ready: () => passed === key2(),
     require: () => {
       section.open = true;
+      section.scrollIntoView({ block: "nearest" });
       result.textContent = "首次启用前请完成自检。";
-      summary2.focus();
+      check2.focus();
     },
     status(issue, unavailable = false) {
       blocked = unavailable;
@@ -4436,9 +4812,9 @@ function createQQEnvironment() {
 
 // core/src/web/client/voice-corpus-panel.ts
 function voiceCorpusPanel() {
-  const root = document.createElement("details");
+  const root = document.createElement("section");
   root.className = "voice-corpus";
-  const title = document.createElement("summary");
+  const title = document.createElement("h3");
   coreSetUIText(title, "textContent", corePhrase("认可素材库 · 当前 Bot"));
   const hint = document.createElement("p");
   hint.className = "infinity-hint";
@@ -4623,14 +4999,10 @@ function voiceCorpusPanel() {
     offset += 20;
     void run(show);
   });
-  root.addEventListener("toggle", () => {
-    if (root.open) void run(show);
-    else for (const audio of list.querySelectorAll("audio")) audio.pause();
-  });
   return Object.assign(root, {
     start() {
       active2 = true;
-      if (root.open) void run(show);
+      void run(show);
     },
     stop() {
       active2 = false;
@@ -4794,7 +5166,7 @@ function node2(tag, className, text2) {
 }
 function stateOf(plugin) {
   if (plugin.installed === false) return "未安装";
-  if (plugin.contract) return "契约不兼容";
+  if (plugin.contract) return "接口不兼容";
   if (plugin.loaded) return "运行中";
   if (plugin.enabled) return "已启用 · 未加载";
   return "已停用";
@@ -4826,6 +5198,7 @@ function infinityPage(shell2, pluginName = "") {
   const cards = node2("div", "infinity-cards");
   const message = node2("p", "infinity-message");
   const qqPanel = node2("section", "infinity-qq-panel");
+  const panelScroll = node2("div", "page-scroll qq-panel-scroll");
   const health = node2("div", "infinity-health");
   const tabs = node2("div", "infinity-tabs");
   tabs.setAttribute("role", "tablist");
@@ -5205,6 +5578,7 @@ function infinityPage(shell2, pluginName = "") {
   const firstSetup = node2("section", "snow-first-setup");
   const firstSetupToggle = node2("button", "infinity-action", "查看首次部署步骤");
   firstSetupToggle.type = "button";
+  firstSetup.hidden = true;
   firstSetupToggle.setAttribute("aria-expanded", "false");
   const setupActions = node2("div", "snow-setup-actions");
   setupActions.append(initialPassword, passwordResult);
@@ -5234,12 +5608,12 @@ function infinityPage(shell2, pluginName = "") {
   firstSetup.append(checklist);
   firstSetup.id = "snow-first-setup";
   firstSetupToggle.setAttribute("aria-controls", firstSetup.id);
-  firstSetup.hidden = true;
+  firstSetup.prepend(node2("h3", "", "首次部署步骤"));
   firstSetupToggle.addEventListener("click", () => {
     firstSetup.hidden = !firstSetup.hidden;
-    if (firstSetup.hidden) clearInitialPassword();
     firstSetupToggle.setAttribute("aria-expanded", String(!firstSetup.hidden));
-    firstSetupToggle.textContent = !firstSetup.hidden ? "收起首次部署步骤" : "查看首次部署步骤";
+    firstSetupToggle.textContent = firstSetup.hidden ? "查看首次部署步骤" : "收起首次部署步骤";
+    if (!firstSetup.hidden) firstSetup.scrollIntoView({ block: "nearest" });
   });
   serviceActions.append(serviceIdentity, serviceUtilities);
   const connectionActions = node2("div", "snow-secondary-actions");
@@ -5251,10 +5625,8 @@ function infinityPage(shell2, pluginName = "") {
   const connectionTools = node2("div", "snow-connection-tools");
   connectionTools.append(connectionActions, firstSetupToggle);
   commonActions.append(serviceActions, connectionTools);
-  const setupDetails = node2("details", "snow-onboarding");
-  setupDetails.open = true;
+  const setupDetails = node2("details", "snow-onboarding compact-disclosure");
   setupDetails.append(node2("summary", "", "账号与管理凭据"), accountFields, accountActions);
-  let setupInitialStateApplied = false;
   const setupHint = node2("p", "infinity-hint");
   setupHint.setAttribute("role", "status");
   setupHint.hidden = true;
@@ -5279,6 +5651,7 @@ function infinityPage(shell2, pluginName = "") {
       tab.addEventListener("click", () => {
         clearFeedback();
         tabTouched = true;
+        panelScroll.scrollTop = 0;
         writePluginTab("core-infinity-qq", section.id);
         if (section.pane !== snowPane) clearInitialPassword();
         for (const [position, item] of sections.entries()) {
@@ -5313,12 +5686,12 @@ function infinityPage(shell2, pluginName = "") {
   configFields.disabled = true;
   configFields.append(voiceGrid);
   if (knownConfig) configPresentation(voiceGrid, "loading");
+  panelScroll.append(configFields, ...knownConfig ? [toolbox.root, environmentPane] : []);
   qqPanel.append(
     node2("h2", "qq-section-title", "QQ 接入与消息设置"),
     health,
     tabs,
-    configFields,
-    ...knownConfig ? [toolbox.root, environmentPane] : [],
+    panelScroll,
     feedback
   );
   qqPanel.hidden = !knownConfig;
@@ -5327,6 +5700,10 @@ function infinityPage(shell2, pluginName = "") {
   save.hidden = pluginName !== "core-infinity-qq";
   if (knownConfig) root.append(head, message, qqPanel);
   else root.append(head, summary2, cards, message, qqPanel);
+  const pageFooter = node2("footer", "page-footer qq-page-footer");
+  const footerScope = node2("span", "page-footer-summary", "正在读取接收范围…");
+  pageFooter.append(node2("span", "page-footer-label", "QQ 连接 · OneBot v11"), footerScope);
+  if (knownConfig) root.append(pageFooter);
   shell2.content.replaceChildren(root);
   let requestId = 0;
   let currentQQ = null;
@@ -5414,6 +5791,7 @@ function infinityPage(shell2, pluginName = "") {
     coreSetUIText(message, "textContent", corePhrase("正在读取插件列表…"));
   }
   const updateLive = (state3) => {
+    footerScope.textContent = `接收范围：私聊 ${state3.routing.privates.length} 个 · 群聊 ${state3.routing.groups.length} 个`;
     configFields.disabled = mutationPending || pluginMissing;
     currentQQ = state3;
     const commandsLocked = mutationPending || !formFilled || state3.snowluma.controlAvailable === false;
@@ -5479,10 +5857,6 @@ function infinityPage(shell2, pluginName = "") {
       fillSelect(asrModel, state3.asr.models, asrModel.value || state3.asr.model, false);
     }
     coreSetUIText(routeAccount, "textContent", state3.snowluma.recovery?.targetUin ? [corePhrase("当前 Bot 的 QQ："), state3.snowluma.recovery.targetUin, corePhrase(" · 名单只作用于这个 Bot。")] : corePhrase("尚未选择登录 QQ；可先保存会话名单，再到 SnowLuma 页完成账号接入。"));
-    if (!setupInitialStateApplied) {
-      setupDetails.open = !(state3.plugin?.configured && (state3.snowluma.recovery?.loginCompleted || freshProtocolSample(state3.snowluma)));
-      setupInitialStateApplied = true;
-    }
     snowProcess.hidden = false;
     const serviceLabel = state3.snowluma.managed ? "已启动" : state3.snowluma.sharedService ? "共用服务" : state3.snowluma.webuiRunning ? "端口可达" : "未启动";
     if (uiSource(serviceStatus) !== serviceLabel) {
@@ -6101,7 +6475,7 @@ function infinityPage(shell2, pluginName = "") {
       } else if (action === "snowluma_start_service") {
         showFeedback(corePhrase("SnowLuma 已启动。管理页就绪后，在那里选择并加载 QQ。"));
       } else if (action === "snowluma_recover") {
-        showFeedback(corePhrase("正在核对 QQ 进程，请查看折叠区中的结果。"));
+        showFeedback(corePhrase("正在核对 QQ 进程，请查看检测结果。"));
       } else if (typeof action === "string" && action.startsWith("snowluma_confirm_")) {
         showFeedback(corePhrase("加载确认已提交；正在核验目标进程与实际账号。"));
       } else if (route2 === "/infinity/qq/routes" && currentQQ.plugin?.configured !== true) {
@@ -6396,14 +6770,14 @@ function pageLoad(root, label, retry) {
   button3.addEventListener("click", retry);
   return {
     start() {
-      if (!hasContent) show(`正在读取${label}…`, false);
+      if (!hasContent) show(`正在加载${label}…`, false);
     },
     ready() {
       hasContent = true;
       note.hidden = true;
     },
     fail() {
-      show(`${label}读取失败；已显示的内容保留。`, true);
+      show(hasContent ? `${label}刷新失败，当前显示上次内容。` : `${label}加载失败，请重试。`, true);
     }
   };
 }
@@ -6416,7 +6790,7 @@ function text(tag, className, value = "") {
   return node6;
 }
 function pluginConfigPage(shell2, name) {
-  const root = text("section", "page-infinity page-world");
+  const root = text("section", "page-infinity page-world page-plugin-config");
   const title = text("h1", "", "插件配置");
   const info = text(
     "p",
@@ -6706,7 +7080,13 @@ function pluginConfigPage(shell2, name) {
       });
     }
   };
-  root.append(title, pluginUpdateNotice(name), info, tabs, message, form, custom, save, reload, status);
+  const header = text("header", "plugin-config-head");
+  header.append(title, pluginUpdateNotice(name), info, tabs, message);
+  const content = text("div", "plugin-config-content");
+  content.append(form, custom);
+  const actions = text("footer", "plugin-config-actions");
+  actions.append(save, reload, status);
+  root.append(header, content, actions);
   shell2.content.replaceChildren(root);
   return { root, show() {
     root.hidden = false;
@@ -6889,15 +7269,23 @@ function refreshControls() {
 function menuFor(anchor, items, selected, choose) {
   const menu = node3("div", "engine-menu");
   menu.id = `engine-menu-${++serial}`;
+  menu.setAttribute("popover", "manual");
   menu.setAttribute("role", "listbox");
   menu.hidden = true;
   anchor.setAttribute("aria-controls", menu.id);
   anchor.setAttribute("aria-expanded", "false");
   let rows = [], active2 = -1;
+  const moved = (event) => {
+    if (event.target instanceof Node && menu.contains(event.target)) return;
+    close2();
+  };
   const close2 = () => {
+    if (typeof menu.hidePopover === "function" && menu.matches(":popover-open")) menu.hidePopover();
     menu.hidden = true;
     anchor.setAttribute("aria-expanded", "false");
     anchor.removeAttribute("aria-activedescendant");
+    window.removeEventListener("scroll", moved, true);
+    window.removeEventListener("resize", moved);
   };
   const highlight = () => {
     Array.from(menu.children).forEach((option, index) => {
@@ -6940,8 +7328,24 @@ function menuFor(anchor, items, selected, choose) {
     const rect = anchor.getBoundingClientRect?.();
     menu.dataset.side = rect && rect.top > window.innerHeight - rect.bottom && window.innerHeight - rect.bottom < 190 ? "above" : "below";
     menu.hidden = false;
+    if (rect) {
+      const above = menu.dataset.side === "above";
+      const room = Math.max(60, (above ? rect.top : window.innerHeight - rect.bottom) - 14);
+      Object.assign(menu.style, {
+        position: "fixed",
+        margin: "0",
+        bottom: "auto",
+        left: Math.max(8, Math.min(rect.left, window.innerWidth - rect.width - 8)) + "px",
+        width: Math.min(rect.width, window.innerWidth - 16) + "px",
+        maxHeight: Math.min(300, room) + "px"
+      });
+      menu.showPopover?.();
+      menu.style.top = (above ? Math.max(8, rect.top - menu.getBoundingClientRect().height - 6) : rect.bottom + 6) + "px";
+    }
     anchor.setAttribute("aria-expanded", "true");
     highlight();
+    window.addEventListener("scroll", moved, true);
+    window.addEventListener("resize", moved);
   };
   const key2 = (event) => {
     if (event.key === "Escape" || event.key === "Tab") {
@@ -7319,7 +7723,13 @@ function enginePage(shell2) {
   const notice = el3("p", "engine-notice");
   notice.setAttribute("role", "status");
   const title = el3("h1", "page-title", corePhrase("模型 · MODEL"));
-  column.append(title, left, right, notice);
+  const workspace = el3("div", "engine-workspace");
+  const editor = el3("div", "engine-editor");
+  const actionsHost = el3("div", "engine-page-actions");
+  actionsHost.append(notice);
+  editor.append(actionsHost, right);
+  workspace.append(left, editor);
+  column.append(title, workspace);
   shell2.content.replaceChildren(column);
   let report = null;
   let picked = null;
@@ -7373,7 +7783,7 @@ function enginePage(shell2) {
       const ours = Number(maxOut.value || 0);
       if (ours > spec.max_output_tokens) {
         maxOut.value = String(spec.max_output_tokens);
-        coreSetUIText(maxOut, "title", [corePhrase("上游说这一条最多 "), spec.max_output_tokens, corePhrase(" token，已压到它")]);
+        coreSetUIText(maxOut, "title", [corePhrase("该模型的输出上限为 "), spec.max_output_tokens, corePhrase(" token，已自动调整")]);
       }
     }
     if (temp && !specOverrides.has("temperature")) {
@@ -7396,7 +7806,7 @@ function enginePage(shell2) {
       if (said === void 0 || said === null) {
         cellsVision.dataset.on = spec?.input_images === true ? "yes" : "no";
       }
-      coreSetUIText(cellsVision, "title", spec?.input_images === true ? corePhrase("这一条能收图（上游或公开目录报的）") : spec?.input_images === false ? corePhrase("报的是只看文本") : corePhrase("上游没说这一条 —— 可以自己扳"));
+      coreSetUIText(cellsVision, "title", spec?.input_images === true ? corePhrase("服务商或模型目录声明支持图片输入") : spec?.input_images === false ? corePhrase("服务商声明仅支持文本输入") : corePhrase("尚未确认图片能力，可手动设置"));
     }
   }
   function effortLevels() {
@@ -7461,7 +7871,7 @@ function enginePage(shell2) {
       try {
         run();
       } catch (exc) {
-        say(`这一下没做成：${short(exc, 60)}`, true);
+        say(`操作失败：${short(exc, 60)}`, true);
         throw exc;
       }
     });
@@ -7501,7 +7911,7 @@ function enginePage(shell2) {
       cardEl.append(el3("strong", "engine-card-name", rowOne.display_name || rowOne.name));
       const pills = el3("div", "engine-pills");
       const shownModel = (one.data?.profiles ?? []).find((p) => p.name === rowOne.name)?.model_name || rowOne.model;
-      for (const text2 of [rowOne.kind, shownModel || "（没选模型）", rowOne.base_url]) {
+      for (const text2 of [rowOne.kind, shownModel || "未选择模型", rowOne.base_url]) {
         pills.append(el3("span", "pill", text2));
       }
       cardEl.append(pills);
@@ -7512,7 +7922,7 @@ function enginePage(shell2) {
       marks.append(el3(
         "span",
         hasModel && !missingKey ? "ok-mark" : "warn-mark",
-        missingKey ? "待配置 API 密钥" : hasModel ? "模型已配置" : "还差一个模型"
+        missingKey ? "待配置 API 密钥" : hasModel ? "模型已配置" : "未选择模型"
       ));
       cardEl.append(marks);
       cardEl.addEventListener("click", () => {
@@ -7552,7 +7962,7 @@ function enginePage(shell2) {
       const draftFoot = el3("div", "engine-draft-foot");
       draftFoot.append(el3("span", "engine-draftmark", corePhrase("✎ 草稿")));
       const giveUp = el3("button", "engine-card-drop", "🗑");
-      coreSetUIText(giveUp, "title", corePhrase("丢掉这张草稿"));
+      coreSetUIText(giveUp, "title", corePhrase("删除草稿"));
       giveUp.addEventListener("click", (ev) => {
         ev.stopPropagation();
         changeDraft(void 0);
@@ -7577,7 +7987,7 @@ function enginePage(shell2) {
       rememberSelection(null);
       typedKey = "";
       modelValue = "";
-      say("已填默认值 —— 填完按「保存」");
+      say("已填入默认值，请检查后保存。");
       draw();
     });
     left.append(list);
@@ -7651,7 +8061,7 @@ function enginePage(shell2) {
       kindIn.append(opt);
     }
     kindIn.value = profile?.kind ?? preset?.kind ?? "chat";
-    coreSetUIText(kindIn, "title", [[corePhrase("写的是 `/v1/…` 的后半段。「本地服务」不是一种协议 —— 它们各有各的说法："), corePhrase("vLLM ／ Ollama ／ LM Studio 默认说 `chat/completions`，而 `Local` 那条（NInfer）两套都会说")], corePhrase("（它选 `responses` —— 那是选择，不是限制）。 只有 `responses` 拿得到「思考过程」。")]);
+    coreSetUIText(kindIn, "title", corePhrase("选择服务支持的 API 协议，地址与协议需匹配。"));
     basic.append(row("协议", kindIn));
     colLeft.append(basic);
     const kind = kindIn.value;
@@ -7690,7 +8100,7 @@ function enginePage(shell2) {
     const secretIn = input("password");
     let configured = typedKey !== "" || !fresh && (one.data?.secret?.[secretName] ?? "missing") !== "missing";
     coreSetUIText(secretIn, "placeholder", configured ? corePhrase("已配置——输入新 API 密钥可替换") : corePhrase("输入 API Key"));
-    coreSetUIText(secretIn, "title", configured ? [corePhrase(""), secretName, corePhrase(" 里已有一把 —— 输入新值会替换它")] : [corePhrase("保存时写进 data/engine.env（变量名 "), secretName, corePhrase("）")]);
+    coreSetUIText(secretIn, "title", configured ? [corePhrase(""), secretName, corePhrase(" 已保存密钥，输入新值可替换")] : [corePhrase("保存时写进 data/engine.env（变量名 "), secretName, corePhrase("）")]);
     secretIn.value = typedKey;
     secretIn.addEventListener("input", () => {
       typedKey = secretIn.value;
@@ -7709,7 +8119,7 @@ function enginePage(shell2) {
         coreSetUIText(secretIn, "title", corePhrase("当前本地服务无需 API 密钥"));
       } else {
         coreSetUIText(secretIn, "placeholder", configured ? corePhrase("已配置——输入新 API 密钥可替换") : corePhrase("输入 API Key"));
-        coreSetUIText(secretIn, "title", configured ? [corePhrase(""), secretName, corePhrase(" 里已有一把 —— 输入新值会替换它")] : [corePhrase("保存时写进 data/engine.env（变量名 "), secretName, corePhrase("）")]);
+        coreSetUIText(secretIn, "title", configured ? [corePhrase(""), secretName, corePhrase(" 已保存密钥，输入新值可替换")] : [corePhrase("保存时写进 data/engine.env（变量名 "), secretName, corePhrase("）")]);
       }
     };
     urlIn.addEventListener("input", applyKeyRow);
@@ -7727,7 +8137,7 @@ function enginePage(shell2) {
       const pills = draft?.querySelector(".engine-pills");
       if (title2) title2.textContent = instanceNameIn.value.trim() || nameIn.value.trim() || "未命名实例";
       if (pills) {
-        const model = cells.model?.value || "（没选模型）";
+        const model = cells.model?.value || "未选择模型";
         pills.replaceChildren(...[kindIn.value, model, urlIn.value || "（未填地址）"].map((value) => el3("span", "pill", value)));
       }
     };
@@ -7874,7 +8284,7 @@ function enginePage(shell2) {
           probeOut.dataset.state = "ok";
           return;
         }
-        const why = got.data?.error ?? `读不到回话（HTTP ${got.status}）`;
+        const why = got.data?.error ?? `服务未返回有效响应（HTTP ${got.status}）`;
         const said = String(got.data?.detail ?? "");
         const detail = said ? `（上游：${short(said)}）` : "";
         coreSetUIText(probeOut, "textContent", [corePhrase("测试失败: "), why, corePhrase(""), detail, corePhrase("")]);
@@ -7929,7 +8339,7 @@ function enginePage(shell2) {
             if (!names || names.length === 0) {
               const why = got.data?.error ?? (got.data?.ok ? "上游没有返回可选模型" : `HTTP ${got.status}`);
               const said = String(got.data?.detail ?? "");
-              say(`取不到模型列表：${why}${said ? `（上游：${short(said)}）` : ""}`, true);
+              say(`无法获取模型列表：${why}${said ? `（上游：${short(said)}）` : ""}`, true);
               notice.title = said;
               return;
             }
@@ -7998,7 +8408,7 @@ function enginePage(shell2) {
       if (field === "max_tokens") {
         const sees = el3("button", "engine-switch");
         sees.dataset.on = profile?.multimodal ? "yes" : "no";
-        coreSetUIText(sees, "title", corePhrase("上游报了会自动开；也可以自己扳"));
+        coreSetUIText(sees, "title", corePhrase("根据模型信息自动设置，也可手动调整"));
         sees.addEventListener("click", () => {
           sees.dataset.on = sees.dataset.on === "yes" ? "no" : "yes";
           updateDraft();
@@ -8099,11 +8509,12 @@ function enginePage(shell2) {
       one2?.addEventListener("input", refreshHandoffNote);
     }
     colRight.append(gen);
-    const act = el3("div", "engine-section engine-actions");
-    act.append(notice);
+    const act = el3("div", "engine-actions");
+    const actionTitle = el3("strong", "engine-action-title", profile?.display_name || profile?.name || corePhrase("新建模型配置"));
+    act.append(actionTitle);
     const actions = el3("div", "engine-foot");
-    act.append(actions);
-    colLeft.append(act);
+    act.append(actions, notice);
+    actionsHost.replaceChildren(act);
     const drop = button("删除", "btn ghost");
     drop.disabled = profile === null;
     let armed = false;
@@ -8217,7 +8628,7 @@ function enginePage(shell2) {
     });
     const use = button("设为当前", "btn ghost");
     use.disabled = !(profile && profile.model.trim());
-    coreSetUIText(use, "title", use.disabled ? corePhrase("没有模型的档案不许设为当前") : corePhrase(""));
+    coreSetUIText(use, "title", use.disabled ? corePhrase("请先选择模型，再设为当前") : corePhrase(""));
     onClick(use, () => {
       void engineCommand({ action: "use", name: profile?.name ?? "" }).then(after);
     });
@@ -8228,7 +8639,7 @@ function enginePage(shell2) {
     syncDraft();
   }
   function after(got) {
-    say(got.ok ? "已保存" : `没成（HTTP ${got.status}）：${short(got.note)}`, !got.ok);
+    say(got.ok ? "已保存" : `操作失败（HTTP ${got.status}）：${short(got.note)}`, !got.ok);
     if (got.ok) {
       fresh = false;
       const epoch = editEpoch;
@@ -8252,7 +8663,7 @@ function enginePage(shell2) {
       drawLeft(report);
       drawRight(report);
     } catch (exc) {
-      say(`这一页画不出来：${short(exc, 60)}`, true);
+      say(`页面加载失败：${short(exc, 60)}`, true);
       throw exc;
     }
   }
@@ -8267,7 +8678,7 @@ function enginePage(shell2) {
       col.append(el3("div", "engine-section"), el3("div", "engine-section"));
       return col;
     };
-    right.replaceChildren(el3("h2", "card-title", corePhrase("正在读…")), bone(), bone());
+    right.replaceChildren(el3("h2", "card-title", corePhrase("加载中…")), bone(), bone());
   }
   let readEpoch = 0;
   const readHint = pageLoad(column, "模型档案", () => {
@@ -8690,7 +9101,7 @@ function mountConsoleIntroduction(root, composer2) {
       const status = line("");
       status.setAttribute("role", "status");
       form.append(input2, save, later);
-      guide2.replaceChildren(heading2, greeting, line("填个常用的名字吧，我会把它记在你的控制台画像里。"), form, status);
+      guide2.replaceChildren(heading2, greeting, line("设置你在控制台使用的称呼。"), form, status);
       guide2.hidden = false;
       setPending(true);
       form.onsubmit = async (event) => {
@@ -8717,7 +9128,7 @@ function mountConsoleIntroduction(root, composer2) {
             }
             throw new Error(result.said || "保存失败，请重试。");
           }
-          guide2.replaceChildren(heading2, line("记住了，" + name + "。"));
+          guide2.replaceChildren(heading2, line("已保存称呼：" + name));
           setPending(false);
         } catch (error) {
           status.textContent = error instanceof Error ? error.message : "保存状态未确认，请重试。";
@@ -9016,7 +9427,7 @@ var toolLabels = {
 };
 function toolText(frame) {
   const text2 = (frame.text || "").trim();
-  if (!text2) return frame.stage === "result" ? "回执未提供正文。" : "未记录调用参数。";
+  if (!text2) return frame.stage === "result" ? "未返回结果正文。" : "未记录调用参数。";
   if (frame.stage !== "result" && text2 === "{}") return "无需参数。";
   return frame.text;
 }
@@ -9051,11 +9462,11 @@ function showTool(group) {
   identity.append(name, caption);
   const state3 = document.createElement("span");
   state3.className = "tool-inspector-status" + (failed ? " has-error" : "");
-  coreSetUIText(state3, "textContent", failed ? corePhrase("执行失败") : step.result ? step.call ? corePhrase("已返回") : corePhrase("仅有回执") : corePhrase("等待回执"));
+  coreSetUIText(state3, "textContent", failed ? corePhrase("执行失败") : step.result ? step.call ? corePhrase("已返回") : corePhrase("仅有结果") : corePhrase("等待结果"));
   const close2 = document.createElement("button");
   close2.className = "tool-inspector-close";
   close2.type = "button";
-  coreSetUIAttribute(close2, "aria-label", corePhrase("收起工具详情"));
+  coreSetUIAttribute(close2, "aria-label", corePhrase("关闭工具详情"));
   close2.addEventListener("click", () => {
     const button3 = group.selected?.element;
     group.selected = null;
@@ -9070,14 +9481,14 @@ function showTool(group) {
     } catch {
     }
   }
-  const output = step.result ? toolText(step.result) : "尚未收到回执。";
+  const output = step.result ? toolText(step.result) : "尚未收到结果。";
   const toolbar = document.createElement("div");
   toolbar.className = "tool-inspector-toolbar";
   const tabs = document.createElement("div");
   tabs.className = "tool-inspector-tabs";
   tabs.setAttribute("role", "tablist");
   coreSetUIAttribute(tabs, "aria-label", corePhrase("工具详情内容"));
-  for (const [key2, label] of [["result", "执行回执"], ["arguments", "调用参数"]]) {
+  for (const [key2, label] of [["result", "执行结果"], ["arguments", "调用参数"]]) {
     const tab = document.createElement("button");
     tab.type = "button";
     tab.className = "tool-inspector-tab";
@@ -9125,7 +9536,7 @@ function showTool(group) {
   pane.setAttribute("aria-labelledby", group.inspector.id + "-" + group.view);
   pane.textContent = content;
   pane.setAttribute("role", "tabpanel");
-  coreSetUIAttribute(pane, "aria-label", group.view === "arguments" ? corePhrase("调用参数") : corePhrase("执行回执"));
+  coreSetUIAttribute(pane, "aria-label", group.view === "arguments" ? corePhrase("调用参数") : corePhrase("执行结果"));
   group.inspector.append(head, toolbar, pane);
 }
 function appendTool(chat2, frame) {
@@ -9141,7 +9552,7 @@ function appendTool(chat2, frame) {
     inspector.className = "tool-inspector";
     inspector.hidden = true;
     inspector.id = "tool-inspector-" + ++toolInspectorSerial;
-    coreSetUIAttribute(inspector, "aria-label", corePhrase("工具用法与回执"));
+    coreSetUIAttribute(inspector, "aria-label", corePhrase("工具参数与结果"));
     row2.append(summary2, body, inspector);
     group = { row: row2, summary: summary2, body, inspector, selected: null, view: "result", steps: [] };
     toolGroups.set(chat2, group);
@@ -9192,8 +9603,8 @@ function appendTool(chat2, frame) {
     coreSetUIText(step.context, "textContent", corePhrase("交接笔记 · 点击查看 "));
     handoffGroups.set(chat2, group);
   }
-  coreSetUIText(step.element, "title", [[name, corePhrase(" · ")], failed ? corePhrase("执行失败") : step.result ? step.call ? corePhrase("已返回") : corePhrase("仅有回执") : corePhrase("等待回执")]);
-  coreSetUIAttribute(step.element, "aria-label", [step.element.title, corePhrase("，查看参数和回执")]);
+  coreSetUIText(step.element, "title", [[name, corePhrase(" · ")], failed ? corePhrase("执行失败") : step.result ? step.call ? corePhrase("已返回") : corePhrase("仅有结果") : corePhrase("等待结果")]);
+  coreSetUIAttribute(step.element, "aria-label", [step.element.title, corePhrase("，查看参数和结果")]);
   step.element.setAttribute("aria-expanded", String(group.selected === step));
   step.element.setAttribute("aria-controls", group.inspector.id);
   const calls = group.steps.filter((s) => s.call).length;
@@ -9205,7 +9616,7 @@ function appendTool(chat2, frame) {
   coreSetUIText(title, "textContent", corePhrase("过程"));
   const count4 = document.createElement("span");
   count4.className = "tool-group-count";
-  coreSetUIText(count4, "textContent", [[[calls, corePhrase(" 次调用 · ")], results], corePhrase(" 条回执")]);
+  coreSetUIText(count4, "textContent", [[[calls, corePhrase(" 次调用 · ")], results], corePhrase(" 条结果")]);
   group.summary.append(title, count4);
   if (failures) {
     const state3 = document.createElement("span");
@@ -9234,17 +9645,19 @@ function appendFrame(chat2, frame, theirs = NEUTRAL) {
     batch.heading.style.display = "";
   }
   if (frame.kind === "system-notice") {
-    const row2 = document.createElement("details");
+    const row2 = document.createElement("section");
     row2.className = "console-system-notice";
-    const summary2 = document.createElement("summary");
+    const summary2 = document.createElement("button");
+    summary2.type = "button";
     const body = document.createElement("div");
     body.className = "console-system-detail";
     const text2 = frame.text.replace(/^\[system\]\s*/i, "");
     const heading2 = text2.split(/[。\n]/)[0];
     coreSetUIText(summary2, "textContent", [corePhrase("系统 · "), heading2.length > 48 ? [heading2.slice(0, 48), corePhrase("…")] : heading2]);
-    summary2.title = frame.at || "展开系统事件详情";
+    summary2.title = frame.at || "查看系统事件";
+    summary2.addEventListener("click", () => showTextDetail("系统事件", text2));
     body.textContent = text2;
-    row2.append(summary2, body);
+    row2.append(summary2);
     const handoff = /^交接完/.test(text2) ? handoffGroups.get(chat2) : void 0;
     if (handoff && chat2.contains(handoff.row)) {
       handoff.row.prepend(row2);
@@ -9299,7 +9712,7 @@ function mountChat(host) {
   column.className = "live";
   const title = document.createElement("h1");
   title.className = "page-title";
-  coreSetUIText(title, "textContent", corePhrase("终端 · TERMINAL"));
+  coreSetUIText(title, "textContent", corePhrase("控制台 · CONSOLE"));
   const stream = document.createElement("div");
   stream.className = "live-stream";
   const back = () => {
@@ -9308,8 +9721,14 @@ function mountChat(host) {
   document.addEventListener("visibilitychange", back);
   window.addEventListener("focus", back);
   back();
-  column.append(title, stream);
-  host.replaceChildren(column);
+  const page2 = document.createElement("section");
+  page2.className = "page-live";
+  const header = document.createElement("header");
+  header.className = "live-page-head";
+  header.append(title);
+  column.append(stream);
+  page2.append(header, column);
+  host.replaceChildren(page2);
   let theirs = speaker();
   let watcher = null;
   const pending5 = [];
@@ -9375,7 +9794,7 @@ function mountChat(host) {
         for (const url of images) {
           const picture = document.createElement("img");
           picture.src = url;
-          picture.alt = "发出去的一张图";
+          picture.alt = "已发送图片";
           strip.append(picture);
         }
         row2.append(strip);
@@ -9478,7 +9897,7 @@ function fitWithin(width, height, maxEdge) {
 function readAsDataUrl(blob) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onerror = () => reject(new Error("这一张读不出来"));
+    reader.onerror = () => reject(new Error("图片读取失败"));
     reader.onload = () => {
       resolve(String(reader.result ?? ""));
     };
@@ -9491,12 +9910,12 @@ function encodeTo(bitmap, width, height, mime, quality) {
   canvas.height = height;
   const ctx = canvas.getContext("2d");
   if (!ctx) {
-    throw new Error("这一台浏览器画不了图");
+    throw new Error("当前浏览器无法处理图片");
   }
   ctx.drawImage(bitmap, 0, 0, width, height);
   return new Promise((resolve, reject) => {
     canvas.toBlob(
-      (blob) => blob ? resolve(blob) : reject(new Error("这一张转不出来")),
+      (blob) => blob ? resolve(blob) : reject(new Error("图片转换失败")),
       mime,
       quality
     );
@@ -9504,13 +9923,13 @@ function encodeTo(bitmap, width, height, mime, quality) {
 }
 async function normalizeImage(file) {
   if (!IMAGE_MIMES.includes(file.type)) {
-    throw new Error("只收图片（jpeg ／ png ／ webp ／ gif）");
+    throw new Error("请选择 JPEG、PNG、WebP 或 GIF 图片");
   }
   let bitmap;
   try {
     bitmap = await createImageBitmap(file);
   } catch {
-    throw new Error("这一张解不开（不是图，或文件坏了）");
+    throw new Error("无法打开图片，文件格式不支持或已损坏");
   }
   try {
     const fitted = fitWithin(bitmap.width, bitmap.height, MAX_IMAGE_EDGE);
@@ -9524,14 +9943,14 @@ async function normalizeImage(file) {
       blob = await encodeTo(bitmap, fitted.width, fitted.height, "image/jpeg", 0.85);
     }
     if (blob.size > MAX_IMAGE_BYTES) {
-      throw new Error("这一张太大了（缩到上限还是超过 6 MB）");
+      throw new Error("图片压缩后仍超过 6 MB，请先缩小图片");
     }
     return await readAsDataUrl(blob);
   } finally {
     bitmap.close();
   }
 }
-var PLACEHOLDER = "和她说句话试试。";
+var PLACEHOLDER = "输入消息…";
 function composer(onSend, onNote, onStop, canSend = () => true) {
   const form = document.createElement("form");
   form.className = "composer";
@@ -9585,7 +10004,7 @@ function composer(onSend, onNote, onStop, canSend = () => true) {
   handoffButton.type = "button";
   handoffButton.className = "btn ghost composer-handoff";
   handoffButton.textContent = HANDOFF_LABEL;
-  coreSetUIText(handoffButton, "title", [corePhrase("请它交接一次 —— 把这一段收一收，换一段干净的上下文接着走；"), corePhrase("整理态是它的副产品（她会自己动手写那两份）")]);
+  coreSetUIText(handoffButton, "title", [corePhrase("整理当前对话摘要，并在新的上下文中继续。"), corePhrase("相关记忆会在后台整理。")]);
   handoffButton.addEventListener("click", () => {
     void pageFetch("/handoff", { method: "POST" }).then(async (res) => {
       if (!res.ok) {
@@ -9675,22 +10094,18 @@ function composer(onSend, onNote, onStop, canSend = () => true) {
       cacheBody.append(row3);
     }
     cacheBody.append(usageLine(cache.note, "cache-summary-note"));
-    const diagnostic = document.createElement("details");
+    const diagnostic = document.createElement("section");
     diagnostic.className = "cache-diagnostics";
-    diagnostic.open = cacheDiagnosticOpen;
-    const summary2 = document.createElement("summary");
+    const summary2 = document.createElement("h3");
     coreSetUIText(summary2, "textContent", corePhrase("诊断"));
     diagnostic.append(summary2);
     for (const line of cache.diagnostics) {
       diagnostic.append(usageLine(line, "usage-note"));
     }
-    diagnostic.addEventListener("toggle", () => {
-      cacheDiagnosticOpen = diagnostic.open;
-    });
     cacheBody.append(diagnostic);
     const woke = typeof got.next_wake === "object" && got.next_wake !== null ? got.next_wake : null;
     if (woke !== null && typeof woke.at === "string") {
-      const what = typeof woke.what === "string" && woke.what !== "" ? woke.what : "自己醒";
+      const what = typeof woke.what === "string" && woke.what !== "" ? woke.what : "主动唤醒";
       coreSetUIText(cacheCell, "title", [corePhrase(""), cacheCell.title, corePhrase("\n下一次"), what, corePhrase("："), woke.at.replace("T", " ").slice(0, 16), corePhrase("")]);
     }
   };
@@ -9767,12 +10182,12 @@ function composer(onSend, onNote, onStop, canSend = () => true) {
       cell.className = "composer-thumb";
       const picture = document.createElement("img");
       picture.src = url;
-      picture.alt = "这一张要发出去";
+      picture.alt = "待发送图片";
       const drop = document.createElement("button");
       drop.type = "button";
       drop.className = "composer-thumb-x";
       drop.textContent = "×";
-      coreSetUIText(drop, "title", corePhrase("不要这一张"));
+      coreSetUIText(drop, "title", corePhrase("移除图片"));
       drop.addEventListener("click", () => {
         attached.splice(index, 1);
         drawAttached();
@@ -9791,7 +10206,7 @@ function composer(onSend, onNote, onStop, canSend = () => true) {
       try {
         attached.push(await normalizeImage(file));
       } catch (exc) {
-        onNote(exc instanceof Error ? exc.message : "这一张读不出来");
+        onNote(exc instanceof Error ? exc.message : "图片读取失败");
       }
     }
     drawAttached();
@@ -9807,7 +10222,7 @@ function composer(onSend, onNote, onStop, canSend = () => true) {
   const ringLabel = document.createElement("span");
   ringLabel.textContent = "—";
   ring.append(gaugeIcon(), ringLabel);
-  coreSetUIText(ring, "title", corePhrase("上下文用了多少 —— 点一下看它占在哪几块"));
+  coreSetUIText(ring, "title", corePhrase("查看上下文用量明细"));
   const readCache = latestCacheRead(pageFetch);
   const showUsage = async () => {
     await readCache((got) => {
@@ -9861,7 +10276,6 @@ function composer(onSend, onNote, onStop, canSend = () => true) {
   cachePanel.className = "composer-stages composer-cache-details";
   cachePanel.hidden = true;
   const cacheBody = document.createElement("div");
-  let cacheDiagnosticOpen = false;
   cachePanel.append(cacheBody);
   const whenCell = document.createElement("button");
   whenCell.type = "button";
@@ -9940,6 +10354,7 @@ function composer(onSend, onNote, onStop, canSend = () => true) {
 }
 function chatPage(shell2) {
   const chat2 = mountChat(shell2.content);
+  const page2 = chat2.root.parentElement ?? chat2.root;
   const activity = document.createElement("div");
   activity.className = "console-control-note";
   activity.setAttribute("role", "status");
@@ -10067,19 +10482,21 @@ function chatPage(shell2) {
   mountConsoleIntroduction(chat2.root, form);
   shell2.bottom.replaceChildren(form);
   return {
-    root: chat2.root,
+    root: page2,
     view: chat2,
     show: () => {
       const wasStopped = stopped;
       stopped = false;
       if (wasStopped) chat2.refreshHistory();
       chat2.listen(true);
+      page2.hidden = false;
       chat2.root.hidden = false;
       form.hidden = false;
     },
     stop: () => {
       stopped = true;
       chat2.listen(false);
+      page2.hidden = true;
       chat2.root.hidden = true;
       form.hidden = true;
     }
@@ -10089,13 +10506,13 @@ function chatPage(shell2) {
 // core/src/web/client/persona-memory.ts
 function personaMemoryTail() {
   const tail = document.createElement("footer");
-  tail.className = "persona-memory-tail";
+  tail.className = "persona-memory-tail page-footer";
   coreSetUIText(tail, "textContent", corePhrase("人设与记忆"));
   return tail;
 }
 
 // core/src/web/client/persona-page.ts
-var BOUNDARY_LINE_SHORT = "写入那条路：这一页能改她是谁 —— 「只听回环」不等于已鉴权。";
+var BOUNDARY_LINE_SHORT = "修改会写入人设文件。仅限本机访问不等于账号鉴权。";
 var A_STAMP = /^\d{8}-\d{6}$/;
 var REPORT_ROUTE = "/persona";
 var SAVE_ROUTE = "/persona";
@@ -10166,7 +10583,7 @@ function outcomeOf(status, body) {
   if (status === 400 && isCollision(body)) {
     return { kind: "collision", line: COLLISION_LINE };
   }
-  return { kind: "refused", line: `这一版没写成（服务回 ${status}）：${body.trim()}` };
+  return { kind: "refused", line: `保存失败（HTTP ${status}）：${body.trim()}` };
 }
 function hintNode(text2) {
   const hint = document.createElement("span");
@@ -10276,7 +10693,7 @@ function personaPage(shell2, options = {}) {
   const stack = node4("div", "persona-column");
   const head = node4("div", "persona-head");
   const title = node4("h1", "persona-title", "人设 · PERSONA");
-  const count4 = node4("span", "persona-count", "0 段 · 渲染后约 0 tokens");
+  const count4 = node4("span", "persona-count", "正在加载…");
   const saveHint = node4("span", "persona-hint", "修改后保存 · Ctrl+S");
   const saveButton = node4("button", "btn persona-save", "保存");
   saveButton.type = "button";
@@ -10286,11 +10703,11 @@ function personaPage(shell2, options = {}) {
   coreSetUIText(reloadButton, "title", corePhrase("重新读取已保存的人设"));
   const status = node4("div", "persona-status");
   const statusLine = node4("span", "persona-status-line");
-  const receipt = node4("details", "persona-receipt");
+  const receipt = node4("button", "persona-receipt", "查看详情");
+  receipt.type = "button";
   receipt.hidden = true;
-  const receiptSummary = node4("summary", "persona-receipt-summary", "详情");
   const receiptText = node4("p", "persona-receipt-text");
-  receipt.append(receiptSummary, receiptText);
+  receipt.addEventListener("click", () => showTextDetail("操作详情", receiptText.textContent || ""));
   status.append(statusLine, receipt);
   status.dataset.state = "idle";
   status.setAttribute("role", "status");
@@ -10312,7 +10729,11 @@ function personaPage(shell2, options = {}) {
   const otherBox = node4("section", "persona-other");
   otherBox.append(otherList);
   otherBox.hidden = true;
-  stack.append(head, nav, list, otherBox, personaMemoryTail());
+  const workspace = node4("div", "persona-workspace");
+  const scroll = node4("div", "page-scroll persona-scroll");
+  scroll.append(list, otherBox);
+  workspace.append(nav, scroll);
+  stack.append(head, workspace, personaMemoryTail());
   column.append(stack);
   shell2.content.replaceChildren(column);
   let segments = [];
@@ -10328,7 +10749,6 @@ function personaPage(shell2, options = {}) {
     coreSetUIText(statusLine, "textContent", long ? corePhrase("操作未完成，请查看详情。") : line);
     receiptText.textContent = detail || (long ? line : "");
     receipt.hidden = receiptText.textContent === "";
-    receipt.open = false;
     status.dataset.state = state3;
     status.hidden = line === "";
   };
@@ -10338,7 +10758,7 @@ function personaPage(shell2, options = {}) {
       const draft = segment.file === null || segment.file === void 0 ? null : drafts.get(segment.file) ?? draftOf(segment);
       tokens += draft === null ? 0 : tokenEstimate(draft.lines.join("\n"));
     }
-    coreSetUIText(count4, "textContent", [corePhrase(""), segments.length, corePhrase(" 段 · 渲染后约 "), tokens, corePhrase(" tokens")]);
+    coreSetUIText(count4, "textContent", [corePhrase(""), segments.length, corePhrase(" 段 · 约 "), tokens, corePhrase(" tokens")]);
     coreSetUIText(saveHint, "textContent", dirty.length > 0 ? [corePhrase(""), dirty.length, corePhrase(" 段未保存 · Ctrl+S 保存当前章节")] : corePhrase("修改后保存 · Ctrl+S"));
     saveHint.dataset.dirty = String(dirty.length > 0);
     coreSetUIText(saveButton, "textContent", saving ? corePhrase("保存中…") : corePhrase("保存"));
@@ -10368,19 +10788,7 @@ function personaPage(shell2, options = {}) {
       else one.dataset.on = "true";
     }
   };
-  const scrollerOf = () => {
-    const up = (node6) => node6.parentElement ?? node6.parent ?? null;
-    for (let node6 = up(column); node6 !== null; node6 = up(node6)) {
-      let flow = "";
-      try {
-        flow = window.getComputedStyle(node6).overflowY;
-      } catch {
-        flow = "";
-      }
-      if (flow === "auto" || flow === "scroll") return node6;
-    }
-    return column;
-  };
+  const scrollerOf = () => scroll;
   const NAV_GAP = 8;
   const sideRail = () => {
     try {
@@ -10389,17 +10797,7 @@ function personaPage(shell2, options = {}) {
       return false;
     }
   };
-  const theLine = () => {
-    const flow = scrollerOf();
-    if (sideRail()) return 20;
-    let stuck = 0;
-    try {
-      stuck = (Number.parseFloat(window.getComputedStyle(flow).paddingTop) || 0) + (Number.parseFloat(window.getComputedStyle(nav).top) || 0);
-    } catch {
-      stuck = 0;
-    }
-    return stuck + nav.getBoundingClientRect().height + NAV_GAP;
-  };
+  const theLine = () => NAV_GAP;
   const jump = (row2) => {
     const scroller2 = scrollerOf();
     const anchor = anchorOf(row2);
@@ -10427,8 +10825,8 @@ function personaPage(shell2, options = {}) {
       const text2 = node4("span", "persona-navtext", nameOfRow(row2));
       item.append(text2);
       if (row2.dataset.dirty === "true") item.append(node4("span", "persona-navmark", "未保存"));
-      coreSetUIText(item, "title", [corePhrase(""), nameOfRow(row2), corePhrase(" —— 点一下跳到那一块")]);
-      if (row2.dataset.dirty === "true") item.title += "（有没保存的改动）";
+      coreSetUIText(item, "title", [corePhrase(""), nameOfRow(row2), corePhrase(" · 点击查看章节")]);
+      if (row2.dataset.dirty === "true") item.title += "（未保存）";
       item.addEventListener("click", () => {
         jumpAndMark(row2, index);
       });
@@ -10775,7 +11173,7 @@ function personaPage(shell2, options = {}) {
     const middle = node4("div", "persona-body");
     const draft = segment.file === null || segment.file === void 0 ? null : drafts.get(segment.file) ?? draftOf(segment);
     if (!writable) {
-      middle.append(node4("p", "persona-lock", "这一份人不能改"));
+      middle.append(node4("p", "persona-lock", "此内容为只读"));
     }
     if (draft !== null) {
       const locks = writable ? lockedLines(segment) : /* @__PURE__ */ new Set();
@@ -10860,7 +11258,7 @@ function personaPage(shell2, options = {}) {
     const epoch = ++readEpoch;
     readHint.start();
     saveButton.disabled = true;
-    say("正在读那十段…", "busy");
+    say("正在加载人设…", "busy");
     try {
       const response = await send(REPORT_ROUTE, { headers: { Accept: "application/json" } });
       if (!response.ok) {
@@ -10916,8 +11314,8 @@ function personaPage(shell2, options = {}) {
             return cell;
           };
           conflictBox.replaceChildren();
-          area("persona-merge-base", "读时正文", draft.base ?? "", true);
-          area("persona-merge-remote", "盘上新版", remote, true);
+          area("persona-merge-base", "编辑前版本", draft.base ?? "", true);
+          area("persona-merge-remote", "已保存的最新版本", remote, true);
           const merged = area("persona-merge-text", "手动合并稿（请对照新版编辑）", draft.lines.join("\n"), false);
           const apply = node4("button", "btn persona-merge-apply", "使用合并稿（尚未保存）");
           apply.setAttribute("type", "button");
@@ -10939,9 +11337,9 @@ function personaPage(shell2, options = {}) {
             draft.revision = revision;
             draft.base = remote;
             markDirty(name);
-            const scroll = column.scrollTop;
+            const scrollTop = scroll.scrollTop;
             list.replaceChildren(...segments.map(segmentRow));
-            column.scrollTop = scroll;
+            scroll.scrollTop = scrollTop;
             markDirty(name);
             refreshHead();
             refreshNav();
@@ -10958,7 +11356,7 @@ function personaPage(shell2, options = {}) {
   const saveText = async (name, text2, expect) => {
     const stamp = now();
     if (!isAStamp(stamp)) {
-      say(`这一页自己挑出来的那串时间戳不成形状：${stamp}`, "bad");
+      say(`保存时间格式无效：${stamp}`, "bad");
       return null;
     }
     const target = /^(宪法\.md|角色设定\.md)#([a-z][a-z-]{0,63})$/.exec(name);
@@ -10971,7 +11369,7 @@ function personaPage(shell2, options = {}) {
         body: JSON.stringify(ask2)
       });
     } catch (exc) {
-      say(`没递出去：${exc.message}`, "bad");
+      say(`提交失败：${exc.message}`, "bad");
       return null;
     }
     const body = await response.text();
@@ -11021,7 +11419,7 @@ function personaPage(shell2, options = {}) {
       return;
     }
     if (names.length === 0) {
-      say("没有改动 —— 这一下没碰盘（要读盘上现在那一份，按「重载」）", "warn");
+      say("没有需要保存的修改。可点击“重载”获取最新内容。", "warn");
       return;
     }
     saving = true;
@@ -11048,7 +11446,7 @@ function personaPage(shell2, options = {}) {
           if (at >= 0) dirty.splice(at, 1);
         } else {
           markDirty(name);
-          say("提交的那一版已保存；在途新输入仍是未保存草稿。", "warn");
+          say("已保存提交的内容；保存期间新增的修改仍需保存。", "warn");
         }
         markAllSaved();
         refreshHead();
@@ -11075,7 +11473,7 @@ function personaPage(shell2, options = {}) {
         try {
           accepted = await confirmAction(
             "放弃未保存草稿？",
-            "重载会放弃所有未保存草稿，并读取盘上新版。",
+            "重载会放弃所有未保存草稿，并读取已保存的最新版本。",
             "放弃草稿并重载"
           );
         } finally {
@@ -11119,7 +11517,7 @@ function personaPage(shell2, options = {}) {
       readEpoch++;
       flushFocused();
       if (dirty.length > 0) {
-        const line = `这一页有 ${dirty.length} 段改过、没保存 —— 离开这一页就丢了`;
+        const line = `有 ${dirty.length} 段修改未保存，请保存后再离开。`;
         say(line, "warn");
         const item = shell2.railNav.querySelector('.rail-item[data-page="persona"]');
         if (item !== null) item.setAttribute("title", line);
@@ -11224,8 +11622,8 @@ function recentPeople(everyone) {
   };
   return everyone.map((one) => ({ one, at: recordedAt(one) })).sort((a, b) => b.at - a.at).slice(0, 6).map(({ one }) => one);
 }
-var READ_FAILED = "读不到记忆那一格。";
-var NOT_WIRED = "记忆这一层没接上读法。";
+var READ_FAILED = "记忆加载失败，请重试。";
+var NOT_WIRED = "当前服务暂不支持查看记忆。";
 var RUN_STATE = [
   ["running", "运行中"],
   ["idle", "空闲"],
@@ -11249,11 +11647,13 @@ function memoryPage(shell2) {
   const head = document.createElement("header");
   head.className = "memory-head";
   head.append(title, note);
-  root.append(head);
+  const scroll = document.createElement("div");
+  scroll.className = "page-scroll memory-scroll";
+  root.append(head, scroll);
   shell2.content.replaceChildren(root);
   const keepPosition = (render2) => {
     const parents = [];
-    for (let el6 = root; el6; el6 = el6.parentElement) parents.push([el6, el6.scrollTop, el6.scrollLeft]);
+    for (let el6 = scroll; el6; el6 = el6.parentElement) parents.push([el6, el6.scrollTop, el6.scrollLeft]);
     const x = window.scrollX, y = window.scrollY;
     const inner = [...root.querySelectorAll(".memory-pull-content")].map((el6) => el6.scrollTop);
     render2();
@@ -11268,7 +11668,6 @@ function memoryPage(shell2) {
   };
   const draw = (answer) => keepPosition(() => drawContents(answer));
   const drawContents = (answer) => {
-    const expanded = new Set([...root.querySelectorAll(".memory-entry")].filter((e) => e.open).map((e) => e.id));
     for (const old of root.querySelectorAll(".memory-row")) {
       old.remove();
     }
@@ -11286,16 +11685,16 @@ function memoryPage(shell2) {
     const unfixed = mine.filter((one) => (one.kind ?? "proposal") === "unfixed");
     const proposals = mine.filter((one) => (one.kind ?? "proposal") === "proposal");
     const THE_THREE = [
-      ["proposal", "心里悬着的", "暂无待处理事项。"],
-      ["selfmade", "留下的", "暂无留下的记录。"],
-      ["unfixed", "还没放下的", "暂无未完成事项。"]
+      ["proposal", "待讨论", "暂无待处理事项。"],
+      ["selfmade", "自我记录", "暂无自我记录。"],
+      ["unfixed", "未完成事项", "暂无未完成事项。"]
     ];
     const nameOf = (kind) => THE_THREE.find((one) => one[0] === kind)?.[1] ?? kind;
     const blurbOf = (kind) => {
-      const said = THE_THREE.find((one2) => one2[0] === kind)?.[2] ?? "这一格还没有东西。";
+      const said = THE_THREE.find((one2) => one2[0] === kind)?.[2] ?? "暂无记录。";
       const one = mine.find((it) => (it.kind ?? "proposal") === kind);
       if (one !== void 0 && one.full === true) {
-        return said + " 这本已经到顶了 —— 再写就会压掉最旧的。";
+        return said + " 已达记录上限，新增记录会替换最旧记录。";
       }
       return said;
     };
@@ -11303,15 +11702,15 @@ function memoryPage(shell2) {
     star.className = selfmade.length === 0 ? "memory-star memory-row is-empty" : "memory-star memory-row";
     const starLbl = document.createElement("div");
     starLbl.className = "lbl";
-    coreSetUIText(starLbl, "textContent", corePhrase("最近写下的那一句"));
+    coreSetUIText(starLbl, "textContent", corePhrase("最近的自我记录"));
     const starSay = document.createElement("p");
     starSay.className = selfmade.length === 0 ? "say void" : "say";
-    coreSetUIText(starSay, "textContent", selfmade.length === 0 ? corePhrase("还是空的 —— 这边还没写下过第一句。") : String(selfmade[selfmade.length - 1].text));
+    coreSetUIText(starSay, "textContent", selfmade.length === 0 ? corePhrase("暂无自我记录。") : String(selfmade[selfmade.length - 1].text));
     const starBy = document.createElement("p");
     starBy.className = "by";
-    coreSetUIText(starBy, "textContent", corePhrase("只在这边回头看的时候才会写；不是每天都有。"));
+    coreSetUIText(starBy, "textContent", corePhrase("Bot 在整理记忆时更新。"));
     star.append(starLbl, starSay, starBy);
-    root.append(star);
+    scroll.append(star);
     const howMany = (kind) => mine.filter((one) => (one.kind ?? "proposal") === kind).length;
     const figs = document.createElement("div");
     figs.className = "memory-row memory-figs";
@@ -11351,12 +11750,12 @@ function memoryPage(shell2) {
     for (const one of hers) {
       ROWS.push([
         one.name,
-        one.size === 0 ? "还是空的" : String(one.size) + " 字节",
+        one.size === 0 ? "暂无内容" : String(one.size) + " 字节",
         one.size === 0 ? "void" : "",
         one.key
       ]);
     }
-    ROWS.push(["浮现", "今天没有浮出什么；只在有话说的时候才出现。", "void", ""]);
+    ROWS.push(["浮现", "暂无主动记录。", "void", ""]);
     for (const [key2, value, cls, keyOf] of ROWS) {
       const li = document.createElement("li");
       const line = document.createElement("div");
@@ -11405,14 +11804,14 @@ function memoryPage(shell2) {
       list.append(li);
     }
     documents.append(list);
-    root.append(documents);
-    root.append(skillsBox);
+    scroll.append(documents);
+    scroll.append(skillsBox);
     const pull = document.createElement("div");
     pull.className = "memory-row memory-pull";
     const pullHead = document.createElement("h2");
     pullHead.className = "memory-sec memory-row";
-    coreSetUIText(pullHead, "textContent", corePhrase("记下的事"));
-    root.append(pullHead);
+    coreSetUIText(pullHead, "textContent", corePhrase("记忆记录"));
+    scroll.append(pullHead);
     const CARDS = [
       ["proposal", proposals, false],
       ["selfmade", selfmade, false],
@@ -11447,11 +11846,10 @@ function memoryPage(shell2) {
       const latest = [...merged.values()].reverse();
       const shown = latest.slice(0, 1);
       for (const { one: each, how } of shown) {
-        const entry = document.createElement("details");
+        const entry = document.createElement("section");
         entry.className = "memory-entry";
         entry.id = "memory-entry-" + encodeURIComponent(kindOf2 + ":" + (each.proposal?.id || String(each.ts || "") + ":" + each.text.slice(0, 160)));
-        entry.open = expanded.has(entry.id);
-        const summary2 = document.createElement("summary");
+        const summary2 = document.createElement("h3");
         const short = (value) => value.replace(/\s+/g, " ").slice(0, 160);
         summary2.textContent = each.proposal ? short(each.source + " · " + each.proposal.section + "：" + each.proposal.why) : short(String(each.text));
         if (how > 1) summary2.textContent += " ×" + String(how);
@@ -11466,7 +11864,7 @@ function memoryPage(shell2) {
           body.append(original);
           const state3 = document.createElement("p");
           state3.className = "when";
-          coreSetUIText(state3, "textContent", corePhrase("尚未落定 · 请在对话中交流，由她决定修改、保留或暂缓。"));
+          coreSetUIText(state3, "textContent", corePhrase("待讨论。可在对话中确认修改、保留或暂缓。"));
           body.append(state3);
         }
         if (each.ts) {
@@ -11488,7 +11886,7 @@ function memoryPage(shell2) {
       one.append(content);
       pull.append(one);
     }
-    root.append(pull);
+    scroll.append(pull);
     const people = document.createElement("section");
     people.className = "memory-row memory-people";
     const peopleHead = document.createElement("div");
@@ -11516,7 +11914,8 @@ function memoryPage(shell2) {
         who.title = one.who;
         const said = document.createElement("p");
         said.className = "memory-person-standing";
-        said.textContent = one.standing || "（还没给过说法）";
+        said.textContent = one.standing || "";
+        said.hidden = !one.standing;
         said.title = said.textContent;
         const meta = document.createElement("span");
         meta.className = "memory-person-meta";
@@ -11525,14 +11924,14 @@ function memoryPage(shell2) {
         if (one.blocked) {
           const blocked = document.createElement("span");
           blocked.className = "memory-person-blocked";
-          coreSetUIText(blocked, "textContent", corePhrase("拉黑着"));
+          coreSetUIText(blocked, "textContent", corePhrase("已屏蔽"));
           item.append(blocked);
         }
         plist.append(item);
       }
       people.append(plist);
     }
-    root.append(people);
+    scroll.append(people);
     const quietOne = document.createElement("div");
     quietOne.className = "item quiet";
     const qh = document.createElement("h3");
@@ -11544,7 +11943,7 @@ function memoryPage(shell2) {
       return got ? `${Number(got[2])} 月 ${Number(got[3])} 日` : "";
     };
     if (sent === void 0) {
-      coreSetUIText(qp, "textContent", corePhrase("这一格还没接上。"));
+      coreSetUIText(qp, "textContent", corePhrase("当前服务暂不支持。"));
     } else if (!sent.how_many) {
       coreSetUIText(qp, "textContent", corePhrase("暂无主动请求。"));
     } else {
@@ -11564,7 +11963,7 @@ function memoryPage(shell2) {
   };
   const skillsBox = document.createElement("section");
   skillsBox.className = "memory-skills";
-  root.append(skillsBox);
+  scroll.append(skillsBox);
   let latestSkills = null;
   const visibleLimits = /* @__PURE__ */ new Map();
   const toolbar = document.createElement("div");
@@ -11602,7 +12001,6 @@ function memoryPage(shell2) {
   const drawSkillsContents = (answer) => {
     latestSkills = answer;
     if (composing) return;
-    const opened = new Set([...skillsBox.querySelectorAll("details[data-section]")].filter((el6) => el6.open).map((el6) => el6.dataset.section));
     for (const child of [...skillsBox.children]) if (child !== toolbar) child.remove();
     const head2 = document.createElement("h2");
     head2.className = "memory-document-title";
@@ -11611,28 +12009,27 @@ function memoryPage(shell2) {
     if (answer === null) {
       const bad = document.createElement("p");
       bad.className = "memory-quiet";
-      coreSetUIText(bad, "textContent", corePhrase("做法这一格读不到（服务没答）。"));
+      coreSetUIText(bad, "textContent", corePhrase("技能加载失败，请重试。"));
       skillsBox.append(bad);
       return;
     }
     if (!answer.wired) {
       const off = document.createElement("p");
       off.className = "memory-quiet";
-      coreSetUIText(off, "textContent", corePhrase("这一台没有接做法读口。"));
+      coreSetUIText(off, "textContent", corePhrase("当前服务暂不支持查看技能。"));
       skillsBox.append(off);
       return;
     }
-    const maintenance = document.createElement("details");
+    const maintenance = document.createElement("section");
     maintenance.className = "memory-skill-maintenance";
     maintenance.dataset.section = "maintenance";
-    maintenance.open = opened.has("maintenance");
-    const maintenanceTitle = document.createElement("summary");
+    const maintenanceTitle = document.createElement("h3");
     maintenance.append(maintenanceTitle);
     const status = answer.status ?? { state: "unknown" };
     const runline = document.createElement("p");
     runline.className = "memory-quiet";
     const pending5 = Number(status.recovery_pending ?? 0);
-    coreSetUIText(runline, "textContent", [[status.state === "unknown" && (answer.active_count ?? answer.active?.length ?? 0) === 0 ? corePhrase("尚无整理记录") : [corePhrase("整理状态："), stateName(String(status.state))], pending5 > 0 ? [[corePhrase("（"), String(pending5)], corePhrase(" 笔停在半路）")] : corePhrase("")], status.why && status.state !== "unknown" ? [corePhrase(" —— "), String(status.why)] : corePhrase("")]);
+    coreSetUIText(runline, "textContent", [[status.state === "unknown" && (answer.active_count ?? answer.active?.length ?? 0) === 0 ? corePhrase("尚无整理记录") : [corePhrase("整理状态："), stateName(String(status.state))], pending5 > 0 ? [[corePhrase("（"), String(pending5)], corePhrase(" 项未完成）")] : corePhrase("")], status.why && status.state !== "unknown" ? [corePhrase(" —— "), String(status.why)] : corePhrase("")]);
     maintenance.append(runline);
     const index = answer.index_status;
     if (index) {
@@ -11654,8 +12051,8 @@ function memoryPage(shell2) {
       const bits = [];
       if (detail.partial) {
         const committed = detail.committed ?? [];
-        const names = committed.length > 0 ? committed.join("、") : "（没有落下的文件）";
-        bits.push((detail.resolved === true ? "曾经部分提交：" : "上一趟部分提交：") + names + (detail.resolved === true ? " —— 后续动作已经办完" : detail.followup_uncertain ? " —— 后续投递结果待核对" : " —— 文件写了，后续动作还欠着"));
+        const names = committed.length > 0 ? committed.join("、") : "无已保存文件";
+        bits.push((detail.resolved === true ? "此前已保存：" : "上次已保存：") + names + (detail.resolved === true ? " · 后续操作已完成" : detail.followup_uncertain ? " —— 后续投递结果待核对" : " · 文件已保存，后续操作未完成"));
       }
       if (detail.error) bits.push("上一次失败：" + (detail.error_class === "PersonaShapeRefused" ? "文档结构保护拒绝了本次改写；已保存的内容保留，草稿待复核。" : String(detail.error)));
       if (detail.failed_at) bits.push("中断于 " + detail.failed_at);
@@ -11687,27 +12084,20 @@ function memoryPage(shell2) {
         section.append(empty);
       }
       for (const one of filtered.slice(0, limit)) {
-        const item = document.createElement("details");
+        const item = document.createElement("section");
         item.className = "memory-skill-entry";
         item.dataset.section = one.id;
-        item.open = opened.has(one.id);
-        const title2 = document.createElement("summary");
+        const title2 = document.createElement("h3");
         const name = document.createElement("span");
         name.textContent = one.title;
-        const affordance = document.createElement("span");
-        affordance.className = "memory-skill-affordance";
-        coreSetUIText(affordance, "textContent", item.open ? corePhrase("收起正文") : corePhrase("查看正文"));
         const overview = document.createElement("span");
         overview.className = "memory-skill-overview";
         const excerpt = document.createElement("span");
         excerpt.className = "memory-skill-excerpt";
         excerpt.textContent = (one.body || "").split("\n").find((line) => line.trim())?.slice(0, 140) || "暂无正文";
         overview.append(name, excerpt);
-        title2.append(overview, affordance);
+        title2.append(overview);
         item.append(title2);
-        item.addEventListener("toggle", () => {
-          coreSetUIText(affordance, "textContent", item.open ? corePhrase("收起正文") : corePhrase("查看正文"));
-        });
         const body = document.createElement("div");
         body.className = "memory-skill-body";
         body.textContent = one.body ?? (one.state === "missing" ? "正文文件缺失。" : "正文未提供，请更新服务后重试。");
@@ -11716,13 +12106,20 @@ function memoryPage(shell2) {
         metadata.className = "memory-skill-metadata";
         coreSetUIText(metadata, "textContent", [[[one.recorded_at ? [[corePhrase("记录于 "), displayDate(one.recorded_at)], corePhrase(" · ")] : corePhrase(""), corePhrase("历史 ")], String(one.history ?? 0)], corePhrase(" 版")]);
         coreSetUIText(metadata, "title", [[[one.id, corePhrase(" · 版本 ")], one.version], one.recorded_at ? [corePhrase(" · "), one.recorded_at] : corePhrase("")]);
-        item.append(metadata);
-        if (one.references?.length) {
-          const refs = document.createElement("div");
-          refs.className = "memory-skill-references";
-          coreSetUIText(refs, "textContent", [corePhrase("关联资料："), one.references.join("、")]);
-          item.append(refs);
-        }
+        const more = document.createElement("button");
+        more.type = "button";
+        more.className = "compact-more";
+        more.textContent = "显示全部";
+        more.setAttribute("aria-label", "显示全部：" + one.title);
+        more.onclick = () => showTextDetail(one.title, [
+          body.textContent,
+          metadata.textContent,
+          one.references?.length ? "关联资料：" + one.references.join("、") : ""
+        ].filter(Boolean).join("\n\n"));
+        const footer = document.createElement("div");
+        footer.className = "memory-skill-footer";
+        footer.append(metadata, more);
+        item.append(footer);
         section.append(item);
       }
       if (filtered.length > limit) {
@@ -11735,22 +12132,10 @@ function memoryPage(shell2) {
           visibleLimits.set(said, limit + pageSize);
           drawSkills(latestSkills);
           const updated = [...skillsBox.querySelectorAll(".memory-skill-section")].find((el6) => el6.querySelector("h3")?.textContent === said);
-          const next = updated?.querySelectorAll("summary")[limit];
+          const next = updated?.querySelectorAll("h3")[limit];
           next?.focus();
         });
         section.append(more);
-      }
-      if (limit > pageSize) {
-        const less = document.createElement("button");
-        less.type = "button";
-        less.className = "memory-skill-more";
-        coreSetUIText(less, "textContent", corePhrase("收起"));
-        coreSetUIAttribute(less, "aria-label", [corePhrase("收起"), said]);
-        less.addEventListener("click", () => {
-          visibleLimits.delete(said);
-          drawSkills(latestSkills);
-        });
-        section.append(less);
       }
       skillsBox.append(section);
     };
@@ -11773,7 +12158,7 @@ function memoryPage(shell2) {
       const box = document.createElement("div");
       const lbl = document.createElement("div");
       lbl.className = "memory-star-label";
-      coreSetUIText(lbl, "textContent", [[corePhrase("操作账（最近 "), String(ops.length)], corePhrase(" 笔）")]);
+      coreSetUIText(lbl, "textContent", [[corePhrase("操作记录（最近 "), String(ops.length)], corePhrase(" 笔）")]);
       box.append(lbl);
       const ul = document.createElement("ul");
       ul.className = "memory-list";
@@ -11876,13 +12261,12 @@ function pluginVersions(repo2, name, current2, blocked, install) {
   const key2 = repo2 + "/" + name;
   let state3 = states.get(key2);
   if (!state3) {
-    state3 = { open: false, kind: "releases", page: 1, selected: "", error: "", loading: false };
+    state3 = { kind: "releases", page: 1, selected: "", error: "", loading: false };
     states.set(key2, state3);
   }
   const s = state3;
-  const box = el4("details", "", "pw-versions");
-  box.open = s.open;
-  const summary2 = el4("summary", "版本与历史下载");
+  const box = el4("section", "", "pw-versions");
+  const summary2 = el4("h3", "版本与历史下载");
   const body = el4("div", "", "pw-version-body");
   box.append(summary2, body);
   const link = (label, url) => {
@@ -11914,7 +12298,7 @@ function pluginVersions(repo2, name, current2, blocked, install) {
       s.data = void 0;
       void read4();
     };
-    const refresh2 = button3(s.loading ? "正在读取…" : "刷新版本", () => {
+    const refresh2 = button3(s.loading ? "正在读取…" : s.data ? "刷新版本" : "读取版本", () => {
       void read4();
     });
     refresh2.disabled = s.loading || blocked;
@@ -11926,7 +12310,7 @@ function pluginVersions(repo2, name, current2, blocked, install) {
       body.append(error);
     }
     if (!s.data) {
-      body.append(el4("p", s.loading ? "正在读取版本…" : "展开后读取 GitHub 版本。"));
+      body.append(el4("p", s.loading ? "正在读取版本…" : "点击“读取版本”获取可安装的历史版本。"));
       return;
     }
     if (!s.data.rows.length) {
@@ -11950,8 +12334,8 @@ function pluginVersions(repo2, name, current2, blocked, install) {
       actions.append(apply, link("下载源码包 ↗", row2.download), link("发布说明 ↗", row2.source));
       body.append(actions);
       if (row2.notes) {
-        const notes = el4("details", "", "pw-version-notes");
-        notes.append(el4("summary", "查看版本说明"), el4("p", row2.notes));
+        const notes = el4("section", "", "pw-version-notes");
+        notes.append(el4("h3", "版本说明"), el4("p", row2.notes));
         body.append(notes);
       }
       body.append(el4("p", current2 ? "切换前请先停用插件。原安装包会备份，配置和缓存保留；旧版是否兼容现有配置，以作者说明为准。" : "按所选标签安装并核对插件清单，安装后默认停用。", "pw-version-hint"));
@@ -11992,14 +12376,9 @@ function pluginVersions(repo2, name, current2, blocked, install) {
       painters.get(key2)?.();
     }
   }
-  box.ontoggle = () => {
-    s.open = box.open;
-    if (box.open && !s.data) void read4();
-  };
   painters.set(key2, draw);
   draw();
-  if (s.open && !s.data && !s.error) void read4();
-  return box;
+  return Object.assign(box, { loadVersions: read4 });
 }
 
 // core/src/web/client/plugin-origin.ts
@@ -12317,8 +12696,8 @@ function pluginWorkspace(shell2, view2 = "local") {
   const feedback = node5("p", "pw-feedback");
   feedback.setAttribute("role", "status");
   const list = node5("div", "pw-list");
-  const footer = node5("div", "pw-list-footer");
-  browse.append(searchTools, feedback, list, footer);
+  const footer = node5("footer", "page-footer pw-page-footer");
+  browse.append(searchTools, feedback, list);
   const detail = node5("section", "pw-detail");
   detail.setAttribute("aria-label", "插件详情");
   const restartSummary = node5("div", "pw-restart-summary");
@@ -12329,7 +12708,7 @@ function pluginWorkspace(shell2, view2 = "local") {
   progress.setAttribute("aria-live", "polite");
   progress.hidden = true;
   body.append(browse, detail);
-  root.append(header, navigation, progress, restartSummary, body);
+  root.append(header, navigation, progress, restartSummary, body, footer);
   shell2.content.replaceChildren(root);
   let selected = "", locals = [], market = [], alive = false, epoch = 0, busy = false;
   let localLoaded = false, marketLoaded = false, localError = "", marketError = "", operationError = "", page2 = 1;
@@ -12423,7 +12802,7 @@ function pluginWorkspace(shell2, view2 = "local") {
     const counts = { local: locals.filter(installed).length, discover: discoverable().length, updates: locals.filter((p) => installed(p) && !p.builtin && updateFor(p.name)?.status === "available").length };
     search.disabled = busy || !!pluginOperation()?.busy;
     includeLocal.disabled = search.disabled;
-    scopeCount.textContent = !localLoaded || view2 === "discover" && !marketLoaded ? "正在读取…" : view2 === "local" ? `${counts.local} 个插件 · ${locals.filter((p) => installed(p) && p.loaded).length} 个运行中` : "";
+    scopeCount.textContent = "";
     refresh2.textContent = busy ? "处理中…" : "刷新";
     refresh2.disabled = busy || !!pluginOperation()?.busy;
     for (const [value, chip] of filterButtons) {
@@ -12435,7 +12814,6 @@ function pluginWorkspace(shell2, view2 = "local") {
     feedback.textContent = view2 === "discover" ? [localError, marketError].filter(Boolean).join(" ") : [localError, status.error, status.checking ? "正在后台检查更新…" : status.message].filter(Boolean).join(" ");
     const rows = entries();
     const pages = Math.max(1, Math.ceil(rows.length / 30));
-    if (view2 === "discover" && localLoaded && marketLoaded) scopeCount.textContent = `搜索到 ${rows.length} 个插件`;
     if (requestedName) {
       const index = rows.findIndex((e) => e.name === requestedName);
       if (index >= 0) {
@@ -12484,7 +12862,9 @@ function pluginWorkspace(shell2, view2 = "local") {
         const copy = node5("span", "pw-entry-copy");
         copy.append(node5("strong", "", e.local?.displayName || e.name));
         const text2 = filterValue === "available" && updateFor(e.name) ? updateText(updateFor(e.name)) : e.local?.description || e.market?.description || e.name;
-        copy.append(node5("span", "pw-entry-summary", text2));
+        const summary2 = node5("span", "pw-entry-summary", text2);
+        summary2.title = text2;
+        copy.append(summary2);
         const state3 = node5("span", "pw-entry-state");
         const update2 = updateFor(e.name);
         if (update2?.status === "available" && installed(e.local) && !e.local?.builtin) {
@@ -12494,13 +12874,18 @@ function pluginWorkspace(shell2, view2 = "local") {
           state3.textContent = (e.local.builtin ? "内置 · " : "") + runtime(e.local);
           state3.dataset.tone = e.local.loaded ? "on" : "off";
         } else state3.textContent = e.market ? pluginCategoryLabel(e.market) : "";
-        copy.append(state3);
-        if (view2 === "discover") copy.append(node5("span", "pw-entry-platform", platformSummary(platforms(e))));
+        const meta = node5("span", "pw-entry-meta");
+        meta.append(state3);
+        if (view2 === "discover") meta.append(node5("span", "pw-entry-platform", platformSummary(platforms(e))));
+        copy.append(meta);
         item.append(mark, copy);
         list.append(item);
       }
     }
-    footer.replaceChildren(node5("span", "", `${rows.length} 个插件`));
+    footer.replaceChildren(node5("span", "page-footer-label", view2 === "local" ? "内置与已安装" : "社区插件"));
+    const footerInfo = node5("div", "page-footer-summary");
+    footerInfo.append(node5("span", "", !localLoaded || view2 === "discover" && !marketLoaded ? "正在读取…" : view2 === "local" ? `共 ${counts.local} 个 · 运行中 ${locals.filter((p) => installed(p) && p.loaded).length} 个 · 可更新 ${counts.updates} 个${rows.length !== counts.local ? " · 筛选结果 " + rows.length + " 个" : ""}` : `搜索到 ${rows.length} 个插件`));
+    footer.append(footerInfo);
     if (pages > 1) {
       const back = button2("上一页", () => {
         page2--;
@@ -12514,7 +12899,7 @@ function pluginWorkspace(shell2, view2 = "local") {
         render2();
       });
       next.disabled = page2 === pages;
-      footer.append(back, node5("span", "", `${page2}/${pages}`), next);
+      footerInfo.append(back, node5("span", "", `${page2}/${pages}`), next);
     }
     const entry = shown.find((e) => e.name === selected);
     const detailKey = JSON.stringify([entry, view2, entry && updateFor(entry.name), operationError, busy, pluginOperation(), checkingUpdates, status.checking]);
@@ -12530,6 +12915,7 @@ function pluginWorkspace(shell2, view2 = "local") {
       return;
     }
     const p = e.local, m = e.market, exists = installed(p), u = updateFor(e.name);
+    detail.classList.toggle("pw-builtin-qq", e.name === "core-infinity-qq" && !!p?.builtin);
     const hero = node5("header", "pw-hero");
     const mark = node5("div", "pw-mark pw-mark-large");
     mark.append(icon(p?.builtin ? "grid" : "puzzle"));
@@ -12628,7 +13014,7 @@ function pluginWorkspace(shell2, view2 = "local") {
     }) : void 0;
     if (versions) {
       const choose = button2(u?.status === "available" ? "选择更新版本" : "选择版本", () => {
-        versions.open = true;
+        void versions.loadVersions();
         versions.scrollIntoView({ block: "nearest" });
       });
       choose.disabled = busy || !!pluginOperation()?.busy;
@@ -12652,18 +13038,33 @@ function pluginWorkspace(shell2, view2 = "local") {
       if (u.checkedAt) update2.append(node5("small", "", `上次成功检查 ${new Date(u.checkedAt * 1e3).toLocaleString()}`));
       if (u.error) update2.append(node5("p", "", u.error));
       if (u.status === "available") {
-        const instructions = node5("details");
-        instructions.append(node5("summary", "", "查看升级步骤"), node5("p", "", "停用插件后，点击“选择更新版本”，核对发布说明再安装。旧包会备份，配置和缓存保留，安装后按需启用。多个 Bot 共用安装包时，需要各 Bot 均已停用该插件。"));
+        const instructions = node5("section");
+        instructions.append(node5("h3", "", "查看升级步骤"), node5("p", "", "停用插件后，点击“选择更新版本”，核对发布说明再安装。旧包会备份，配置和缓存保留，安装后按需启用。多个 Bot 共用安装包时，需要各 Bot 均已停用该插件。"));
         update2.append(instructions);
       }
       detail.append(update2);
     }
+    const descriptions = node5("div", "pw-detail-sections");
     const about = node5("section", "pw-about");
     about.append(node5("h3", "", "关于插件"), node5("p", "", p?.description || m?.description || "作者尚未提供简介。"));
     const requirement = m && pluginRequirement(m);
     if (requirement) about.append(node5("p", "pw-requirement", requirement));
     if (p?.contract) about.append(node5("p", "pw-operation", p.contract));
-    detail.append(about);
+    descriptions.append(about);
+    if (p?.builtin && e.name === "core-infinity-qq") {
+      const features = node5("div", "pw-feature-list");
+      for (const [title2, text2] of [
+        ["消息与会话", "收发私聊与群聊消息，配置允许接入的账号和群。"],
+        ["图片与表情", "查看图片、收藏表情，并发送已保存的图片。"],
+        ["语音交流", "配置语音识别和合成模型，进行本机自检。"],
+        ["工具与扩展", "查看已注册工具，为 ComfyUI 等 QQ 扩展提供消息通道。"]
+      ]) {
+        const row2 = node5("div", "pw-feature");
+        row2.append(node5("h4", "", title2), node5("p", "", text2));
+        features.append(row2);
+      }
+      about.append(features, node5("p", "pw-feature-note", "首次使用请打开配置，连接 SnowLuma 并设置会话路由。具体可用功能取决于当前配置与权限。"));
+    }
     const info = node5("section", "pw-info");
     info.append(node5("h3", "", "安装信息"));
     const fields = node5("dl");
@@ -12678,7 +13079,12 @@ function pluginWorkspace(shell2, view2 = "local") {
     if (p?.builtin) field("更新方式", "随 Core 更新");
     if (p?.reload_mode) field("生效方式", p.reload_mode === "restart" ? "启用和停用需重启 Core 服务" : p.reload_mode === "hot" ? "支持热加载" : "声明无效");
     info.append(fields);
-    detail.append(info);
+    descriptions.append(info);
+    detail.append(descriptions);
+    const scroll = node5("div", "pw-detail-scroll");
+    const children = [...detail.children];
+    scroll.append(...children.slice(children.indexOf(actions) + 1));
+    detail.append(scroll);
   }
   async function changeVersion(e, repository, row2) {
     if (busy || pluginOperation()?.busy || !alive) return;
@@ -12883,9 +13289,9 @@ function infinityPluginPage(shell2) {
 }
 
 // core/src/web/client/knowledge-page.ts
-var READ_FAILED2 = "读不到知识库那一格。";
-var NOT_WIRED2 = "知识库这一层没接上读法。";
-var NOTHING_YET = "知识库里还没有东西 —— 定下来的事写进那儿，这里就看得见。";
+var READ_FAILED2 = "知识库加载失败，请重试。";
+var NOT_WIRED2 = "当前服务暂不支持查看知识库。";
+var NOTHING_YET = "暂无知识库内容。";
 var stripComments = (one) => one.replace(/<!--[\s\S]*?-->/g, "");
 var theLines = (text2) => stripComments(String(text2 || "")).split("\n").filter((one) => one.trim() !== "");
 var theShownName = (one) => String(one || "").replace(/\.md$/i, "");
@@ -12902,7 +13308,7 @@ function knowledgePage(shell2) {
   head.className = "head";
   const title = document.createElement("h1");
   coreSetUIText(title, "textContent", corePhrase("知识库 · KNOWLEDGE"));
-  const find2 = searchBox("按名称筛选…");
+  const find2 = searchBox("搜索文档名称");
   head.append(title, find2.element);
   root.append(head);
   const book = document.createElement("div");
@@ -12914,13 +13320,13 @@ function knowledgePage(shell2) {
   book.append(toc, body);
   root.append(book);
   const tail = document.createElement("div");
-  tail.className = "tail";
+  tail.className = "tail page-footer";
   root.append(tail);
   shell2.content.replaceChildren(root);
   const draw = (answer, q) => {
     toc.replaceChildren();
     body.replaceChildren();
-    tail.replaceChildren();
+    tail.replaceChildren(line("span", "page-footer-label", "知识与资料"));
     if (answer === null || answer.wired === false) {
       const prose = line("div", "prose");
       prose.append(line("p", "fade", answer === null ? READ_FAILED2 : NOT_WIRED2));
@@ -12933,11 +13339,11 @@ function knowledgePage(shell2) {
     const rows = answer.knowledge ?? [];
     const howMany = rows.reduce((sum, one) => sum + (one.lines ?? theLines(one.text).length), 0);
     if (rows.length === 0) {
-      toc.append(line("div", "empty", q === "" ? "还是空的 —— 定下来的事落到这儿，名字就出现在这儿。" : "没有对上的。"));
+      toc.append(line("div", "empty", q === "" ? "暂无文档。" : "没有匹配结果。"));
       const prose = line("div", "prose");
-      prose.append(line("p", "fade", q === "" ? NOTHING_YET : "「" + q + "」没对上哪一份。"));
+      prose.append(line("p", "fade", q === "" ? NOTHING_YET : "「" + q + "」没有匹配文档。"));
       body.append(prose);
-      tail.append(line("span", "", "世界里的事"), line("span", "", "共 0 份 · 0 行"));
+      tail.append(line("span", "", "共 0 份 · 0 行"));
       return;
     }
     let at = 0;
@@ -12945,8 +13351,9 @@ function knowledgePage(shell2) {
       const one = rows[index];
       const heads = theLines(one.text);
       body.replaceChildren();
+      body.scrollTop = 0;
       body.append(line("h2", "", one.title ?? theShownName(one.name)));
-      body.append(line("p", "gist", heads[0] ?? "（这一份还没有正文）"));
+      body.append(line("p", "gist", heads[0] ?? "暂无正文。"));
       const prose = line("div", "prose");
       for (const said of heads.slice(1)) prose.append(line("p", "", said));
       body.append(prose);
@@ -12990,31 +13397,31 @@ function knowledgePage(shell2) {
         groups.set(key2, [...groups.get(key2) ?? [], index]);
       });
       groups.forEach((idxs, key2) => {
-        const box = document.createElement("details");
+        const box = document.createElement("section");
         box.className = "group";
-        const head2 = document.createElement("summary");
+        const head2 = document.createElement("h3");
         head2.className = "group-head";
         head2.textContent = key2 + " · " + String(idxs.length);
         box.append(head2);
-        let built = false;
+        let shown = 0;
+        const more = document.createElement("button");
+        more.type = "button";
+        more.className = "infinity-text-link";
         const build = () => {
-          if (built) return;
-          built = true;
-          for (const i of idxs) box.append(drawOne(i));
+          const next = idxs.slice(shown, shown + 30);
+          shown += next.length;
+          for (const i of next) box.insertBefore(drawOne(i), more);
+          more.hidden = shown >= idxs.length;
+          more.textContent = "显示更多（剩余 " + (idxs.length - shown) + "）";
         };
-        box.addEventListener("toggle", () => {
-          if (box.open) build();
-        });
-        if (toc.childElementCount === 0) {
-          box.open = true;
-          build();
-        }
+        more.onclick = build;
+        box.append(more);
+        build();
         toc.append(box);
       });
     }
     pick2(at);
     tail.append(
-      line("span", "", "世界里的事"),
       line("span", "", "共 " + String(rows.length) + " 份 · " + String(howMany) + " 行")
     );
   };
@@ -13058,20 +13465,49 @@ function knowledgePage(shell2) {
 }
 
 // core/src/web/client/portrait-display.ts
-function portraitOrigin(raw) {
-  const group = /^group:qq:(\d+)\|sender=qq:(\d+)$/.exec(raw);
-  if (group) return `QQ 群 ${group[1]} · 发言者 ${group[2]}`;
-  const privateQQ = /^private:qq:(\d+)$/.exec(raw);
-  if (privateQQ) return `QQ 私聊 · ${privateQQ[1]}`;
-  if (raw === "private:console:local-owner") return "控制台 · 本机入口";
+function portraitAccount(raw) {
+  const group = /^group:qq:\d+\|sender=(qq:\d+)$/.exec(raw);
+  if (group) return group[1];
+  if (/^private:(qq:\d+|console:local-owner)$/.test(raw)) return raw.slice(8);
+  if (/^QQ-\d+$/.test(raw)) return "qq:" + raw.slice(3);
+  if (raw === "Console-local-owner") return "console:local-owner";
   return raw;
+}
+function portraitOrigin(raw) {
+  const account = portraitAccount(raw);
+  if (/^qq:\d+$/.test(account)) return "QQ · " + account.slice(3);
+  if (account === "console:local-owner") return "控制台 · 本机";
+  return raw;
+}
+function portraitSource(raw) {
+  const group = /^group:qq:(\d+)\|sender=qq:(\d+)$/.exec(raw);
+  return group ? "QQ 群 · " + group[1] : portraitOrigin(raw);
+}
+function portraitEncounters(person, people) {
+  const account = portraitAccount(person.display_account || person.plat || person.who);
+  if (!/^qq:\d+$/.test(account)) return [];
+  const rooms = /* @__PURE__ */ new Map();
+  const add = (visit) => {
+    if (visit.account !== account || !/^\d+$/.test(visit.room)) return;
+    const old = rooms.get(visit.room);
+    const dates = [old?.first, old?.last, visit.first, visit.last].filter((v) => !!v && !Number.isNaN(Date.parse(v))).sort((a, b) => Date.parse(a) - Date.parse(b));
+    rooms.set(visit.room, { account, room: visit.room, label: visit.label || old?.label, first: dates[0], last: dates.at(-1) });
+  };
+  for (const row2 of people) {
+    for (const visit of row2.encounters || []) add(visit);
+    for (const source of [{ from: row2.plat || "", ts: "" }, ...row2.said || []]) {
+      const match = /^group:qq:(\d+)\|sender=(qq:\d+)$/.exec(source.from);
+      if (match) add({ room: match[1], account: match[2], first: source.ts, last: source.ts });
+    }
+  }
+  return [...rooms.values()].sort((a, b) => (b.last || "").localeCompare(a.last || "") || a.room.localeCompare(b.room));
 }
 
 // core/src/web/client/people-page.ts
-var READ_FAILED3 = "读不到画像那一格。";
-var NOT_WIRED3 = "画像这一层没接上读法。";
-var NOBODY_YET = "她还没记过谁 —— 她记下来的时候，这里就有第一条。";
-var ROSTER_EMPTY = "还没有别人 —— 她记下一个人的时候，名字会出现在这儿。";
+var READ_FAILED3 = "画像加载失败，请重试。";
+var NOT_WIRED3 = "当前服务暂不支持查看画像。";
+var NOBODY_YET = "暂无画像记录。";
+var ROSTER_EMPTY = "暂无人物。";
 var SAID_SHOWN = 5;
 function peoplePage(shell2) {
   const expandedPeople = /* @__PURE__ */ new Set();
@@ -13081,7 +13517,7 @@ function peoplePage(shell2) {
   head.className = "head";
   const title = document.createElement("h1");
   coreSetUIText(title, "textContent", corePhrase("画像 · PROFILE"));
-  const find2 = searchBox("按用户名筛选…");
+  const find2 = searchBox("搜索姓名或账号");
   head.append(title, find2.element);
   root.append(head);
   const faces = document.createElement("div");
@@ -13089,10 +13525,11 @@ function peoplePage(shell2) {
   const roster = document.createElement("div");
   roster.className = "roster";
   const face = document.createElement("div");
+  face.className = "portrait-detail";
   faces.append(roster, face);
   root.append(faces);
   const tail = document.createElement("div");
-  tail.className = "tail";
+  tail.className = "tail page-footer";
   root.append(tail);
   shell2.content.replaceChildren(root);
   const line = (tag, cls, text2) => {
@@ -13184,15 +13621,15 @@ function peoplePage(shell2) {
       box.append(bit);
     };
     if (one.full === true) {
-      box.append(line("span", "thin", "· 已经记满（再记就会压掉最旧的）"));
+      box.append(line("span", "thin", "已达记录上限，新增记录会替换最旧记录"));
     }
-    put2("关系评分", String(one.favor ?? 0), true);
+    if (one.favor != null) put2("关系评分", String(one.favor), true);
     return box;
   };
   const gist = (one) => {
     const said = String(one?.standing ?? "");
     if (said === "") {
-      return line("p", "gist void", one === null ? NOBODY_YET : "（还没给过说法）");
+      return line("p", "gist void", one === null ? NOBODY_YET : "");
     }
     return line("p", "gist", said);
   };
@@ -13218,7 +13655,7 @@ function peoplePage(shell2) {
       const meta = line("div", "said-meta");
       if (said.kind_label) meta.append(line("span", "from", said.kind_label));
       if (said.from !== "") {
-        const source = line("span", "from", portraitOrigin(said.from));
+        const source = line("span", "from", portraitSource(said.from));
         source.title = said.from;
         meta.append(source);
         if (said.source_cursor) meta.append(line("span", "from", "来源事件 #" + said.source_cursor));
@@ -13232,7 +13669,7 @@ function peoplePage(shell2) {
   const draw = (answer) => {
     roster.replaceChildren();
     face.replaceChildren();
-    tail.replaceChildren();
+    tail.replaceChildren(line("span", "page-footer-label", "人物与关系"));
     if (answer === null || answer.wired === false) {
       const said = line("p", "gist void", answer === null ? READ_FAILED3 : NOT_WIRED3);
       face.append(said);
@@ -13243,7 +13680,6 @@ function peoplePage(shell2) {
       roster.append(line("div", "empty", ROSTER_EMPTY));
       face.append(gist(null));
       tail.append(
-        line("span", "", "世界里的事"),
         line("span", "", "共 0 个人")
       );
       return;
@@ -13260,48 +13696,49 @@ function peoplePage(shell2) {
       const nameRow = line("div", "who-name");
       nameRow.append(line("h2", "", one.display_name || one.who));
       if (String(one.plat ?? "") !== "") {
-        nameRow.append(line("span", "plat", portraitOrigin(String(one.plat))));
+        nameRow.append(line("span", "plat", portraitOrigin(one.display_account || String(one.plat))));
       }
-      if (one.blocked) nameRow.append(line("span", "gate", " 拉黑着"));
+      if (one.blocked) nameRow.append(line("span", "gate", " 已屏蔽"));
       body.append(nameRow);
-      if (one.display_name) {
-        const commonName = one.encounters?.some((visit) => visit.account === one.display_account && visit.common_name === one.display_name);
-        const nameSource = one.identity?.label === one.display_name ? "已确认称呼" : one.display_account === "console:local-owner" && one.said?.some((row2) => row2.role === "名字" && row2.from === "private:console:local-owner" && row2.text === one.display_name) ? "控制台自报称呼" : commonName ? "对方指定的通用称呼" : "来话显示名（仅界面）";
-        body.append(line(
-          "p",
-          "identity-note",
-          nameSource + " · 画像键 " + one.who + (one.display_account ? " · " + one.display_account : "")
-        ));
-      }
-      if (one.encounters?.length) {
-        const rooms = one.encounters;
-        const count5 = new Set(rooms.map((visit) => visit.room)).size;
-        body.append(line("p", "identity-note", "在 " + count5 + " 个群见过" + (one.said?.length || one.standing ? "" : " · 暂时了解不多")));
-        const context = document.createElement("details");
-        context.append(line("summary", "", "群内相遇记录"));
+      const rooms = portraitEncounters(one, rows);
+      if (rooms.length) {
+        const context = document.createElement("section");
+        context.className = "portrait-encounters";
+        const summary2 = line("h3", "");
+        summary2.append(line("span", "", "相遇记录"), line("span", "encounter-count", rooms.length + " 个 QQ 群"));
+        context.append(summary2);
+        const list = line("div", "encounter-list");
         for (const visit of rooms) {
-          const when = (stamp) => new Date(stamp).toLocaleString("zh-CN", { hour12: false });
-          context.append(line("p", "identity-note", "QQ群 " + visit.room + " · " + visit.label + "（" + visit.account + "） · 首次 " + when(visit.first) + " · 最近 " + when(visit.last) + (visit.common_name ? " · 对方指定的通用称呼：" + visit.common_name : "")));
+          const item = line("div", "encounter-row");
+          item.append(line("span", "", "QQ 群 · " + visit.room));
+          const date = (value) => value ? new Date(value).toLocaleDateString("zh-CN") : "";
+          item.append(line("span", "encounter-date", visit.first ? "首次 " + date(visit.first) + (visit.last !== visit.first ? " · 最近 " + date(visit.last) : "") : "来自已保存的群聊记录"));
+          list.append(item);
         }
+        context.append(list);
         body.append(context);
       }
-      if (!one.encounters?.length || one.standing || one.said?.length || one.favor != null) {
-        body.append(gist(one), facts(one));
+      if (one.standing?.trim()) {
+        const overview = line("section", "portrait-overview");
+        overview.append(line("h3", "", "人物概述"), gist(one));
+        body.append(overview);
       }
+      body.append(facts(one));
       card.append(body);
       face.append(card);
       const count4 = one.said?.length ?? 0;
-      face.append(line("h3", "portrait-records-title", "画像记录（" + count4 + "）"));
+      face.append(line("h3", "portrait-records-title", "画像记录 · " + count4));
+      if (!count4) face.append(line("p", "portrait-empty", "暂无画像记录。"));
       for (const item of theSaid(one, expanded ? count4 : SAID_SHOWN)) face.append(item);
       const hidden = count4 - SAID_SHOWN;
-      if (hidden > 0) {
+      if (hidden > 0 && !expanded) {
         const zone = line("div", "more-zone");
         const first = line("div", "line1");
-        first.append(line("span", "lead", expanded ? "已显示全部记录" : "还有 " + String(hidden) + " 条她记下的话"));
-        const op = line("button", "op", expanded ? "收起" : "全都摊开");
+        first.append(line("span", "lead", expanded ? "已显示全部记录" : "还有 " + String(hidden) + " 条记录"));
+        const op = line("button", "op", "显示全部记录");
         op.type = "button";
         op.addEventListener("click", () => {
-          showFace(index, !expanded);
+          showFace(index, true);
         });
         first.append(op);
         zone.append(first);
@@ -13320,12 +13757,12 @@ function peoplePage(shell2) {
       }
       const one = rows[at];
       const identity = one.identity;
-      const zone = line("div", "join identity-link");
-      zone.append(line("div", "line1", "已确认的账号归属"));
+      const zone = line("details", "join identity-link compact-disclosure");
+      zone.append(line("summary", "line1", "账号关联"));
       zone.append(line(
         "p",
         "why",
-        "来话昵称仅供界面辨认，不会自动绑定或合并身份。要向 BOT 介绍某个人，请在对话里说明。"
+        "把同一个人的不同账号关联起来，方便 Bot 识别。昵称相同不会自动关联。"
       ));
       const status = line("p", "identity-status");
       const update2 = async (body) => {
@@ -13336,7 +13773,7 @@ function peoplePage(shell2) {
             body: JSON.stringify({ ...body, confirm: true })
           });
           const result = await got.json();
-          if (got.status === 409) return "身份关联已变化，请手动刷新并重新确认；没有自动重试。";
+          if (got.status === 409) return "账号关联已变化，请刷新后重新确认。";
           if (!got.ok || result.ok !== true) {
             return result.said || "操作没有完成。";
           }
@@ -13349,29 +13786,27 @@ function peoplePage(shell2) {
       };
       const association = one.association;
       if (!association?.revision) {
-        zone.append(line("p", "identity-status", "缺少同快照身份修订号，请刷新后再操作。"));
+        zone.append(line("p", "identity-status", "账号信息不完整，请刷新后再操作。"));
         return zone;
       }
-      const advanced = document.createElement("details");
-      const summary2 = line("summary", "", "高级：手动账号与解绑");
+      const advanced = document.createElement("section");
+      advanced.className = "identity-advanced";
+      const summary2 = line("h3", "", "高级管理");
       advanced.append(summary2);
       if (association) {
-        zone.append(line(
-          "p",
-          "why",
-          "选另一份画像，确认这两个账号属于同一个人。将你自己的 QQ 与本机控制台关联后，Core 就知道主人的 QQ 了。"
-        ));
+        const linking = line("section", "identity-linking");
+        linking.append(line("h4", "", "关联其他画像"));
         const target = document.createElement("select");
         target.className = "engine-input";
         coreSetUIAttribute(target, "aria-label", corePhrase("同一个人的另一份画像"));
         const current2 = document.createElement("option");
         current2.value = "";
-        coreSetUIText(current2, "textContent", corePhrase("只确认当前画像的账号（不选其他画像）"));
+        coreSetUIText(current2, "textContent", corePhrase("仅确认当前账号"));
         target.append(current2);
         for (const row2 of rows.filter((r) => r.who !== one.who)) {
           const option = document.createElement("option");
           option.value = row2.who;
-          option.textContent = (row2.display_name || row2.who) + " · " + row2.who;
+          option.textContent = (row2.display_name || row2.who) + " · " + portraitOrigin(row2.display_account || row2.plat || row2.who);
           target.append(option);
         }
         const associate = line("button", "identity-button", "确认是同一个人");
@@ -13398,15 +13833,13 @@ function peoplePage(shell2) {
             })
           );
         });
-        zone.append(target, associate);
+        const controls = line("div", "identity-controls");
+        controls.append(target, associate);
+        linking.append(controls);
+        zone.append(linking);
         if (identity?.profile_keys && identity.profile_keys.length > 1) {
-          zone.append(line(
-            "p",
-            "identity-note",
-            "已关联画像：" + identity.profile_keys.join("、")
-          ));
-          const separate = line("button", "identity-button subtle", "分开这份画像");
-          separate.addEventListener("click", () => {
+          const separate2 = line("button", "identity-button subtle", "分开这份画像");
+          separate2.addEventListener("click", () => {
             const accounts = [...association.separate_accounts ?? []];
             confirmIdentity(
               "分开这份画像",
@@ -13421,13 +13854,13 @@ function peoplePage(shell2) {
               })
             );
           });
-          advanced.append(separate);
+          separate2.classList.add("identity-separate");
+          advanced.append(separate2);
         }
       } else {
-        advanced.open = true;
       }
       if (!identity) {
-        advanced.append(line("p", "why", "这份画像尚未连接稳定身份。相同昵称不会自动归并。"));
+        advanced.append(line("p", "why", "尚未设置账号关联。"));
         const create = line("button", "identity-button", "建立身份");
         create.addEventListener("click", () => {
           confirmIdentity(
@@ -13440,7 +13873,8 @@ function peoplePage(shell2) {
         });
         advanced.append(create);
       } else {
-        advanced.append(line("p", "why", "身份 " + identity.id.slice(0, 15) + "… · 账号须人工核对后绑定。"));
+        const renameBlock = line("section", "identity-editor");
+        renameBlock.append(line("h4", "", "修改称呼"));
         const name = document.createElement("input");
         name.type = "text";
         name.maxLength = 80;
@@ -13469,10 +13903,13 @@ function peoplePage(shell2) {
         });
         const naming = line("div", "identity-add");
         naming.append(name, rename);
-        advanced.append(naming);
+        renameBlock.append(naming);
+        advanced.append(renameBlock);
+        const linked = line("section", "identity-linked");
+        linked.append(line("h4", "", "已关联账号"));
         for (const account2 of identity.accounts) {
           const row2 = line("div", "identity-account");
-          row2.append(line("code", "", account2));
+          row2.append(line("span", "", portraitOrigin(account2)));
           const remove = line("button", "identity-button subtle", "解绑");
           remove.disabled = !association?.revision;
           remove.addEventListener("click", () => {
@@ -13495,24 +13932,31 @@ function peoplePage(shell2) {
             );
           });
           row2.append(remove);
-          advanced.append(row2);
+          linked.append(row2);
         }
+        zone.insertBefore(linked, zone.querySelector(".identity-linking"));
+        const accountBlock = line("section", "identity-editor");
+        accountBlock.append(line("h4", "", "手动添加账号"));
         const add = line("div", "identity-add");
         const account = document.createElement("input");
         account.type = "text";
         account.autocomplete = "off";
-        coreSetUIText(account, "placeholder", corePhrase("console:local-owner / qq:账号 / wechat:账号"));
-        coreSetUIAttribute(account, "aria-label", corePhrase("稳定平台账号"));
-        advanced.append(line(
-          "p",
-          "why",
-          "本机终端入口键：console:local-owner。它只标记入口，不证明操作者身份；确认由你本人使用后再绑定。"
-        ));
+        coreSetUIText(account, "placeholder", corePhrase("填写账号"));
+        coreSetUIAttribute(account, "aria-label", corePhrase("平台账号"));
+        const platform = document.createElement("select");
+        platform.setAttribute("aria-label", "账号平台");
+        platform.append(new Option("QQ", "qq"), new Option("控制台", "console"), new Option("其他平台", "custom"));
+        platform.addEventListener("change", () => {
+          account.hidden = platform.value === "console";
+          account.placeholder = platform.value === "custom" ? "平台:账号" : "填写 QQ 号";
+        });
+        account.placeholder = "填写 QQ 号";
         const bind2 = line("button", "identity-button", "绑定账号");
         bind2.addEventListener("click", () => {
-          const key2 = account.value.trim();
+          const raw = account.value.trim();
+          const key2 = platform.value === "console" ? "console:local-owner" : platform.value === "qq" ? raw ? "qq:" + raw : "" : raw;
           if (!key2) {
-            coreSetUIText(status, "textContent", corePhrase("先填稳定平台账号。"));
+            coreSetUIText(status, "textContent", corePhrase("请填写平台账号。"));
             return;
           }
           status.textContent = "";
@@ -13524,15 +13968,25 @@ function peoplePage(shell2) {
             () => update2({ action: "bind", person_id: identity.id, account: key2 })
           );
         });
-        add.append(account, bind2);
-        advanced.append(add);
+        add.append(platform, account, bind2);
+        accountBlock.append(add);
+        advanced.append(accountBlock);
       }
+      const separate = advanced.querySelector(".identity-separate");
+      if (separate) {
+        const row2 = line("div", "identity-separate-row");
+        row2.append(line("span", "", "解除当前画像的关联，保留原始记录。"), separate);
+        advanced.append(row2);
+      }
+      const fields = line("div", "identity-advanced-body");
+      while (advanced.children.length > 1) fields.append(advanced.children[1]);
+      advanced.append(fields);
       zone.append(advanced);
       zone.append(status);
       zone.append(line(
         "p",
         "why",
-        "关联后在下一次请求读取已确认的关联画像与私人入口；原文件和来源不变。群聊历史仍按场景隔离；无归属旧记录不会自动认领。"
+        "关联后从下次对话生效。原始记录保留，不会跨群共享聊天内容。"
       ));
       return zone;
     };
@@ -13541,18 +13995,20 @@ function peoplePage(shell2) {
       selectedWho = rows[index].who;
       for (const [i, el6] of [...roster.querySelectorAll(".one")].entries()) {
         el6.classList.toggle("on", i === index);
+        el6.setAttribute("aria-pressed", String(i === index));
       }
       showFace(index);
+      face.scrollTop = 0;
     };
     rows.forEach((one, index) => {
-      const item = line("div", "one");
+      const item = line("button", "one");
+      item.type = "button";
       const label = line("span", "n", one.display_name || one.who);
       label.title = one.who;
       item.append(label);
-      if (one.display_name) item.append(line("span", "p", one.who));
       if (one.blocked) item.append(line("span", "gate", ""));
       if (String(one.plat ?? "") !== "") {
-        item.append(line("span", "p", portraitOrigin(String(one.plat))));
+        item.append(line("span", "p", portraitOrigin(one.display_account || String(one.plat))));
       }
       item.addEventListener("click", () => {
         pick2(index);
@@ -13561,7 +14017,6 @@ function peoplePage(shell2) {
     });
     pick2(at);
     tail.append(
-      line("span", "", "世界里的事"),
       line("span", "", "共 " + String(rows.length) + " 个人")
     );
   };
@@ -13605,10 +14060,20 @@ function peoplePage(shell2) {
   };
 }
 
+// core/src/web/client/record-labels.ts
+function experienceSourceName(path) {
+  const name = path.split(/[\\/]/).filter(Boolean).at(-1)?.replace(/\.[^.]+$/, "") || "";
+  if (/^对话(?:记录)?$/.test(name)) return "对话";
+  if (/^自我记录归位-\d{8}$/.test(name)) return "自我记录";
+  if (/^自述工具用法归位-\d{8}$/.test(name)) return "工具说明";
+  const labels = { "整理那一趟": "记忆整理", "设定修订": "设定修改", "交接笔记": "会话摘要" };
+  return labels[name] || name;
+}
+
 // core/src/web/client/experience-page.ts
-var READ_FAILED4 = "读不到经历那一格。";
-var NOT_WIRED4 = "经历这一层没接上读法。";
-var NOTHING_YET2 = "还没有经历记下来 —— 说过的话、写过的一段，都会落到这儿。";
+var READ_FAILED4 = "经历加载失败，请重试。";
+var NOT_WIRED4 = "当前服务暂不支持查看经历。";
+var NOTHING_YET2 = "暂无经历。保存的对话和记录会显示在这里。";
 var SHOWN = 4;
 var theWho = (one, other) => {
   const mine = speaker();
@@ -13678,7 +14143,7 @@ var theSpoken = (text2) => {
 };
 var thePrefixShape = (one, opened, make, flip) => {
   const hot = one.room !== "";
-  const box = make(hot ? "button" : "span", hot ? "ch ch-interactive" : "ch", "");
+  const box = make("span", "ch", "");
   box.append(document.createTextNode("["));
   box.append(make("span", "ch-who", one.label));
   box.append(make("span", "ch-dot", "·"));
@@ -13687,13 +14152,7 @@ var thePrefixShape = (one, opened, make, flip) => {
     opened ? "ch-scope is-open" : "ch-scope",
     opened ? one.scope + "·" + one.room : one.scope
   );
-  if (hot) {
-    box.setAttribute("type", "button");
-    box.setAttribute("aria-expanded", String(opened));
-    coreSetUIText(box, "title", opened ? corePhrase("收起会话号") : corePhrase("展开会话号"));
-    box.setAttribute("aria-label", `${one.label}·${one.scope}：${box.title}`);
-    box.addEventListener("click", flip);
-  }
+  if (hot) box.title = `${one.label} · ${one.scope} · ${one.room}`;
   box.append(word);
   box.append(document.createTextNode("]"));
   return box;
@@ -13707,7 +14166,6 @@ var theOwnName = (one) => String(one || "").split("/").filter((x) => x !== "").p
 var theCount = (one) => one.kind === "记录" ? String(one.count) + " 条" : "文档";
 var theFirstLine = (one) => String(one ?? "").split("\n")[0];
 var theFold = (one) => String(one ?? "").includes("\n");
-var theRest = (one) => String(one ?? "").split("\n").length - 1;
 var hit = (one, q) => {
   const needle = q.toLowerCase();
   const fields = [
@@ -13742,54 +14200,62 @@ function experiencePage(shell2) {
   head.append(title, find2.element);
   root.append(head);
   const axis = line("div", "axis");
-  root.append(axis);
-  const sources = line("div", "sources");
-  root.append(sources);
-  const tail = document.createElement("div");
-  tail.className = "tail";
-  root.append(tail);
+  const scroll = line("div", "page-scroll experience-scroll");
+  scroll.append(axis);
+  root.append(scroll);
+  const sources = line("div", "experience-source-list");
+  const sourceDialog = document.createElement("dialog");
+  sourceDialog.className = "avatar-crop-dialog experience-source-dialog";
+  sourceDialog.setAttribute("aria-label", "记录来源");
+  const closeSources = line("button", "", "关闭");
+  closeSources.type = "button";
+  closeSources.onclick = () => sourceDialog.close();
+  const sourceActions = line("div", "avatar-crop-actions");
+  sourceActions.append(closeSources);
+  sourceDialog.append(line("h2", "", "记录来源"), sources, sourceActions);
+  const sourceButton = line("button", "page-footer-link", "记录来源");
+  sourceButton.type = "button";
+  sourceButton.onclick = () => {
+    sourceDialog.showModal();
+    closeSources.focus();
+  };
+  sourceDialog.addEventListener("close", () => {
+    if (!root.hidden) sourceButton.focus();
+  });
+  sourceDialog.addEventListener("click", (event) => event.stopPropagation());
+  sourceDialog.addEventListener("keydown", (event) => event.stopPropagation());
+  const tail = document.createElement("footer");
+  tail.className = "tail page-footer";
+  root.append(tail, sourceDialog);
   shell2.content.replaceChildren(root);
-  const unfoldedDays = /* @__PURE__ */ new Set();
-  const dayScroll = /* @__PURE__ */ new Map();
-  const openedBeats = /* @__PURE__ */ new Set();
+  const dayLimits = /* @__PURE__ */ new Map();
   const openedHeads = /* @__PURE__ */ new Set();
   let mine = null;
   let asked = "";
   const stamp = (key2, label, sub, rows) => {
     const box = line("div", "stamp");
     box.dataset.dayKey = key2;
-    const day = line("div", "day", label === "" ? "更早" : label);
+    const day = line("div", "day", label === "" ? "日期未记录" : label);
     if (sub !== "") day.append(line("span", "", sub));
     box.append(day, line("div", "dot"));
-    const open = unfoldedDays.has(key2);
-    const body = line("div", open ? "day-beats is-open" : "day-beats");
+    const limit = dayLimits.get(key2) ?? SHOWN;
+    const body = line("div", "day-beats");
     body.id = "experience-day-" + encodeURIComponent(key2);
     body.setAttribute("role", "region");
-    coreSetUIAttribute(body, "aria-label", [label || "更早", corePhrase("的经历")]);
-    if (open) body.setAttribute("tabindex", "0");
-    body.addEventListener("scroll", () => dayScroll.set(key2, body.scrollTop));
-    const toggle = (caption) => {
-      const button3 = line("button", "fold-toggle", caption);
+    coreSetUIAttribute(body, "aria-label", [label || "日期未记录", corePhrase("的经历")]);
+    const more = () => {
+      const button3 = line("button", "fold-toggle", "显示更多");
       button3.setAttribute("type", "button");
-      button3.setAttribute("aria-expanded", String(open));
-      button3.setAttribute("aria-controls", body.id);
       button3.addEventListener("click", () => {
-        if (open) {
-          unfoldedDays.delete(key2);
-          dayScroll.delete(key2);
-          for (const one of rows) openedBeats.delete(one.id);
-        } else unfoldedDays.add(key2);
+        dayLimits.set(key2, limit + 20);
         draw(mine, asked);
-        const updated = [...axis.querySelectorAll(".stamp")].find((item) => item.dataset.dayKey === key2);
-        updated?.querySelector(open ? ".fold-toggle" : ".stamp-meta .fold-toggle")?.focus({ preventScroll: true });
       });
       return button3;
     };
     const meta = line("div", "stamp-meta");
     meta.append(line("span", "n", String(rows.length) + " 条"));
-    if (open && rows.length > SHOWN) meta.append(toggle("收起"));
     box.append(meta, body);
-    const showed = open ? rows : rows.slice(0, SHOWN);
+    const showed = rows.slice(0, limit);
     for (const one of showed) {
       const whole = one.beat.text;
       const row2 = line("div", "beat");
@@ -13847,43 +14313,26 @@ function experiencePage(shell2) {
       txt.append(line("span", "src", one.from));
       row2.append(txt);
       if (theFold(whole)) {
-        const op = line(
-          "button",
-          "op",
-          openedBeats.has(one.id) ? "收起 ▴" : "还有 " + String(theRest(whole)) + " 行 ▾"
-        );
-        op.setAttribute("type", "button");
-        op.setAttribute("aria-expanded", String(openedBeats.has(one.id)));
-        op.addEventListener("click", () => {
-          if (openedBeats.has(one.id)) {
-            openedBeats.delete(one.id);
-          } else {
-            openedBeats.add(one.id);
-          }
-          draw(mine, asked);
-        });
-        txt.append(op);
+        const view2 = line("button", "op", "查看全文");
+        view2.setAttribute("type", "button");
+        view2.addEventListener("click", () => showTextDetail("经历记录", whole));
+        txt.append(view2);
       }
       body.append(row2);
-      if (theFold(whole) && openedBeats.has(one.id)) {
-        body.append(line("div", "beat-full", whole));
-      }
     }
     const left = rows.length - showed.length;
-    if (rows.length > SHOWN) {
-      const fold = line("div", "fold", open ? "点击空白处也可收起 · " : "还有 " + String(left) + " 条 —— ");
-      fold.append(toggle(open ? "收起" : "再往下看"));
-      box.append(fold);
+    if (left > 0) {
+      const status = line("div", "fold", "还有 " + left + " 条 · ");
+      status.append(more());
+      box.append(status);
     }
-    if (open) requestAnimationFrame(() => {
-      body.scrollTop = dayScroll.get(key2) ?? 0;
-    });
     return box;
   };
   const draw = (answer, q) => {
     axis.replaceChildren();
     sources.replaceChildren();
-    tail.replaceChildren();
+    tail.replaceChildren(line("span", "page-footer-label", "对话与经历"));
+    sourceButton.disabled = true;
     mine = answer;
     asked = q;
     if (answer === null || answer.wired === false) {
@@ -13914,28 +14363,23 @@ function experiencePage(shell2) {
     if (q !== "") flat = flat.filter((one) => hit(one, q));
     const days = /* @__PURE__ */ new Map();
     for (const one of flat) {
-      const key2 = one.day.day === "" ? "（没有时刻）" : one.day.day;
+      const key2 = one.day.day;
       const box = days.get(key2) ?? [];
       box.push(one);
       days.set(key2, box);
     }
-    const keys = [...days.keys()].sort((a, b) => b.localeCompare(a));
+    const keys = [...days.keys()].filter((key2) => key2 !== "").sort((a, b) => b.localeCompare(a));
+    if (days.has("")) keys.push("");
     for (const entries of days.values()) entries.sort((a, b) => (b.beat.sort_ts ?? 0) - (a.beat.sort_ts ?? 0));
     if (flat.length === 0) {
       const prose = line("div", "prose");
-      prose.append(line("p", "fade", q === "" ? NOTHING_YET2 : "「" + q + "」没对上哪一件。"));
+      prose.append(line("p", "fade", q === "" ? NOTHING_YET2 : "「" + q + "」没有匹配记录。"));
       axis.append(prose);
     } else {
-      for (const key2 of keys.slice(0, 2)) {
+      for (const key2 of keys) {
         const box = days.get(key2);
-        axis.append(stamp(key2, box[0].day.label, box[0].day.sub, box));
-      }
-      const older = keys.slice(2);
-      if (older.length > 0) {
-        const last2 = days.get(older[older.length - 1]);
-        const all = [];
-        for (const key2 of older) for (const one of days.get(key2)) all.push(one);
-        axis.append(stamp("更早", "更早", "到 " + (last2[0].day.label || last2[0].day.day), all));
+        const label = key2 === "" ? "日期未记录" : box[0].day.label || key2;
+        axis.append(stamp(key2 || "undated", label, key2 === "" ? "" : box[0].day.sub, box));
       }
     }
     if (rows.length > 0) {
@@ -13948,16 +14392,20 @@ function experiencePage(shell2) {
           if (mine2.some((x) => String(x).toLowerCase().includes(needle))) kept.add(one.name);
         }
       }
+      const sourceList = sources;
       for (const one of rows) {
         if (q !== "" && !kept.has(one.name)) continue;
-        const bit = line("span", "one", theOwnName(one.name));
-        bit.append(line("span", "thin", one.kind === "记录" ? "记录 · " + theCount(one) : "文档"));
-        sources.append(bit);
+        const bit = line("span", "one", experienceSourceName(one.name));
+        bit.title = one.name;
+        bit.append(line("span", "thin", one.kind === "记录" ? theCount(one) : "文档"));
+        sourceList.append(bit);
       }
     }
+    sourceButton.disabled = sources.childElementCount === 0;
+    sourceButton.textContent = "记录来源 · " + sources.childElementCount;
     tail.append(
-      line("span", "", "世界里的事"),
-      line("span", "", "共 " + String(rows.length) + " 份 · " + String(howMany) + " 条")
+      sourceButton,
+      line("span", "page-footer-summary", "共 " + String(rows.length) + " 份 · " + String(howMany) + " 条")
     );
   };
   let requestId = 0;
@@ -13990,23 +14438,6 @@ function experiencePage(shell2) {
   find2.onAsk((q) => {
     if (mine !== null) draw(mine, q);
   });
-  const collapseOpen = () => {
-    if (unfoldedDays.size === 0 && openedBeats.size === 0) return;
-    unfoldedDays.clear();
-    openedBeats.clear();
-    dayScroll.clear();
-    draw(mine, asked);
-  };
-  root.addEventListener("click", (event) => {
-    const target = event.target;
-    if (!(target instanceof Element) || window.getSelection()?.toString()) return;
-    const interactive = 'button, a, input, textarea, select, [role="button"], .txt, .at, .beat-full';
-    if (target.closest(interactive)) return;
-    collapseOpen();
-  });
-  root.addEventListener("keydown", (event) => {
-    if (event.key === "Escape") collapseOpen();
-  });
   const liveRecords = recordRefresh(root, refresh2);
   return {
     root,
@@ -14023,6 +14454,7 @@ function experiencePage(shell2) {
     },
     stop() {
       liveRecords.stop();
+      if (sourceDialog.open) sourceDialog.close();
       requestId += 1;
       root.hidden = true;
     }
@@ -14038,7 +14470,7 @@ var element2 = (tag, cls, label) => {
 };
 function pluginStorageSettings() {
   const root = element2("section", "settings-card plugin-storage");
-  root.append(element2("h3", "", "插件页面状态"), element2("p", "pcs-scope", "当前 Bot · 当前浏览器标签页 · 页签、分页与展开状态"));
+  root.append(element2("h3", "", "插件页面状态"), element2("p", "pcs-scope", "当前 Bot · 当前浏览器标签页 · 页签和分页等显示状态"));
   const panel2 = element2("div", "pcs-panel");
   const toolbar = element2("div", "pcs-toolbar");
   const search = document.createElement("input");
@@ -14288,8 +14720,8 @@ function modelProxySettings() {
   const connection = select("官方连接方式", modes);
   const downloadFlow = el5("p", "public-network-flow");
   download.append(source.box, connection.box, downloadFlow);
-  const overrides = el5("details", "model-proxy-details");
-  const overrideSummary = el5("summary", "", "插件市场单独设置");
+  const overrides = el5("section", "model-proxy-details");
+  const overrideSummary = el5("h3", "", "插件市场单独设置");
   const separateLabel = el5("label", "model-proxy-provider");
   const separate = el5("input");
   separate.type = "checkbox";
@@ -14310,8 +14742,8 @@ function modelProxySettings() {
   modelConnection.box.classList.add("model-network-wide");
   const modelFlow = el5("p", "public-network-flow");
   model.append(modelConnection.box, modelFlow);
-  const providers = el5("details", "model-proxy-details");
-  const providerSummary = el5("summary");
+  const providers = el5("section", "model-proxy-details");
+  const providerSummary = el5("h3");
   const targets = el5("div", "model-proxy-targets");
   const boxes = PROVIDERS.map(([id, title]) => {
     const label = el5("label", "model-proxy-provider"), input2 = el5("input");
@@ -14391,7 +14823,6 @@ function modelProxySettings() {
     marketSource.input.value = settings.market_source || "mirror";
     marketConnection.input.value = mode(settings.market_enabled, settings.market_fallback);
     separate.checked = source.input.value !== marketSource.input.value || connection.input.value !== marketConnection.input.value;
-    overrides.open = separate.checked;
     modelConnection.input.value = mode(settings.enabled, settings.model_fallback);
     for (const box of boxes) box.input.checked = settings.providers.includes(box.id);
     paint4();
@@ -14471,8 +14902,8 @@ var GROUPS = [
     ["--color-rail", "左栏背景"],
     ["--color-card", "主卡片背景"],
     ["--color-bubble", "聊天气泡"],
-    ["--color-focus", "聚焦那一格"],
-    ["--color-white", "纯白"],
+    ["--color-focus", "焦点背景"],
+    ["--color-white", "内容背景"],
     ["--color-wash", "淡底"],
     ["--color-scrim", "遮罩"]
   ]],
@@ -14489,9 +14920,9 @@ var GROUPS = [
     ["--color-mint-pick", "选中淡底"],
     ["--color-mint-select", "选中边"],
     ["--color-soft-red", "危险／失败"],
-    ["--color-flag-neutral", "中性小标"],
-    ["--color-flag-ink", "小标上的字"],
-    ["--color-flag-mint", "强调小标"]
+    ["--color-flag-neutral", "普通标签"],
+    ["--color-flag-ink", "标签文字"],
+    ["--color-flag-mint", "强调标签"]
   ]],
   ["圆角", [
     ["--radius-chip", "小标"],
@@ -14528,7 +14959,7 @@ function labelOf(name) {
 var MODES = [
   ["auto", "跟随系统", "◐"],
   ["light", "浅色", "☀"],
-  ["dark", "黑夜", "☾"]
+  ["dark", "深色", "☾"]
 ];
 function markTheMode() {
   const now = theMode();
@@ -14699,18 +15130,15 @@ function oneItem(name, put2, pool) {
   return item;
 }
 function specimen() {
-  const box = document.createElement("details");
+  const box = document.createElement("section");
   box.className = "set-spec settings-card";
-  const head = document.createElement("summary");
+  const head = document.createElement("h3");
   head.className = "set-spec-head";
   const title = document.createElement("span");
   coreSetUIText(title, "textContent", corePhrase("聊天预览"));
   const note = document.createElement("span");
   note.className = "set-spec-note";
-  coreSetUIText(note, "textContent", corePhrase("展开查看 · 配色实时同步"));
-  box.addEventListener("toggle", () => {
-    coreSetUIText(note, "textContent", box.open ? corePhrase("配色实时同步") : corePhrase("展开查看 · 配色实时同步"));
-  });
+  coreSetUIText(note, "textContent", corePhrase("配色实时同步"));
   head.append(title, note);
   box.append(head);
   const demo = document.createElement("div");
@@ -14943,23 +15371,14 @@ function settingsPage(shell2) {
       byGroup.set(key2, [...byGroup.get(key2) ?? [], name]);
     }
     const order = [...GROUPS.map((one) => one[0]), "其它"];
-    let activePaletteGroup = order.find((key2) => byGroup.has(key2)) ?? "";
     refreshPalette = () => {
       palette.replaceChildren(ptitle);
       for (const key2 of order) {
         const mine = byGroup.get(key2);
         if (mine === void 0 || mine.length === 0) continue;
-        const box = document.createElement("details");
+        const box = document.createElement("section");
         box.className = "set-group";
-        box.open = key2 === activePaletteGroup;
-        box.addEventListener("toggle", () => {
-          if (!box.isConnected || !box.open) return;
-          activePaletteGroup = key2;
-          for (const other of palette.querySelectorAll(".set-group")) {
-            if (other !== box) other.open = false;
-          }
-        });
-        const h = document.createElement("summary");
+        const h = document.createElement("h3");
         h.className = "set-group-title";
         uiLabel(h, key2);
         box.append(h);
@@ -14971,15 +15390,12 @@ function settingsPage(shell2) {
       }
     };
     refreshPalette();
-    const advanced = document.createElement("details");
+    const advanced = document.createElement("section");
     advanced.className = "settings-card set-advanced";
-    const advancedTitle = document.createElement("summary");
+    const advancedTitle = document.createElement("h3");
     coreSetUIText(advancedTitle, "textContent", corePhrase("高级外观"));
     advanced.append(advancedTitle, palette);
-    advanced.addEventListener("toggle", () => {
-      two.classList.toggle("is-editing", advanced.open);
-      if (advanced.open) preview.open = true;
-    });
+    two.classList.add("is-editing");
     two.append(advanced);
     if (epoch !== viewEpoch || root.hidden) return;
     markThePick();
@@ -15004,6 +15420,7 @@ function settingsPage(shell2) {
     uiLabel(bit, label);
     bit.addEventListener("click", () => {
       draws[key2]();
+      body.scrollTop = 0;
       markTheTab(key2);
     });
     bit.dataset.tab = key2;
@@ -15097,7 +15514,7 @@ var PAGES = [
     icon: "memory",
     file: "memory-page.ts"
   }, memoryPage),
-  // **「世界里的事」那一组**（2026-10-08，作者拍的「①THE WORLD」）——
+  // **「」那一组**（2026-10-08，作者拍的「①THE WORLD」）——
   // · 组名 `THE WORLD`（ 与 `CORE` ／ `PERSONA & MEMORY` 同一套大写 ）；
   // · **三个子项**： 知识库 ／ 画像 ／ 经历 —— 就是记忆页那条尾那三样 ；
   // · ⚠️ **它写在 `INFINITY` 之前**：`groupsOf()` 按**首次出现**排 ⇒
@@ -15394,24 +15811,22 @@ async function refresh() {
     coreSetUIText(conn, "title", localHealth === false ? corePhrase("本地模型未响应；QQ 消息仍可入站，但 Agent 暂时无法生成回复。") : localHealth === true ? corePhrase("本地模型探活成功。") : corePhrase("仅表示页面连接状态；当前模型未做探活。"));
     bar.model.dataset.empty = st.machine === null || st.machine.model === null ? "true" : "false";
     bar.model.textContent = st.machine === null || st.machine.model === null ? "—" : modelDisplayName(st.machine.model);
-    bar.model.title = st.machine?.model ?? "";
+    bar.model.title = (st.machine?.model ? st.machine.model + " · " : "") + "打开模型配置";
     shell.counters(counterChips(
       total === null ? st.machine : { ...st.machine, tokens: total }
     ));
-    coreSetUIText(bar.status, "title", localHealth === false ? corePhrase("本地模型离线，回复请求会失败") : machineStatus(st.machine));
     where = "画那一页";
   } catch (exc) {
     if (read4 !== stateRead) return;
     console.error("refresh 抛在：", where, exc);
     conn.dataset.on = "false";
     conn.dataset.model = "unknown";
-    coreSetUIText(conn, "title", [corePhrase("抛在「"), where, corePhrase("」："), String(exc), corePhrase("")]);
-    coreSetUIText(conn, "textContent", [corePhrase("读不到（"), where, corePhrase("）")]);
+    coreSetUIText(conn, "title", corePhrase("无法刷新连接状态，请检查服务后重试。"));
+    coreSetUIText(conn, "textContent", corePhrase("状态读取失败"));
     bar.model.dataset.empty = "true";
     bar.model.textContent = "—";
     bar.model.title = "";
     shell.counters(COUNTER_KEYS.map((key2) => [key2, "—"]));
-    coreSetUIText(bar.status, "title", corePhrase("读不到（推的那条通道另说）"));
   }
 }
 var events = new EventSource("/events");

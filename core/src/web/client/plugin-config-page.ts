@@ -23,7 +23,7 @@ function text(tag: string, className: string, value = ''): HTMLElement {
 
 /** All installed plugins use the same scoped configuration and revision contract. */
 export function pluginConfigPage(shell: Chrome, name: string): Panel {
-  const root = text('section', 'page-infinity page-world');
+  const root = text('section', 'page-infinity page-world page-plugin-config');
   const title = text('h1', '', '插件配置');
   const info = text('p', 'infinity-hint',
     '配置按当前 Bot 独立保存；保存会重载已启用的插件，停用的插件不会自动启动。');
@@ -243,7 +243,13 @@ export function pluginConfigPage(shell: Chrome, name: string): Panel {
       }).catch(error => { reply({ type: 'telyincore:config:saved', ok: false, message: String(error) }); });
     }
   };
-  root.append(title, pluginUpdateNotice(name), info, tabs, message, form, custom, save, reload, status);
+  const header = text('header', 'plugin-config-head');
+  header.append(title, pluginUpdateNotice(name), info, tabs, message);
+  const content = text('div', 'plugin-config-content');
+  content.append(form, custom);
+  const actions = text('footer', 'plugin-config-actions');
+  actions.append(save, reload, status);
+  root.append(header, content, actions);
   shell.content.replaceChildren(root);
   return { root, show(): void {
     root.hidden = false; unprotect ??= protectPluginDisplay(name, () => dirty || busy || customOpened); window.addEventListener('message', bridge); void load();

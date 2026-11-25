@@ -4,7 +4,7 @@
   flex-direction: column;
   gap: 20px;
   min-width: 0;
-  max-width: 1100px;
+  max-width: none;
 }
 .page-settings.settings-unified .settings-card {
   min-width: 0;
@@ -113,7 +113,7 @@
   font-size: 11px;
   font-weight: 400;
 }
-.page-settings.settings-unified .set-advanced summary {
+.page-settings.settings-unified .set-advanced :is(summary, h3) {
   color: var(--color-ink);
   font-size: 14px;
   font-weight: 600;
@@ -166,7 +166,7 @@
 .page-settings.settings-unified button:hover:not(:disabled) {
   background-color: var(--color-wash);
 }
-.page-settings.settings-unified :is(button, input, select, summary):focus-visible {
+.page-settings.settings-unified :is(button, input, select, :is(summary, h3)):focus-visible {
   outline: 2px solid var(--color-mint);
   outline-offset: 3px;
 }
@@ -220,11 +220,11 @@
   font-size: 13px;
   font-weight: 600;
 }
-.page-settings.settings-unified :is(.set-advanced, .model-proxy-details) > summary {
+.page-settings.settings-unified :is(.set-advanced, .model-proxy-details) > :is(summary, h3) {
   padding: 2px 0;
   line-height: 1.5;
 }
-.page-settings.settings-unified :is(.set-advanced, .model-proxy-details) > summary:hover {
+.page-settings.settings-unified :is(.set-advanced, .model-proxy-details) > :is(summary, h3):hover {
   color: var(--color-mint-text);
 }
 .page-settings.settings-unified .model-proxy-actions .btn:first-child {
@@ -269,13 +269,13 @@
   grid-template-columns: minmax(0, 1fr);
 }
 
-/* Keep the default appearance page short; details remain one click away. */
+/* Keep the default appearance page short; :is(details, section) remain one click away. */
 .page-settings.settings-unified .set-right { position: static; }
 .page-settings.settings-unified .set-spec { display: block; }
 .page-settings.settings-unified .set-spec-head { cursor: pointer; gap: 16px; }
-.page-settings.settings-unified .set-spec:not([open]) > .set-spec-demo { display: none; }
-.page-settings.settings-unified .set-spec[open] > .set-spec-demo { margin-top: 18px; }
-.page-settings.settings-unified .set-group > summary {
+.page-settings.settings-unified .set-spec:not(:is([open], section)) > .set-spec-demo { display: none; }
+.page-settings.settings-unified .set-spec:is([open], section) > .set-spec-demo { margin-top: 18px; }
+.page-settings.settings-unified .set-group > :is(summary, h3) {
   padding: 12px 0;
   margin: 0;
   cursor: pointer;
@@ -285,7 +285,7 @@
   gap: 8px 24px;
   padding-bottom: 16px;
 }
-.page-settings.settings-unified .set-group:not([open]) > .set-grid { display: none; }
+.page-settings.settings-unified .set-group:not(:is([open], section)) > .set-grid { display: none; }
 .page-settings.settings-unified .set-advanced { padding-top: 18px; padding-bottom: 18px; }
 @media (max-width: 620px) {
   .page-settings.settings-unified .set-group > .set-grid {
@@ -544,10 +544,10 @@
 .package-update-card [data-update-links][hidden] { display: none; }
 .package-update-card [data-update-links] a { color: var(--color-mint-text); text-decoration: none; }
 .package-update-card [data-update-links] a:hover { text-decoration: underline; }
-.package-update-card details { margin-top: 18px; font-size: 12px; color: var(--color-dim); line-height: 1.7; }
-.package-update-card details p { margin-top: 8px; }
-.package-update-card details p:empty { display: none; }
-.package-update-card summary { cursor: pointer; width: fit-content; }
+.package-update-card :is(details, section) { margin-top: 18px; font-size: 12px; color: var(--color-dim); line-height: 1.7; }
+.package-update-card :is(details, section) p { margin-top: 8px; }
+.package-update-card :is(details, section) p:empty { display: none; }
+.package-update-card :is(summary, h3) { cursor: pointer; width: fit-content; }
 .package-update-card .package-update-actions { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--color-line); }
 .package-update-card .package-update-actions button { appearance: none; margin: 0; min-height: 36px; padding: 7px 14px; border: 1px solid var(--color-line); border-radius: var(--radius-row); background: transparent; color: var(--color-ink); font: inherit; font-size: 13px; cursor: pointer; }
 .package-update-card .package-update-actions [data-check-update] { border-color: transparent; color: var(--color-dim); padding-inline: 0; }
@@ -556,7 +556,7 @@
 .package-update-card .package-update-actions button:disabled { opacity: .6; cursor: wait; }
 .package-update-dialog .package-update-close { position: absolute; top: 15px; right: 15px; display: grid; place-items: center; width: 30px; height: 30px; padding: 0; border: 0; border-radius: var(--radius-row); background: transparent; color: var(--color-dim); font-size: 23px; line-height: 1; cursor: pointer; }
 .package-update-dialog .package-update-close:hover { background: var(--color-wash); color: var(--color-ink); }
-.package-update-card button:focus-visible, .package-update-card summary:focus-visible, .package-update-dialog .package-update-close:focus-visible { outline: 2px solid var(--color-mint); outline-offset: 3px; }
+.package-update-card button:focus-visible, .package-update-card :is(summary, h3):focus-visible, .package-update-dialog .package-update-close:focus-visible { outline: 2px solid var(--color-mint); outline-offset: 3px; }
 
 .pcs-group {display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 16px;background:var(--color-focus);border-bottom:1px solid var(--color-line);font-size:12px;color:var(--color-dim)}
 .pcs-group strong{font-weight:650;color:var(--color-ink)}

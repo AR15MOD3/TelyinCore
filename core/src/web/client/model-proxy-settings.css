@@ -69,7 +69,7 @@
   font-size: 12px;
   color: var(--color-dim);
 }
-.model-proxy-details summary {
+.model-proxy-details :is(summary, h3) {
   cursor: pointer;
   user-select: none;
 }
@@ -134,7 +134,7 @@
 .model-network-fields{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:12px 0}
 .model-network-fields[hidden],.public-network-flow[hidden]{display:none}
 .model-proxy-details .model-proxy-provider{margin-top:12px}
-.model-proxy-details{padding-top:12px}.model-proxy-details summary{color:var(--color-dim);line-height:1.8}
+.model-proxy-details{padding-top:12px}.model-proxy-details :is(summary, h3){color:var(--color-dim);line-height:1.8}
 .model-proxy-targets{margin:4px 0 8px}.model-proxy-actions{border-top:1px solid var(--color-line);padding-top:18px}
 @container(max-width:500px){.model-network-fields{grid-template-columns:1fr}}
 @media(max-width:560px){.model-proxy-address-row{flex-wrap:wrap}.model-proxy-address-row .engine-input{flex-basis:100%}.model-network-fields{grid-template-columns:1fr}}

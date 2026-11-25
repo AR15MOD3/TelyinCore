@@ -2,41 +2,11 @@ import { corePhrase, coreSetUIAttribute, coreSetUIText } from './ui-language';
 import { pageLoad } from './page-load';
 import { getStatusJson, StaleStatusError } from './status-json';
 import { pageFetch as fetch } from './status-json';
-// telyincore —— 「画像」那一页（2026-10-09 **照 v5「简历式」重做**）。
-//
-// 它画的是 `/people` 那条口交回来的那些（ **她给人的说法** ）：
-//     `{everyone: [{who, standing, favor, blocked,
-//                   plat, first, last, said: [{ts, when, from, role, text}]}],
-// wired, q}` 。
-//
-// ⚠️ **为什么重做**（ `世界三页-交接.md` §二 ／ `画像-设计稿-v5.html` 抬头）：
-// 作者原话：「**类似简历一样，能让我一眼看出来这个画像上的人大概是什么样的**」
-// ＋ 「**不用分得这么细**」 ⇒ 这一版是 **头 ／ 主体 ／ 一处细的**，
-// **不各起小节** （ 那两类 `名字` ／ `事实` 不各起一个小节 ）。
-//
-// **顶上那一块 ＝ "简历头"三行**（ 焦点在**第 ② 行** ）：
-//      ① 名字（22px）＋ 平台胶囊 ＋ 拉黑红字；
-// ② **一句总述（20px ＋ 3px 绿竖线）** ← **全页焦点**，取自 `everyone[].standing`
-// （ `memory.py` 说它是「**它给这段关系的说法**」 —— 那就是"他大概是什么样"）；
-// ③ 一行坐标（第一次 ／ 最近 ／ 记过 N 条 ／ 好感 N ，小字 ）。
-// ⚠️ **最容易做错的一处**： 名字（22px）与那一句话（20px）——
-// **名字只是坐标，话才是内容** （ 作者原话："画像是 **BOT 对人的内容**"）。
-//
-// **主体是"一句一条"**（ 每句带**日期**与**来源** —— 那就是"她怎么认识他的"）——
-// ⚠️ **一条就是她写的一句原话** ： **不截断、不总结、不揉成一段** 。
-//
-// ⚠️ **不许假定那个人的性别** （ 规格 §三 那五条结论，2026-10-08 定 ）：
-// 树里**没有「性别」那一格** （`telyincore/` 与 `docs/design/` 都搜不到 ）——
-// 所以**页上一律不假定那个人的性别** ： 指**特琳**时可以用「她」
-// （`persona/你定的/形象.md` 写着「性别：女」）； 指**那个人**时**一律用名字**
-// （ 这个文件里那两处「他」都是**规格与设计稿的原文**，说的是"别写死性别"这件事
-// 本身 —— 而**画到页上的字里一个代词都没有** ）。
-//
-// 画像列表只展示后端结果，不在前端计算好感；人工身份映射区可写入绑定/解绑。
-// 身份写操作使用确认时同一次快照的 person/revision，不自动刷新确认或重试。
+// Portraits are read-only; account associations retain explicit confirmation and
+// the revision from the same server snapshot. Presentation never changes identity keys.
 
 import { searchBox } from './shell';
-import { portraitOrigin } from './portrait-display';
+import { portraitOrigin, portraitSource, portraitEncounters } from './portrait-display';
 import type { Chrome, Panel } from './shell';
 
 /** 她写下的**一条原话**（ 照 `memory.Remembered` 那五格 ）。 */
@@ -104,13 +74,13 @@ interface PeopleAnswer {
   readonly q?: string;
 }
 
-const READ_FAILED = '读不到画像那一格。';
-const NOT_WIRED = '画像这一层没接上读法。';
+const READ_FAILED = '画像加载失败，请重试。';
+const NOT_WIRED = '当前服务暂不支持查看画像。';
 /** 空态那句话**必须写准** （ 不许写"还没跟谁说过话" —— 那句与真相不符 ）。 */
-const NOBODY_YET = '她还没记过谁 —— 她记下来的时候，这里就有第一条。';
-const ROSTER_EMPTY = '还没有别人 —— 她记下一个人的时候，名字会出现在这儿。';
+const NOBODY_YET = '暂无画像记录。';
+const ROSTER_EMPTY = '暂无人物。';
 
-/** 一开始摆几条（ 其余的收进"还有 N 条 —— 全都摊开" ）。 */
+/** 一开始摆几条（ 其余的收进"还有 N 条 · 展开全部" ）。 */
 const SAID_SHOWN = 5;
 
 /** 那一页。 */
@@ -126,10 +96,10 @@ export function peoplePage(shell: Chrome): Panel {
   // ⚠️ **2026-10-09 作者又删了两句** ：
   // · 抬头那句「**她给你的说法**」 —— 删（ 抬头只留标题 ＋ 那个筛选框 ）；
   // · 尾那句「**这个说法是她写的 —— 拉黑那道闸是你拉的**」 —— 也删
-  // （ 尾从此只剩两格：`世界里的事` ＋ `共 N 个人` ）。
+  // （ 尾从此只剩两格：`` ＋ `共 N 个人` ）。
   // 筛选那一格走 `shell.ts::searchBox()`（ 三页共用那一个件 ）——
   // 占位照这一家的写法：「**筛选：**用户名」（与插件那页那句同一个形状 ）。
-  const find = searchBox('按用户名筛选…');
+  const find = searchBox('搜索姓名或账号');
   head.append(title, find.element);
   root.append(head);
 
@@ -138,11 +108,12 @@ export function peoplePage(shell: Chrome): Panel {
   const roster = document.createElement('div');
   roster.className = 'roster';
   const face = document.createElement('div');
+  face.className = 'portrait-detail';
   faces.append(roster, face);
   root.append(faces);
 
   const tail = document.createElement('div');
-  tail.className = 'tail';
+  tail.className = 'tail page-footer';
   root.append(tail);
 
   shell.content.replaceChildren(root);
@@ -238,10 +209,10 @@ export function peoplePage(shell: Chrome): Panel {
     // ⚠️ **这一格是服务算好的** （`launch.see_everyone()` 那一条带 `full` ）——
     // 因为 `web.py` 与这一页都够不到那个常量 。
     if (one.full === true) {
-      box.append(line('span', 'thin', '· 已经记满（再记就会压掉最旧的）'));
+      box.append(line('span', 'thin', '已达记录上限，新增记录会替换最旧记录'));
     }
     // 画像卡沿用缺值显示 0；记忆页缺值显示「—」，两页不是同一展示合同。
-    put('关系评分', String(one.favor ?? 0), true);
+    if (one.favor != null) put('关系评分', String(one.favor), true);
     return box;
   };
 
@@ -249,7 +220,7 @@ export function peoplePage(shell: Chrome): Panel {
   const gist = (one: A_Person | null): HTMLElement => {
     const said = String(one?.standing ?? '');
     if (said === '') {
-      return line('p', 'gist void', one === null ? NOBODY_YET : '（还没给过说法）');
+      return line('p', 'gist void', one === null ? NOBODY_YET : '');
     }
     return line('p', 'gist', said);
   };
@@ -283,7 +254,7 @@ export function peoplePage(shell: Chrome): Panel {
       const meta = line('div', 'said-meta');
       if (said.kind_label) meta.append(line('span', 'from', said.kind_label));
       if (said.from !== '') {
-        const source = line('span', 'from', portraitOrigin(said.from));
+        const source = line('span', 'from', portraitSource(said.from));
         source.title = said.from; meta.append(source);
         if (said.source_cursor) meta.append(line('span', 'from', '来源事件 #' + said.source_cursor));
       }
@@ -297,7 +268,7 @@ export function peoplePage(shell: Chrome): Panel {
   const draw = (answer: PeopleAnswer | null): void => {
     roster.replaceChildren();
     face.replaceChildren();
-    tail.replaceChildren();
+    tail.replaceChildren(line('span', 'page-footer-label', '人物与关系'));
 
     if (answer === null || answer.wired === false) {
       const said = line('p', 'gist void', answer === null ? READ_FAILED : NOT_WIRED);
@@ -310,7 +281,7 @@ export function peoplePage(shell: Chrome): Panel {
     if (rows.length === 0) {
       roster.append(line('div', 'empty', ROSTER_EMPTY));
       face.append(gist(null));
-      tail.append(line('span', '', '世界里的事'),
+      tail.append(
                   line('span', '', '共 0 个人'));
       return;
     }
@@ -327,55 +298,51 @@ export function peoplePage(shell: Chrome): Panel {
       const nameRow = line('div', 'who-name');
       nameRow.append(line('h2', '', one.display_name || one.who));
       if (String(one.plat ?? '') !== '') {
-        nameRow.append(line('span', 'plat', portraitOrigin(String(one.plat))));
+        nameRow.append(line('span', 'plat', portraitOrigin(one.display_account || String(one.plat))));
       }
       // 拉黑那一道闸是**作者唯一负责的一格** ⇒ 它写在名字旁边（红字 ）。
-      if (one.blocked) nameRow.append(line('span', 'gate', ' 拉黑着'));
+      if (one.blocked) nameRow.append(line('span', 'gate', ' 已屏蔽'));
       body.append(nameRow);
-      if (one.display_name) {
-        const commonName = one.encounters?.some(visit => visit.account === one.display_account
-          && visit.common_name === one.display_name);
-        const nameSource = one.identity?.label === one.display_name ? '已确认称呼'
-          : one.display_account === 'console:local-owner' && one.said?.some(row => row.role === '名字'
-            && row.from === 'private:console:local-owner' && row.text === one.display_name) ? '控制台自报称呼'
-          : commonName ? '对方指定的通用称呼' : '来话显示名（仅界面）';
-        body.append(line('p', 'identity-note',
-          nameSource + ' · 画像键 ' + one.who
-          + (one.display_account ? ' · ' + one.display_account : '')));
-      }
-      if (one.encounters?.length) {
-        const rooms = one.encounters;
-        const count = new Set(rooms.map(visit => visit.room)).size;
-        body.append(line('p', 'identity-note', '在 ' + count + ' 个群见过' +
-          (one.said?.length || one.standing ? '' : ' · 暂时了解不多')));
-        const context = document.createElement('details');
-        context.append(line('summary', '', '群内相遇记录'));
+      const rooms = portraitEncounters(one, rows);
+      if (rooms.length) {
+        const context = document.createElement('section');
+        context.className = 'portrait-encounters';
+        const summary = line('h3', '');
+        summary.append(line('span', '', '相遇记录'), line('span', 'encounter-count', rooms.length + ' 个 QQ 群'));
+        context.append(summary);
+        const list = line('div', 'encounter-list');
         for (const visit of rooms) {
-          const when = (stamp: string) => new Date(stamp).toLocaleString('zh-CN', { hour12: false });
-          context.append(line('p', 'identity-note', 'QQ群 ' + visit.room + ' · ' + visit.label +
-            '（' + visit.account + '） · 首次 ' + when(visit.first) + ' · 最近 ' + when(visit.last) +
-            (visit.common_name ? ' · 对方指定的通用称呼：' + visit.common_name : '')));
+          const item = line('div', 'encounter-row');
+          item.append(line('span', '', 'QQ 群 · ' + visit.room));
+          const date = (value?: string) => value ? new Date(value).toLocaleDateString('zh-CN') : '';
+          item.append(line('span', 'encounter-date', visit.first
+            ? '首次 ' + date(visit.first) + (visit.last !== visit.first ? ' · 最近 ' + date(visit.last) : '')
+            : '来自已保存的群聊记录'));
+          list.append(item);
         }
-        body.append(context);
+        context.append(list); body.append(context);
       }
-      if (!one.encounters?.length || one.standing || one.said?.length || one.favor != null) {
-        body.append(gist(one), facts(one));
+      if (one.standing?.trim()) {
+        const overview = line('section', 'portrait-overview');
+        overview.append(line('h3', '', '人物概述'), gist(one)); body.append(overview);
       }
+      body.append(facts(one));
       card.append(body);
       face.append(card);
 
       // ② 主体：一句一条
       const count = one.said?.length ?? 0;
-      face.append(line('h3', 'portrait-records-title', '画像记录（' + count + '）'));
+      face.append(line('h3', 'portrait-records-title', '画像记录 · ' + count));
+      if (!count) face.append(line('p', 'portrait-empty', '暂无画像记录。'));
       for (const item of theSaid(one, expanded ? count : SAID_SHOWN)) face.append(item);
       const hidden = count - SAID_SHOWN;
-      if (hidden > 0) {
+      if (hidden > 0 && !expanded) {
         const zone = line('div', 'more-zone');
         const first = line('div', 'line1');
-        first.append(line('span', 'lead', expanded ? '已显示全部记录' : '还有 ' + String(hidden) + ' 条她记下的话'));
-        const op = line('button', 'op', expanded ? '收起' : '全都摊开') as HTMLButtonElement;
+        first.append(line('span', 'lead', expanded ? '已显示全部记录' : '还有 ' + String(hidden) + ' 条记录'));
+        const op = line('button', 'op', '显示全部记录') as HTMLButtonElement;
         op.type = 'button';
-        op.addEventListener('click', () => { showFace(index, !expanded); });
+        op.addEventListener('click', () => { showFace(index, true); });
         first.append(op);
         zone.append(first);
         face.append(zone);
@@ -394,10 +361,10 @@ export function peoplePage(shell: Chrome): Panel {
       // identity and association.revision belong to the same C-produced row snapshot.
       // The separate identities list is display-only and cannot fill a missing identity.
       const identity = one.identity;
-      const zone = line('div', 'join identity-link');
-      zone.append(line('div', 'line1', '已确认的账号归属'));
+      const zone = line('details', 'join identity-link compact-disclosure');
+      zone.append(line('summary', 'line1', '账号关联'));
       zone.append(line('p', 'why',
-        '来话昵称仅供界面辨认，不会自动绑定或合并身份。要向 BOT 介绍某个人，请在对话里说明。'));
+        '把同一个人的不同账号关联起来，方便 Bot 识别。昵称相同不会自动关联。'));
       const status = line('p', 'identity-status');
       const update = async (body: Record<string, unknown>): Promise<string | null> => {
         try {
@@ -406,7 +373,7 @@ export function peoplePage(shell: Chrome): Panel {
             body: JSON.stringify({ ...body, confirm: true }),
           });
           const result = await got.json() as { ok?: boolean; said?: string };
-          if (got.status === 409) return '身份关联已变化，请手动刷新并重新确认；没有自动重试。';
+          if (got.status === 409) return '账号关联已变化，请刷新后重新确认。';
           if (!got.ok || result.ok !== true) {
             return result.said || '操作没有完成。';
           }
@@ -419,23 +386,24 @@ export function peoplePage(shell: Chrome): Panel {
       };
       const association = one.association;
       if (!association?.revision) {
-        zone.append(line('p', 'identity-status', '缺少同快照身份修订号，请刷新后再操作。'));
+        zone.append(line('p', 'identity-status', '账号信息不完整，请刷新后再操作。'));
         return zone;
       }
-      const advanced = document.createElement('details');
-      const summary = line('summary', '', '高级：手动账号与解绑');
+      const advanced = document.createElement('section');
+      advanced.className = 'identity-advanced';
+      const summary = line('h3', '', '高级管理');
       advanced.append(summary);
       if (association) {
-        zone.append(line('p', 'why',
-          '选另一份画像，确认这两个账号属于同一个人。将你自己的 QQ 与本机控制台关联后，Core 就知道主人的 QQ 了。'));
+        const linking = line('section', 'identity-linking');
+        linking.append(line('h4', '', '关联其他画像'));
         const target = document.createElement('select');
         target.className = 'engine-input'; coreSetUIAttribute(target, 'aria-label', corePhrase("同一个人的另一份画像"));
         const current = document.createElement('option');
-        current.value = ''; coreSetUIText(current, 'textContent', corePhrase("只确认当前画像的账号（不选其他画像）"));
+        current.value = ''; coreSetUIText(current, 'textContent', corePhrase("仅确认当前账号"));
         target.append(current);
         for (const row of rows.filter(r => r.who !== one.who)) {
           const option = document.createElement('option'); option.value = row.who;
-          option.textContent = (row.display_name || row.who) + ' · ' + row.who;
+          option.textContent = (row.display_name || row.who) + ' · ' + portraitOrigin(row.display_account || row.plat || row.who);
           target.append(option);
         }
         const associate = line('button', 'identity-button', '确认是同一个人');
@@ -459,10 +427,10 @@ export function peoplePage(shell: Chrome): Panel {
               expected_profiles: profiles, expected_accounts: accounts,
               revision: association.revision }));
         });
-        zone.append(target, associate);
+        const controls = line('div', 'identity-controls'); controls.append(target, associate);
+        linking.append(controls); zone.append(linking);
         if (identity?.profile_keys && identity.profile_keys.length > 1) {
-          zone.append(line('p', 'identity-note',
-            '已关联画像：' + identity.profile_keys.join('、')));
+
           const separate = line('button', 'identity-button subtle', '分开这份画像');
           separate.addEventListener('click', () => {
             const accounts = [...(association.separate_accounts ?? [])];
@@ -472,14 +440,14 @@ export function peoplePage(shell: Chrome): Panel {
               '确认分开', () => update({ action: 'separate', profile_key: one.who,
                 expected_accounts: accounts, revision: association.revision }));
           });
+          separate.classList.add('identity-separate');
           advanced.append(separate);
         }
       } else {
         // Older running servers retain the original controls until a controlled restart.
-        advanced.open = true;
       }
       if (!identity) {
-        advanced.append(line('p', 'why', '这份画像尚未连接稳定身份。相同昵称不会自动归并。'));
+        advanced.append(line('p', 'why', '尚未设置账号关联。'));
         const create = line('button', 'identity-button', '建立身份');
         create.addEventListener('click', () => {
           confirmIdentity('建立独立身份', one.who,
@@ -488,7 +456,8 @@ export function peoplePage(shell: Chrome): Panel {
         });
         advanced.append(create);
       } else {
-        advanced.append(line('p', 'why', '身份 ' + identity.id.slice(0, 15) + '… · 账号须人工核对后绑定。'));
+        const renameBlock = line('section', 'identity-editor');
+        renameBlock.append(line('h4', '', '修改称呼'));
         const name = document.createElement('input');
         name.type = 'text';
         name.maxLength = 80;
@@ -508,10 +477,12 @@ export function peoplePage(shell: Chrome): Panel {
         });
         const naming = line('div', 'identity-add');
         naming.append(name, rename);
-        advanced.append(naming);
+        renameBlock.append(naming); advanced.append(renameBlock);
+        const linked = line('section', 'identity-linked');
+        linked.append(line('h4', '', '已关联账号'));
         for (const account of identity.accounts) {
           const row = line('div', 'identity-account');
-          row.append(line('code', '', account));
+          row.append(line('span', '', portraitOrigin(account)));
           const remove = line('button', 'identity-button subtle', '解绑');
           remove.disabled = !association?.revision;
           remove.addEventListener('click', () => {
@@ -523,34 +494,52 @@ export function peoplePage(shell: Chrome): Panel {
               '确认解绑', () => update(expected));
           });
           row.append(remove);
-          advanced.append(row);
+          linked.append(row);
         }
+        zone.insertBefore(linked, zone.querySelector('.identity-linking'));
+        const accountBlock = line('section', 'identity-editor');
+        accountBlock.append(line('h4', '', '手动添加账号'));
         const add = line('div', 'identity-add');
         const account = document.createElement('input');
         account.type = 'text';
         account.autocomplete = 'off';
-        coreSetUIText(account, 'placeholder', corePhrase("console:local-owner / qq:账号 / wechat:账号"));
-        coreSetUIAttribute(account, 'aria-label', corePhrase("稳定平台账号"));
-        advanced.append(line('p', 'why',
-          '本机终端入口键：console:local-owner。它只标记入口，不证明操作者身份；确认由你本人使用后再绑定。'));
+        coreSetUIText(account, 'placeholder', corePhrase("填写账号"));
+        coreSetUIAttribute(account, 'aria-label', corePhrase("平台账号"));
+        const platform = document.createElement('select');
+        platform.setAttribute('aria-label', '账号平台');
+        platform.append(new Option('QQ', 'qq'), new Option('控制台', 'console'), new Option('其他平台', 'custom'));
+        platform.addEventListener('change', () => {
+          account.hidden = platform.value === 'console';
+          account.placeholder = platform.value === 'custom' ? '平台:账号' : '填写 QQ 号';
+        });
+        account.placeholder = '填写 QQ 号';
         const bind = line('button', 'identity-button', '绑定账号');
         bind.addEventListener('click', () => {
-          const key = account.value.trim();
-          if (!key) { coreSetUIText(status, 'textContent', corePhrase("先填稳定平台账号。")); return; }
+          const raw = account.value.trim();
+          const key = platform.value === 'console' ? 'console:local-owner' : platform.value === 'qq' ? (raw ? 'qq:' + raw : '') : raw;
+          if (!key) { coreSetUIText(status, 'textContent', corePhrase("请填写平台账号。")); return; }
           status.textContent = '';
           confirmIdentity('确认账号归属', key,
             '请核对这个账号与「' + one.who + '」属于同一人。' +
               '确认后，下一次私人请求才会使用这条关联。',
             '确认绑定', () => update({ action: 'bind', person_id: identity.id, account: key }));
         });
-        add.append(account, bind);
-        advanced.append(add);
+        add.append(platform, account, bind);
+        accountBlock.append(add); advanced.append(accountBlock);
       }
+      const separate = advanced.querySelector('.identity-separate');
+      if (separate) {
+        const row = line('div', 'identity-separate-row');
+        row.append(line('span', '', '解除当前画像的关联，保留原始记录。'), separate);
+        advanced.append(row);
+      }
+      const fields = line('div', 'identity-advanced-body');
+      while (advanced.children.length > 1) fields.append(advanced.children[1]);
+      advanced.append(fields);
       zone.append(advanced);
       zone.append(status);
       zone.append(line('p', 'why',
-        '关联后在下一次请求读取已确认的关联画像与私人入口；原文件和来源不变。' +
-        '群聊历史仍按场景隔离；无归属旧记录不会自动认领。'));
+        '关联后从下次对话生效。原始记录保留，不会跨群共享聊天内容。'));
       return zone;
     };
 
@@ -559,25 +548,27 @@ export function peoplePage(shell: Chrome): Panel {
       selectedWho = rows[index].who;
       for (const [i, el] of [...roster.querySelectorAll<HTMLElement>('.one')].entries()) {
         el.classList.toggle('on', i === index);
+        el.setAttribute('aria-pressed', String(i === index));
       }
       showFace(index);
+      face.scrollTop = 0;
     };
 
     rows.forEach((one, index) => {
-      const item = line('div', 'one');
+      const item = line('button', 'one') as HTMLButtonElement;
+      item.type = 'button';
       const label = line('span', 'n', one.display_name || one.who);
       label.title = one.who; item.append(label);
-      if (one.display_name) item.append(line('span', 'p', one.who));
       if (one.blocked) item.append(line('span', 'gate', ''));
       if (String(one.plat ?? '') !== '') {
-        item.append(line('span', 'p', portraitOrigin(String(one.plat))));
+        item.append(line('span', 'p', portraitOrigin(one.display_account || String(one.plat))));
       }
       item.addEventListener('click', () => { pick(index); });
       roster.append(item);
     });
     pick(at);
 
-    tail.append(line('span', '', '世界里的事'),
+    tail.append(
                 line('span', '', '共 ' + String(rows.length) + ' 个人'));
   };
 

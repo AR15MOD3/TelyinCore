@@ -16,7 +16,7 @@ import { pageFetch as fetch } from './status-json';
 
 export const THE_LOOK_ROWS: readonly (readonly [string, string])[] = [
   ['--color-ink', '正文'],
-  ['--color-dim', '次要的字'],
+  ['--color-dim', '次要文字'],
   ['--color-canvas', '底色'],
   ['--color-line', '分隔线'],
   ['--color-mint', '强调'],
@@ -76,7 +76,7 @@ export function writeTheLook(automatic = false, editedName = ''): void {
  * （ 它不进 `:root` ）—— 它是“**挑哪一套**”这个偏好
  * ⇒ 存在本机 ， 与 `data/外观.json` 那份自定义色值**两回事** 。
  * ⚠ **而它挑的是哪一类** ： 浅色 ⇒ 浅底那一套 ；
- * 黑夜 ⇒ 深底那一套 ； 跟随系统 ⇒ 按那个媒体查询自己切 。
+ * 深色 ⇒ 深底那一套 ； 跟随系统 ⇒ 按那个媒体查询自己切 。
  * ⚠ **每一套自己声明明暗** （ `__scheme` ）——
  * 而不是把名字写在这里 。
  */

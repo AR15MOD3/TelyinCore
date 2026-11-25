@@ -69,9 +69,9 @@ interface KnowledgeAnswer {
   readonly search_limited?: boolean;
 }
 
-const READ_FAILED = '读不到知识库那一格。';
-const NOT_WIRED = '知识库这一层没接上读法。';
-const NOTHING_YET = '知识库里还没有东西 —— 定下来的事写进那儿，这里就看得见。';
+const READ_FAILED = '知识库加载失败，请重试。';
+const NOT_WIRED = '当前服务暂不支持查看知识库。';
+const NOTHING_YET = '暂无知识库内容。';
 
 /** **注释不算正文的一行** —— `<!-- … -->` 那几段是**写给我们看的** 。 */
 const stripComments = (one: string): string => one.replace(/<!--[\s\S]*?-->/g, '');
@@ -106,7 +106,7 @@ export function knowledgePage(shell: Chrome): Panel {
   head.className = 'head';
   const title = document.createElement('h1');
   coreSetUIText(title, 'textContent', corePhrase("知识库 · KNOWLEDGE"));
-  const find = searchBox('按名称筛选…');
+  const find = searchBox('搜索文档名称');
   head.append(title, find.element);
   root.append(head);
 
@@ -121,7 +121,7 @@ export function knowledgePage(shell: Chrome): Panel {
   root.append(book);
 
   const tail = document.createElement('div');
-  tail.className = 'tail';
+  tail.className = 'tail page-footer';
   root.append(tail);
 
   shell.content.replaceChildren(root);
@@ -129,7 +129,7 @@ export function knowledgePage(shell: Chrome): Panel {
   const draw = (answer: KnowledgeAnswer | null, q: string): void => {
     toc.replaceChildren();
     body.replaceChildren();
-    tail.replaceChildren();
+    tail.replaceChildren(line('span', 'page-footer-label', '知识与资料'));
 
     if (answer === null || answer.wired === false) {
       // ⚠️ **两句不同的话** ：读不成 ／ 这一层没接上（ 与"零份"分开 ）。
@@ -148,12 +148,12 @@ export function knowledgePage(shell: Chrome): Panel {
     if (rows.length === 0) {
       // ⚠️ **"搜不到"与"一份都没有"不是一件事** —— 送过 `q=` 就照实说搜的事 。
       toc.append(line('div', 'empty', q === ''
-        ? '还是空的 —— 定下来的事落到这儿，名字就出现在这儿。'
-        : '没有对上的。'));
+        ? '暂无文档。'
+        : '没有匹配结果。'));
       const prose = line('div', 'prose');
-      prose.append(line('p', 'fade', q === '' ? NOTHING_YET : '「' + q + '」没对上哪一份。'));
+      prose.append(line('p', 'fade', q === '' ? NOTHING_YET : '「' + q + '」没有匹配文档。'));
       body.append(prose);
-      tail.append(line('span', '', '世界里的事'), line('span', '', '共 0 份 · 0 行'));
+      tail.append( line('span', '', '共 0 份 · 0 行'));
       return;
     }
 
@@ -163,10 +163,11 @@ export function knowledgePage(shell: Chrome): Panel {
       const one = rows[index];
       const heads = theLines(one.text);
       body.replaceChildren();
+      body.scrollTop = 0;
       // ① **标题 ＝ 文件名** （ 不是"你定的 · xxx" ／ **不带 `.md`** ）
       body.append(line('h2', '', one.title ?? theShownName(one.name)));
       // ② **简介 ＝ 正文第一非空行** （ 退一档： 标题是主、它是次 ）
-      body.append(line('p', 'gist', heads[0] ?? '（这一份还没有正文）'));
+      body.append(line('p', 'gist', heads[0] ?? '暂无正文。'));
       // ③ 正文（ 剩下的那些行 —— 原样摆，不改写 ）
       const prose = line('div', 'prose');
       for (const said of heads.slice(1)) prose.append(line('p', '', said));
@@ -182,23 +183,14 @@ export function knowledgePage(shell: Chrome): Panel {
 
     const pick = (index: number): void => {
       at = index;
-      // **2026-10-10：按行上记的号找** —— 从前是**按数组下标**
-      // ⚠️ **为什么非改不可** ： 那一栏现在**折叠**了 、 而收起的那几组
-      // **一个行都没建** （ 见下面 `build` ）⇒ 拿下标去比会**错位**
-      // （ 第 3 个建出来的行， 未必是第 3 份 ）。
+      // Selection uses the source index, including progressively loaded groups.
       for (const el of toc.querySelectorAll<HTMLElement>('.one')) {
         el.classList.toggle('on', el.dataset.at === String(index));
       }
       showBody(index);
     };
 
-    // **2026-10-10（作者说「①」）：按名字分组、默认折叠** 。
-    // ⚠️ **为什么非改不可** ： 盘上那时**1177 份** ，而这一栏**全平铺**
-    // ⇒ 作者手写的那一件（`图书馆` ）**被淹在最后** 。
-    // ⚠️ **分组键是名字自己的层级**（前两段 ）—— 那是**他自己写的** ：
-    // `词典·成语·安邦治国` ⇒ 一组 `词典·成语`； 不够三段的（`图书馆` ）
-    // ⇒ **各自一组** （ 不猜它属于谁 ）。
-    // ⚠️ **搜过就不分组** ： 搜的时候该**一眼看完** （ 而且那几组都摊开 ）。
+    // Group documents with visible headings; each group loads in batches.
     const keyOf = (name: string): string => {
       const shown = String(name ?? '').replace(/\.md$/, '');
       const parts = shown.split('·');
@@ -235,34 +227,27 @@ export function knowledgePage(shell: Chrome): Panel {
         groups.set(key, [...(groups.get(key) ?? []), index]);
       });
       groups.forEach((idxs, key) => {
-        // ⚠️ **用 `<details>`** —— "折叠／点开"是浏览器自带的 ⇒ 不写 JS
-        const box = document.createElement('details');
+        const box = document.createElement('section');
         box.className = 'group';
-        const head = document.createElement('summary');
+        const head = document.createElement('h3');
         head.className = 'group-head';
         head.textContent = key + ' · ' + String(idxs.length);
         box.append(head);
-        // **2026-10-10：收起的那几组，一行都不建** 。
-        // ⚠️ **为什么非改不可** ： 那一棵**1177 份** ， 而 `<details>` 收起
-        // **只是藏** —— DOM 里仍旧是 1177 个节点 ⇒ 页**还是重的**
-        // （ 视觉上是好的 ， 可那是"藏起来"，不是"不建"）。
-        // ⚠️ **点开那一刻才建** （ 而 建过就不再建 ）。
-        // ⚠️ **头一组要立刻建** —— 因为下面 `pick(at)` 默认选的是**第一份** ，
-        // 而那一份就在头一组里 ⇒ 不建它， 右边就没有"选中的那一行"。
-        let built = false;
+        let shown = 0;
+        const more = document.createElement('button'); more.type = 'button'; more.className = 'infinity-text-link';
         const build = (): void => {
-          if (built) return;
-          built = true;
-          for (const i of idxs) box.append(drawOne(i));
+          const next = idxs.slice(shown, shown + 30); shown += next.length;
+          for (const i of next) box.insertBefore(drawOne(i), more);
+          more.hidden = shown >= idxs.length;
+          more.textContent = '显示更多（剩余 ' + (idxs.length - shown) + '）';
         };
-        box.addEventListener('toggle', () => { if (box.open) build(); });
-        if (toc.childElementCount === 0) { box.open = true; build(); }
+        more.onclick = build; box.append(more); build();
         toc.append(box);
       });
     }
     pick(at);
 
-    tail.append(line('span', '', '世界里的事'),
+    tail.append(
                 line('span', '', '共 ' + String(rows.length) + ' 份 · '
                       + String(howMany) + ' 行'));
   };

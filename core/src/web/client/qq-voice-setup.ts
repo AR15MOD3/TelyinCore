@@ -3,7 +3,7 @@ import { corePhrase, coreSetUIText } from './ui-language';
 
 export function voiceSetup(kind: 'asr' | 'tts', selection: () => { model: string; voice?: string }) {
   const section = document.createElement('details');
-  section.className = 'qq-voice-setup';
+  section.className = 'qq-voice-setup compact-disclosure';
   section.setAttribute('aria-label', kind === 'tts' ? 'TTS 首次配置' : 'ASR 首次配置');
   const summary = document.createElement('summary');
   summary.textContent = '首次配置';
@@ -74,9 +74,6 @@ export function voiceSetup(kind: 'asr' | 'tts', selection: () => { model: string
         result.textContent = '未能预选随包音频，可重试或选择自己的 WAV。';
       }
     };
-    section.addEventListener('toggle', () => {
-      if (section.open && !file.files?.length) void selectDefault();
-    });
     file.addEventListener('change', () => {
       restore.hidden = !file.files?.length;
       if (restore.hidden) void selectDefault();
@@ -130,8 +127,9 @@ export function voiceSetup(kind: 'asr' | 'tts', selection: () => { model: string
     ready: () => passed === key(),
     require: () => {
       section.open = true;
+      section.scrollIntoView({block: 'nearest'});
       result.textContent = '首次启用前请完成自检。';
-      summary.focus();
+      check.focus();
     },
     status(issue: string, unavailable = false) {
       blocked = unavailable;

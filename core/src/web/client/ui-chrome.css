@@ -8,7 +8,7 @@
 
 
   :where(button, input, textarea, select) { font: inherit; }
-  :where(button, a, input, textarea, select, summary, [role='button'], [tabindex]):focus-visible {
+  :where(button, a, input, textarea, select, :is(summary, h3), [role='button'], [tabindex]):focus-visible {
     outline: 2px solid var(--ui-focus-ring);
     outline-offset: 3px;
   }
@@ -16,7 +16,7 @@
     transition: background-color var(--ui-motion) ease, border-color var(--ui-motion) ease,
       color var(--ui-motion) ease, box-shadow var(--ui-motion) ease;
   }
-  :where(button:not(:disabled), select:not(:disabled), summary) { cursor: pointer; }
+  :where(button:not(:disabled), select:not(:disabled), :is(summary, h3)) { cursor: pointer; }
   :where(button, input, textarea, select):disabled { cursor: not-allowed; opacity: .55; }
   :where(input, textarea) { caret-color: var(--color-mint-text); }
   :where(input, textarea)::placeholder { color: var(--color-faint); opacity: 1; }
@@ -43,7 +43,7 @@
     padding-right: 10px;
   }
   :where(option, optgroup) { color: var(--color-ink); background: var(--color-focus); }
-  :where(summary)::marker { color: var(--color-faint); }
+  :where(:is(summary, h3))::marker { color: var(--color-faint); }
   :where(input[type='file'])::file-selector-button {
     margin-right: 10px;
     padding: 7px 12px;
@@ -78,7 +78,7 @@
   }
   @media (forced-colors: active) {
     :where(select) { appearance: auto; background-image: none; }
-    :where(button, a, input, textarea, select, summary, [tabindex]):focus-visible {
+    :where(button, a, input, textarea, select, :is(summary, h3), [tabindex]):focus-visible {
       outline-color: Highlight;
     }
   }
@@ -285,8 +285,8 @@
   margin: 0; padding: 0; border: 0;
 }
 .memory-studio .memory-pull .memory-entry:first-child { padding-top: 0; }
-.memory-studio .memory-entry summary { cursor: pointer; font-size: 13px; line-height: 1.8; overflow-wrap: anywhere; }
-.memory-studio .memory-entry:not([open]) summary { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+.memory-studio .memory-entry :is(summary, h3) { cursor: pointer; font-size: 13px; line-height: 1.8; overflow-wrap: anywhere; }
+.memory-studio .memory-entry:not(:is([open], section)) :is(summary, h3) { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
 .memory-studio .memory-entry-detail {
   overflow-wrap: anywhere; padding: 8px 0; max-height: 240px; overflow-y: auto;
 }
@@ -307,16 +307,16 @@
 
 .memory-studio .memory-skills { display: block; margin-top: 20px; }
 .memory-studio .memory-skill-category { padding: 0; border-bottom: 1px solid var(--color-line); }
-.memory-studio .memory-skill-category > summary.memory-line { cursor: pointer; list-style: none; margin: 0; }
-.memory-studio .memory-skill-category > summary::-webkit-details-marker { display: none; }
+.memory-studio .memory-skill-category > :is(summary, h3).memory-line { cursor: pointer; list-style: none; margin: 0; }
+.memory-studio .memory-skill-category > :is(summary, h3)::-webkit-details-marker { display: none; }
 .memory-studio .memory-category-action { font-size: 12px; color: var(--color-mint-text); }
-.memory-studio .memory-skill-category > summary:hover { background: var(--color-wash); }
+.memory-studio .memory-skill-category > :is(summary, h3):hover { background: var(--color-wash); }
 .memory-studio .memory-skill-category > .memory-list,
 .memory-studio .memory-skill-category > .memory-quiet { margin-inline: 20px; }
-.memory-studio .memory-skill-category > summary:focus-visible { outline: 2px solid var(--color-mint); outline-offset: -2px; }
+.memory-studio .memory-skill-category > :is(summary, h3):focus-visible { outline: 2px solid var(--color-mint); outline-offset: -2px; }
 .memory-studio .memory-skill-category .memory-list { padding-bottom: 12px; }
 .memory-studio .memory-skill-maintenance { padding: 10px 20px; font-size: 11px; color: var(--color-faint); }
-.memory-studio .memory-skill-maintenance > summary { cursor: pointer; }
+.memory-studio .memory-skill-maintenance > :is(summary, h3) { cursor: pointer; }
 .memory-studio .memory-skill-maintenance p { margin: 8px 0; overflow-wrap: anywhere; }
 
 .memory-studio .memory-skill-section { padding: 16px 20px; border-bottom: 1px solid var(--color-line); }
@@ -324,16 +324,16 @@
 .memory-studio .memory-skill-empty { margin: 0; color: var(--color-faint); font-size: 12px; }
 .memory-studio .memory-skill-entry { border-top: 1px solid var(--color-line); }
 .memory-studio .memory-skill-entry:first-of-type { border-top: 0; }
-.memory-studio .memory-skill-entry > summary { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 0; cursor: pointer; list-style: none; font-size: 13px; color: var(--color-ink); }
-.memory-studio .memory-skill-entry > summary::-webkit-details-marker { display: none; }
-.memory-studio .memory-skill-entry > summary:hover { color: var(--color-mint-text); }
+.memory-studio .memory-skill-entry > :is(summary, h3) { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 0; cursor: pointer; list-style: none; font-size: 13px; color: var(--color-ink); }
+.memory-studio .memory-skill-entry > :is(summary, h3)::-webkit-details-marker { display: none; }
+.memory-studio .memory-skill-entry > :is(summary, h3):hover { color: var(--color-mint-text); }
 .memory-studio .memory-skill-affordance { white-space: nowrap; font-size: 12px; color: var(--color-mint-text); }
 .memory-studio .memory-skill-body { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 280px; overflow: auto; font: 13px/1.85 var(--font-sans); padding: 12px 14px; background: var(--color-card); border-radius: 8px; }
 .memory-studio .memory-skill-metadata, .memory-studio .memory-skill-references { margin: 8px 0; font: 11px/1.6 var(--font-sans); color: var(--color-faint); overflow-wrap: anywhere; }
 
 .memory-studio .memory-skill-overview { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
 .memory-studio .memory-skill-excerpt { font-size: 12px; color: var(--color-faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.memory-studio .memory-skill-entry[open] .memory-skill-excerpt { display: none; }
+.memory-studio .memory-skill-entry:is([open], section) .memory-skill-excerpt { display: none; }
 
 .compact-menu-toggle { display: none; }
 @media (max-width: 720px) {
@@ -347,7 +347,7 @@
   .memory-studio { padding-inline: 12px; }
   .memory-studio .memory-skills { width: 100%; min-width: 0; }
   .memory-studio .memory-skill-section { padding: 14px; }
-  .memory-studio .memory-skill-entry > summary { flex-direction: column; align-items: stretch; gap: 7px; }
+  .memory-studio .memory-skill-entry > :is(summary, h3) { flex-direction: column; align-items: stretch; gap: 7px; }
   .memory-studio .memory-skill-overview { width: 100%; }
   .memory-studio .memory-skill-overview > span:first-child { overflow-wrap: anywhere; }
   .memory-studio .memory-skill-affordance { align-self: flex-end; }
@@ -374,4 +374,4 @@
 @media(max-width:720px) { .memory-studio .memory-skill-section > .memory-skill-empty { margin-left: 10px; } }
 
 /* The overview stays quiet; scrolling is available once a note is opened. */
-.memory-studio .memory-pull-content:has(.memory-entry[open]) { overflow-y: auto; }
+.memory-studio .memory-pull-content:has(.memory-entry:is([open], section)) { overflow-y: auto; }

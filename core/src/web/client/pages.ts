@@ -21,7 +21,7 @@ import { memoryPage } from './memory-page';
 import { pluginWorkspace } from './plugin-workspace';
 import { pluginMarketPage } from './plugin-market-page';
 import { infinityPluginPage } from './infinity-plugin-page';
-// 2026-10-08 作者拍的「世界里的事 ⇒ 三个子项」： **三个新文件 ＋ 三行**
+// 2026-10-08 作者拍的「 ⇒ 三个子项」： **三个新文件 ＋ 三行**
 // （ 那就是本仓"加一页"的全部代价 —— 见头上那两处 ）。
 import { knowledgePage } from './knowledge-page';
 import { peoplePage } from './people-page';
@@ -112,7 +112,7 @@ page({ group: 'PERSONA & MEMORY', id: 'persona', label: '人设', icon: 'person'
   // `memory.everyone(home)` ）⇒ 这一刀把它接上：**一个文件 ＋ 一行** 。
   page({ group: 'PERSONA & MEMORY', id: 'memory', label: '记忆', icon: 'memory',
          file: 'memory-page.ts' }, memoryPage),
-  // **「世界里的事」那一组**（2026-10-08，作者拍的「①THE WORLD」）——
+  // **「」那一组**（2026-10-08，作者拍的「①THE WORLD」）——
   // · 组名 `THE WORLD`（ 与 `CORE` ／ `PERSONA & MEMORY` 同一套大写 ）；
   // · **三个子项**： 知识库 ／ 画像 ／ 经历 —— 就是记忆页那条尾那三样 ；
   // · ⚠️ **它写在 `INFINITY` 之前**：`groupsOf()` 按**首次出现**排 ⇒

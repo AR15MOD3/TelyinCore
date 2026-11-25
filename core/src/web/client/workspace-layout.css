@@ -1,11 +1,11 @@
 /* Layout shared by the Core shell and its first-party pages. All surfaces
    and typefaces inherit the active appearance preset. */
 :root {
-  --workspace-gutter: clamp(16px, 2.4vw, 42px);
-  --workspace-line: color-mix(in srgb, var(--color-line) 78%, var(--color-white));
+  --workspace-gutter: clamp(16px, 2vw, 32px);
+  --workspace-line: color-mix(in srgb, var(--color-ink) 12%, transparent);
   --workspace-nav: var(--color-rail);
   --workspace-nav-text: var(--color-ink);
-  --workspace-nav-rule: color-mix(in srgb, var(--workspace-nav-text) 24%, transparent);
+  --workspace-nav-rule: color-mix(in srgb, var(--workspace-nav-text) 12%, transparent);
 }
 
 #rail {
@@ -24,7 +24,8 @@
 }
 #rail .rail-sublist { border-color: var(--workspace-nav-rule); }
 #rail .rail-child::before { background-color: var(--workspace-nav-rule); }
-#rail .rail-foot { border-top: 1px solid var(--workspace-nav-rule); }
+#rail .rail-foot { border-top: 0; }
+#rail .rail-who { border-top: 1px solid var(--workspace-nav-rule); }
 #rail :is(.rail-item, .rail-action):hover {
   background: color-mix(in srgb, var(--workspace-nav-text) 10%, transparent);
 }
@@ -48,10 +49,24 @@
 }
 @media (min-width: 761px) {
   #topbar, #content { padding-inline: var(--workspace-gutter); }
+  /* Inset the page below the full-width toolbar; keep wide screens bounded. */
+  #content :is(.page-world, .page-plugin, .memory, .page-engine, .page-persona) {
+    width: 100%;
+    max-width: 1920px;
+    margin-inline: auto;
+    padding: 28px clamp(16px, 1.65vw, 32px) 24px;
+  }
+  #content :is(.page-world, .memory) > :not(dialog),
+  #content .page-plugin > :not(.plugins-detail):not(dialog) { max-width: none; }
+  #content .page-engine { grid-template-columns: 220px minmax(0, 1fr); }
+  #content .page-settings.settings-unified .set-body { max-width: none; }
 }
-#content :is(.plugins-title, .page-title, .persona-title, .head > h1, .set-head > h2) {
+@container console (max-width: 760px) {
+  #content .page-engine { grid-template-columns: minmax(0, 1fr); }
+}
+#content :is(.plugins-title, .page-title, .persona-title, .head > h1, .set-bar > h1, .set-head > h2) {
   color: var(--color-ink);
-  font-size: clamp(21px, 1.7vw, 27px);
+  font-size: clamp(21px, 1.5vw, 24px);
   line-height: 1.32;
   font-weight: 650;
   letter-spacing: -.018em;
@@ -64,7 +79,7 @@
 
 /* Indexes and editors have different reading widths. Retain their own scroll
    containers, including the independently scrolling terminal and its composer. */
-#content .world-studio .prose { max-inline-size: 72ch; line-height: 1.85; }
+#content .world-studio .prose { inline-size: 100%; max-inline-size: none; overflow-wrap: anywhere; line-height: 1.85; }
 #content .world-studio :is(.page-body, .beat),
 #content .persona-studio .persona-segment,
 #content .memory-studio :is(.memory-star, .memory-documents) {
@@ -110,6 +125,27 @@
 #content .plugins-chip { font-size: 12px; }
 #content .page-settings .set-body { gap: 16px; }
 #content .page-plugin .plugins-said { line-height: 1.65; }
+
+/* Keep knowledge navigation and totals visible while each reading pane scrolls. */
+#content .page-knowledge { overflow: hidden; }
+#content .page-knowledge > .head { flex-shrink: 0; margin-bottom: 20px; }
+#content .page-knowledge > .book { flex: 1; min-height: 0; overflow: hidden; align-items: stretch; }
+#content .page-knowledge .book > :is(.toc, .page-body) {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  scrollbar-gutter: stable;
+}
+#content .page-knowledge .page-body {
+  padding: 4px 12px 16px 0;
+  background: transparent;
+  box-shadow: none;
+}
+#content .page-knowledge > .tail { flex-shrink: 0; margin-top: 16px; padding-top: 12px; }
+@container (max-width: 400px) {
+  #content .page-knowledge > .book { grid-template-rows: minmax(70px, 28%) minmax(0, 1fr); gap: 14px; }
+  #content .page-knowledge .toc { max-height: none; }
+}
 
 @media (max-width: 600px) {
   #topbar .chip + .chip { padding-inline-start: 5px; }

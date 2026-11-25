@@ -99,7 +99,7 @@
   }
 
   .persona-studio .persona-receipt { min-width: 0; }
-  .persona-studio .persona-receipt[open] { flex-basis: 100%; }
+  .persona-studio .persona-receipt:is([open], section) { flex-basis: 100%; }
   .persona-studio .persona-receipt-summary {
     width: fit-content;
     color: var(--color-mint-text);

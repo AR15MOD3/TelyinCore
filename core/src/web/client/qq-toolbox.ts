@@ -1,3 +1,4 @@
+import { showTextDetail } from './text-detail';
 import {pageFetch as fetch} from './status-json';
 // Labels for the stock adapter also make the catalogue useful before first enablement.
 // Only the server's published declarations can mark a tool as registered.
@@ -8,9 +9,9 @@ const guide = [
   ['图片与表情', 'qq_send_image', '发送插件生成的图片'], ['图片与表情', 'qq_look_image', '查看收到的图片'],
   ['图片与表情', 'qq_send_face', '发送 QQ 原生表情'], ['图片与表情', 'qq_list_custom_faces', '列出收藏表情'],
   ['图片与表情', 'qq_inspect_custom_face', '识别表情包内容'], ['图片与表情', 'qq_collect_sticker', '收藏表情包'],
-  ['图片与表情', 'qq_correct_sticker', '按 owner 的纠正更新表情资料'], ['图片与表情', 'qq_send_custom_face', '发送收藏表情'],
+  ['图片与表情', 'qq_correct_sticker', '按用户纠正更新表情资料'], ['图片与表情', 'qq_send_custom_face', '发送收藏表情'],
   ['图片与表情', 'qq_send_saved_image', '发回收到的图片或 GIF'],
-  ['主动分享', 'qq_sharing_preview', '审核拟分享的内容'], ['主动分享', 'qq_share_to_owner', '向 owner 分享'],
+  ['主动分享', 'qq_sharing_preview', '审核拟分享的内容'], ['主动分享', 'qq_share_to_owner', '向主人分享'],
 ] as const;
 interface Tool { name: string; provider: string; description: string; parameters: string[]; required: string[]; }
 interface GuideEntry {group: string; name: string; title: string}
@@ -32,7 +33,7 @@ export function qqToolbox() {
   const search = el('input', 'qq-tools-search');
   search.type = 'search'; search.placeholder = '搜索用途或工具名'; search.setAttribute('aria-label', search.placeholder);
   const list = el('div', 'qq-tools-groups');
-  card.append(header, el('p', 'qq-diagnostic-description', '已注册的工具仍受当前会话、账号权限和服务配置限制。展开可查看说明和参数。'), search, list);
+  card.append(header, el('p', 'qq-diagnostic-description', '已注册的工具仍受当前会话、账号权限和服务配置限制。下方列出各项说明和参数。'), search, list);
   root.append(card);
   let data: Catalog | undefined;
   let state = '正在读取';
@@ -55,19 +56,20 @@ export function qqToolbox() {
       const section = el('section', 'qq-tools-section');
       section.append(el('h4', '', group));
       for (const row of filtered.filter(row => row.group === group)) {
-        const item = el('details', 'qq-tool-item');
-        const line = el('summary');
+        const item = el('section', 'qq-tool-item');
+        const line = el('h3');
         const label = el('span', 'qq-tool-label');
         label.append(el('span', '', row.title), el('code', '', row.name));
         line.append(label, el('small', row.tool ? 'qq-tool-on' : '', row.tool ? '已注册' : data ? '未注册' : '待核实'));
         item.append(line);
-        if (row.tool) {
-          item.append(el('p', '', row.tool.description));
-          if (row.tool.parameters.length) item.append(el('p', 'qq-tool-params', '参数 · ' +
-            row.tool.parameters.map(p => p + (row.tool!.required.includes(p) ? '（必填）' : '')).join('、')));
-        } else {
-          item.append(el('p', '', '官方 QQ 插件的功能说明。当前注册状态以本 Bot 加载的插件和配置为准。'));
-        }
+        const description = row.tool?.description || '官方 QQ 插件的功能说明。当前注册状态以本 Bot 加载的插件和配置为准。';
+        item.append(el('p', 'qq-tool-description', description));
+        const more = el('button', 'compact-more', '显示全部'); more.type = 'button';
+        more.setAttribute('aria-label', '显示全部：' + row.title);
+        more.onclick = () => showTextDetail(row.title, [row.name, description,
+          row.tool?.parameters.length ? '参数 · ' + row.tool.parameters.map(p =>
+            p + (row.tool!.required.includes(p) ? '（必填）' : '')).join('、') : ''].filter(Boolean).join('\n\n'));
+        item.append(more);
         section.append(item);
       }
       list.append(section);

@@ -118,7 +118,7 @@ export function pluginUpdatesPanel() {
       }
       card.append(meta);
       if(row.status==='available'){
-        const guide=el('details');guide.append(el('summary','升级步骤'));
+        const guide=el('section');guide.append(el('h3','升级步骤'));
         guide.append(el('p','等待当前任务结束并备份配置和自定义文件。在插件市场的「本机插件」卸载旧版，再从「发现插件」安装新版，安装前核对市场版本。卸载会停用所有 Bot 共用的该插件，配置和缓存保留。安装后检查配置，再按需启用。'));
         card.append(guide);
       }

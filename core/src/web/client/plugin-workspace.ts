@@ -56,11 +56,11 @@ export function pluginWorkspace(shell:Chrome,view:View='local'):Panel {
   const searchRow=node('div','pw-search-row');searchRow.append(toolbar);
   const searchTools=node('section','pw-search-tools');searchTools.setAttribute('aria-label','插件搜索与标签');searchTools.append(searchRow,controls);
   const feedback=node('p','pw-feedback');feedback.setAttribute('role','status');
-  const list=node('div','pw-list');const footer=node('div','pw-list-footer');browse.append(searchTools,feedback,list,footer);
+  const list=node('div','pw-list');const footer=node('footer','page-footer pw-page-footer');browse.append(searchTools,feedback,list);
   const detail=node('section','pw-detail');detail.setAttribute('aria-label','插件详情');
   const restartSummary=node('div','pw-restart-summary');restartSummary.setAttribute('role','status');restartSummary.hidden=true;
   const progress=node('section','pw-operation-progress');progress.setAttribute('role','status');progress.setAttribute('aria-live','polite');progress.hidden=true;
-  body.append(browse,detail);root.append(header,navigation,progress,restartSummary,body);shell.content.replaceChildren(root);
+  body.append(browse,detail);root.append(header,navigation,progress,restartSummary,body,footer);shell.content.replaceChildren(root);
   let selected='',locals:InstalledPlugin[]=[],market:MarketPackage[]=[],alive=false,epoch=0,busy=false;
   let localLoaded=false,marketLoaded=false,localError='',marketError='',operationError='',page=1;
   let lastDetail='',lastList='';
@@ -112,13 +112,13 @@ export function pluginWorkspace(shell:Chrome,view:View='local'):Panel {
     if(pending.length){restartSummary.append(node('span','',`${pending.length} 个插件有待生效的更改。可在详情中重启并应用，当前页面会保留。`),button('查看待生效',()=>{filterValue='all';search.value='';page=1;requestedName=pending[0].name;lastList=lastDetail='';render();}));}
     const counts={local:locals.filter(installed).length,discover:discoverable().length,updates:locals.filter(p=>installed(p)&&!p.builtin&&updateFor(p.name)?.status==='available').length};
     search.disabled=busy||!!pluginOperation()?.busy;includeLocal.disabled=search.disabled;
-    scopeCount.textContent=!localLoaded||view==='discover'&&!marketLoaded?'正在读取…':view==='local'?`${counts.local} 个插件 · ${locals.filter(p=>installed(p)&&p.loaded).length} 个运行中`:'';
+    scopeCount.textContent='';
     refresh.textContent=busy?'处理中…':'刷新';refresh.disabled=busy||!!pluginOperation()?.busy;
     for(const [value,chip] of filterButtons){chip.disabled=busy||!!pluginOperation()?.busy;chip.setAttribute('aria-pressed',String(value===filterValue));if(value==='available')chip.textContent=`可更新 ${counts.updates}`;}
     const status=pluginUpdateSnapshot();
     feedback.textContent=view==='discover'?[localError,marketError].filter(Boolean).join(' '):[localError,status.error,status.checking?'正在后台检查更新…':status.message].filter(Boolean).join(' ');
     const rows=entries();const pages=Math.max(1,Math.ceil(rows.length/30));
-    if(view==='discover'&&localLoaded&&marketLoaded)scopeCount.textContent=`搜索到 ${rows.length} 个插件`;
+
     if(requestedName){const index=rows.findIndex(e=>e.name===requestedName);if(index>=0){selected=requestedName;page=Math.floor(index/30)+1;requestedName=undefined;requestAnimationFrame(()=>{if(alive)detail.querySelector('.pw-update-note')?.scrollIntoView({block:'nearest'});});}else if(localLoaded)requestedName=undefined;}
     page=Math.min(page,pages);const shown=rows.slice((page-1)*30,page*30);
     if(!shown.some(e=>e.name===selected)){selected=shown[0]?.name||'';lastDetail='';}
@@ -134,21 +134,22 @@ export function pluginWorkspace(shell:Chrome,view:View='local'):Panel {
         const item=button('',()=>{operationError='';selected=e.name;lastDetail='';render();},'pw-entry');item.disabled=busy||!!pluginOperation()?.busy;item.dataset.name=e.name;item.setAttribute('aria-pressed',String(e.name===selected));
         const mark=node('span','pw-mark');mark.append(icon(e.local?.builtin?'grid':'puzzle'));
         const copy=node('span','pw-entry-copy');copy.append(node('strong','',e.local?.displayName||e.name));
-        const text=filterValue==='available'&&updateFor(e.name)?updateText(updateFor(e.name)!):e.local?.description||e.market?.description||e.name;copy.append(node('span','pw-entry-summary',text));
+        const text=filterValue==='available'&&updateFor(e.name)?updateText(updateFor(e.name)!):e.local?.description||e.market?.description||e.name;const summary=node('span','pw-entry-summary',text);summary.title=text;copy.append(summary);
         const state=node('span','pw-entry-state');const update=updateFor(e.name);
         if(update?.status==='available'&&installed(e.local)&&!e.local?.builtin){state.textContent=`${runtime(e.local!)} · 可更新`;state.dataset.tone='update';}
         else if(e.local){state.textContent=(e.local.builtin?'内置 · ':'')+runtime(e.local);state.dataset.tone=e.local.loaded?'on':'off';}
         else state.textContent=e.market?pluginCategoryLabel(e.market):'';
-        copy.append(state);if(view==='discover')copy.append(node('span','pw-entry-platform',platformSummary(platforms(e))));item.append(mark,copy);list.append(item);
+        const meta=node('span','pw-entry-meta');meta.append(state);if(view==='discover')meta.append(node('span','pw-entry-platform',platformSummary(platforms(e))));copy.append(meta);item.append(mark,copy);list.append(item);
       }
     }
-    footer.replaceChildren(node('span','',`${rows.length} 个插件`));if(pages>1){const back=button('上一页',()=>{page--;lastList='';render();});back.disabled=page===1;const next=button('下一页',()=>{page++;lastList='';render();});next.disabled=page===pages;footer.append(back,node('span','',`${page}/${pages}`),next);}
+    footer.replaceChildren(node('span','page-footer-label',view==='local'?'内置与已安装':'社区插件'));const footerInfo=node('div','page-footer-summary');footerInfo.append(node('span','',!localLoaded||view==='discover'&&!marketLoaded?'正在读取…':view==='local'?`共 ${counts.local} 个 · 运行中 ${locals.filter(p=>installed(p)&&p.loaded).length} 个 · 可更新 ${counts.updates} 个${rows.length!==counts.local?' · 筛选结果 '+rows.length+' 个':''}`:`搜索到 ${rows.length} 个插件`));footer.append(footerInfo);if(pages>1){const back=button('上一页',()=>{page--;lastList='';render();});back.disabled=page===1;const next=button('下一页',()=>{page++;lastList='';render();});next.disabled=page===pages;footerInfo.append(back,node('span','',`${page}/${pages}`),next);}
     const entry=shown.find(e=>e.name===selected);const detailKey=JSON.stringify([entry,view,entry&&updateFor(entry.name),operationError,busy,pluginOperation(),checkingUpdates,status.checking]);
     if(detailKey!==lastDetail){lastDetail=detailKey;drawDetail(entry);}
   }
   function drawDetail(e?:Entry){
     detail.replaceChildren();if(!e){detail.append(node('div','pw-detail-empty','选择一个插件，查看详情与管理选项'));return;}
     const p=e.local,m=e.market,exists=installed(p),u=updateFor(e.name);
+    detail.classList.toggle('pw-builtin-qq', e.name === 'core-infinity-qq' && !!p?.builtin);
     const hero=node('header','pw-hero');const mark=node('div','pw-mark pw-mark-large');mark.append(icon(p?.builtin?'grid':'puzzle'));
     const title=node('div','pw-identity');title.append(node('div','pw-eyebrow',p?.builtin?'CORE 内置':m?pluginCategoryLabel(m):'本地插件'),node('h2','',p?.displayName||e.name),node('p','pw-package',e.name));hero.append(mark,title);detail.append(hero);
     const metadata=node('div','pw-metadata');metadata.append(node('span','',`版本 ${p?.version||m?.version||'未声明'}`),node('span','',p?.author||m?.author||'未声明作者'));if(p?.license)metadata.append(node('span','',p.license));detail.append(metadata);
@@ -172,7 +173,7 @@ export function pluginWorkspace(shell:Chrome,view:View='local'):Panel {
     if(exists&&p?.restart_required){const apply=button('重启并应用',()=>{void mutate(e,'apply');});apply.disabled=busy||!!pluginOperation()?.busy;actions.append(apply);}
     const versionRepo=!p?.builtin&&source.startsWith('https://github.com/')?source.slice('https://github.com/'.length):'';
     const versions=versionRepo?pluginVersions(versionRepo,e.name,exists?(p?.version||''):'',busy||!!pluginOperation()?.busy,row=>{void changeVersion(e,versionRepo,row);}):undefined;
-    if(versions){const choose=button(u?.status==='available'?'选择更新版本':'选择版本',()=>{versions.open=true;versions.scrollIntoView({block:'nearest'});});choose.disabled=busy||!!pluginOperation()?.busy;actions.insertBefore(choose,actions.querySelector('.pw-remove'));}
+    if(versions){const choose=button(u?.status==='available'?'选择更新版本':'选择版本',()=>{void versions.loadVersions();versions.scrollIntoView({block:'nearest'});});choose.disabled=busy||!!pluginOperation()?.busy;actions.insertBefore(choose,actions.querySelector('.pw-remove'));}
     detail.append(actions);
     if(versions)detail.append(versions);
     const result=node('p','pw-operation',operationError);result.setAttribute('role','status');detail.append(result);
@@ -183,10 +184,21 @@ export function pluginWorkspace(shell:Chrome,view:View='local'):Panel {
       const update=node('section','pw-update-note');update.append(node('h3','',u.status==='available'?'有新版本可用':'版本检查'),node('p','',updateText(u)));
       if(u.checkedAt)update.append(node('small','',`上次成功检查 ${new Date(u.checkedAt*1000).toLocaleString()}`));
       if(u.error)update.append(node('p','',u.error));
-      if(u.status==='available'){const instructions=node('details');instructions.append(node('summary','','查看升级步骤'),node('p','','停用插件后，点击“选择更新版本”，核对发布说明再安装。旧包会备份，配置和缓存保留，安装后按需启用。多个 Bot 共用安装包时，需要各 Bot 均已停用该插件。'));update.append(instructions);}
+      if(u.status==='available'){const instructions=node('section');instructions.append(node('h3','','查看升级步骤'),node('p','','停用插件后，点击“选择更新版本”，核对发布说明再安装。旧包会备份，配置和缓存保留，安装后按需启用。多个 Bot 共用安装包时，需要各 Bot 均已停用该插件。'));update.append(instructions);}
       detail.append(update);
     }
-    const about=node('section','pw-about');about.append(node('h3','','关于插件'),node('p','',p?.description||m?.description||'作者尚未提供简介。'));const requirement=m&&pluginRequirement(m);if(requirement)about.append(node('p','pw-requirement',requirement));if(p?.contract)about.append(node('p','pw-operation',p.contract));detail.append(about);
+    const descriptions=node('div','pw-detail-sections');
+    const about=node('section','pw-about');about.append(node('h3','','关于插件'),node('p','',p?.description||m?.description||'作者尚未提供简介。'));const requirement=m&&pluginRequirement(m);if(requirement)about.append(node('p','pw-requirement',requirement));if(p?.contract)about.append(node('p','pw-operation',p.contract));descriptions.append(about);
+    if (p?.builtin && e.name === 'core-infinity-qq') {
+      const features=node('div','pw-feature-list');
+      for (const [title,text] of [
+        ['消息与会话','收发私聊与群聊消息，配置允许接入的账号和群。'],
+        ['图片与表情','查看图片、收藏表情，并发送已保存的图片。'],
+        ['语音交流','配置语音识别和合成模型，进行本机自检。'],
+        ['工具与扩展','查看已注册工具，为 ComfyUI 等 QQ 扩展提供消息通道。'],
+      ]) {const row=node('div','pw-feature');row.append(node('h4','',title),node('p','',text));features.append(row);}
+      about.append(features,node('p','pw-feature-note','首次使用请打开配置，连接 SnowLuma 并设置会话路由。具体可用功能取决于当前配置与权限。'));
+    }
     const info=node('section','pw-info');info.append(node('h3','','安装信息'));const fields=node('dl');
     const field=(label:string,value:string)=>{fields.append(node('dt','',label),node('dd','',value||'未声明'));};
     field('来源',p?.builtin?'Core 内置':p?.origin?.source==='github'?'GitHub':p?'本地导入':m?.source||'GitHub');
@@ -196,7 +208,11 @@ export function pluginWorkspace(shell:Chrome,view:View='local'):Panel {
     if(m?.date)field('仓库更新',m.date);
     if(p?.builtin)field('更新方式','随 Core 更新');
     if(p?.reload_mode)field('生效方式',p.reload_mode==='restart'?'启用和停用需重启 Core 服务':p.reload_mode==='hot'?'支持热加载':'声明无效');
-    info.append(fields);detail.append(info);
+    info.append(fields);descriptions.append(info);detail.append(descriptions);
+    const scroll=node('div','pw-detail-scroll');
+    const children=[...detail.children];
+    scroll.append(...children.slice(children.indexOf(actions)+1));
+    detail.append(scroll);
   }
   async function changeVersion(e:Entry,repository:string,row:VersionChoice){
     if(busy||pluginOperation()?.busy||!alive)return;

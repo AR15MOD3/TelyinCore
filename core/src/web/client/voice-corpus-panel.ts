@@ -1,9 +1,9 @@
 import { corePhrase, coreSetUIAttribute, coreSetUIText, coreUITextNode } from './ui-language';
 /** A local operator review surface, not an Agent tool or QQ chat command. */
 export function voiceCorpusPanel(): HTMLElement & { start(): void; stop(): void } {
-  const root = document.createElement('details');
+  const root = document.createElement('section');
   root.className = 'voice-corpus';
-  const title = document.createElement('summary');
+  const title = document.createElement('h3');
   coreSetUIText(title, 'textContent', corePhrase("认可素材库 · 当前 Bot"));
   const hint = document.createElement('p');
   hint.className = 'infinity-hint';
@@ -129,12 +129,8 @@ export function voiceCorpusPanel(): HTMLElement & { start(): void; stop(): void 
   refresh.addEventListener('click', () => { void run(show); });
   previous.addEventListener('click', () => { offset = Math.max(0, offset - 20); void run(show); });
   next.addEventListener('click', () => { offset += 20; void run(show); });
-  root.addEventListener('toggle', () => {
-    if (root.open) void run(show);
-    else for (const audio of list.querySelectorAll('audio')) audio.pause();
-  });
   return Object.assign(root, {
-    start(): void { active = true; if (root.open) void run(show); },
+    start(): void { active = true; void run(show); },
     stop(): void {
       active = false; epoch += 1; busy = false;
       for (const controller of requests) controller.abort();

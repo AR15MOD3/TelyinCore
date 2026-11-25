@@ -26,14 +26,14 @@ export function modelProxySettings():HTMLElement {
   const download=el('section','public-network-policy');download.append(el('h4','','下载与插件市场'));
   const source=select('来源顺序',[['mirror','镜像优先'],['official','官方优先']]);const connection=select('官方连接方式',modes);
   const downloadFlow=el('p','public-network-flow');download.append(source.box,connection.box,downloadFlow);
-  const overrides=el('details','model-proxy-details');const overrideSummary=el('summary','','插件市场单独设置');
+  const overrides=el('section','model-proxy-details');const overrideSummary=el('h3','','插件市场单独设置');
   const separateLabel=el('label','model-proxy-provider');const separate=el('input');separate.type='checkbox';separate.setAttribute('aria-label','插件市场使用独立设置');separateLabel.append(separate,'插件市场使用独立设置');
   const marketFields=el('div','model-network-fields');const marketSource=select('插件市场来源顺序',[['mirror','镜像优先'],['official','官方优先']]);const marketConnection=select('插件市场官方连接方式',modes);marketFields.append(marketSource.box,marketConnection.box);
   const marketFlow=el('p','public-network-flow');overrides.append(overrideSummary,separateLabel,marketFields,marketFlow);download.append(overrides);
   const downloadHint=el('p','public-network-caption','用于 Core 更新、插件搜索与安装、模型和运行环境下载。镜像始终直连；校验摘要只向官方核验。');download.append(downloadHint);
   const model=el('section','public-network-policy');model.append(el('h4','','模型 API'));
   const modelConnection=select('模型连接方式',modes);modelConnection.box.classList.add('model-network-wide');const modelFlow=el('p','public-network-flow');model.append(modelConnection.box,modelFlow);
-  const providers=el('details','model-proxy-details');const providerSummary=el('summary');const targets=el('div','model-proxy-targets');const boxes=PROVIDERS.map(([id,title])=>{const label=el('label','model-proxy-provider'),input=el('input');input.type='checkbox';input.setAttribute('aria-label',title);label.append(input,title);targets.append(label);return {id,input};});
+  const providers=el('section','model-proxy-details');const providerSummary=el('h3');const targets=el('div','model-proxy-targets');const boxes=PROVIDERS.map(([id,title])=>{const label=el('label','model-proxy-provider'),input=el('input');input.type='checkbox';input.setAttribute('aria-label',title);label.append(input,title);targets.append(label);return {id,input};});
   providers.append(providerSummary,targets);model.append(providers,el('p','public-network-caption','仅连接尚未建立、模型请求尚未发送时允许直连回退；已发送请求和生成中断不重发。自定义 API 地址保持直连。'));
   policies.append(download,model);
   const actions=el('div','model-proxy-actions');const save=el('button','btn','保存'),reload=el('button','btn ghost','重新读取');save.type=reload.type='button';save.setAttribute('aria-label','保存网络设置');actions.append(save,reload);
@@ -60,7 +60,7 @@ export function modelProxySettings():HTMLElement {
     revision=settings.revision;systemProxy=settings.system_proxy||'';address.value=settings.proxy_url;
     source.input.value=settings.downloads_source||'mirror';connection.input.value=mode(settings.downloads_enabled,settings.downloads_fallback);
     marketSource.input.value=settings.market_source||'mirror';marketConnection.input.value=mode(settings.market_enabled,settings.market_fallback);
-    separate.checked=source.input.value!==marketSource.input.value||connection.input.value!==marketConnection.input.value;overrides.open=separate.checked;
+    separate.checked=source.input.value!==marketSource.input.value||connection.input.value!==marketConnection.input.value;
     modelConnection.input.value=mode(settings.enabled,settings.model_fallback);for(const box of boxes)box.input.checked=settings.providers.includes(box.id);
     paint();baseline=draft();guard();configPresentation(root,'ready');
   };

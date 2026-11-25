@@ -30,12 +30,20 @@ function menuFor(anchor: HTMLElement, items: () => ComboItem[],
   key: (event: KeyboardEvent) => void;
 } {
   const menu = node('div', 'engine-menu'); menu.id = `engine-menu-${++serial}`;
+  menu.setAttribute('popover', 'manual');
   menu.setAttribute('role', 'listbox'); menu.hidden = true;
   anchor.setAttribute('aria-controls', menu.id); anchor.setAttribute('aria-expanded', 'false');
   let rows: ComboItem[] = [], active = -1;
+  const moved = (event: Event): void => {
+    if (event.target instanceof Node && menu.contains(event.target)) return;
+    close();
+  };
   const close = (): void => {
+    if (typeof menu.hidePopover === 'function' && menu.matches(':popover-open')) menu.hidePopover();
     menu.hidden = true; anchor.setAttribute('aria-expanded', 'false');
     anchor.removeAttribute('aria-activedescendant');
+    window.removeEventListener('scroll', moved, true);
+    window.removeEventListener('resize', moved);
   };
   const highlight = (): void => {
     Array.from(menu.children).forEach((option, index) => {
@@ -69,7 +77,19 @@ function menuFor(anchor: HTMLElement, items: () => ComboItem[],
     const rect = anchor.getBoundingClientRect?.();
     menu.dataset.side = rect && rect.top > window.innerHeight - rect.bottom
       && window.innerHeight - rect.bottom < 190 ? 'above' : 'below';
-    menu.hidden = false; anchor.setAttribute('aria-expanded', 'true'); highlight();
+    menu.hidden = false;
+    if (rect) {
+      const above = menu.dataset.side === 'above';
+      const room = Math.max(60, (above ? rect.top : window.innerHeight - rect.bottom) - 14);
+      Object.assign(menu.style, {position:'fixed', margin:'0', bottom:'auto',
+        left:Math.max(8, Math.min(rect.left, window.innerWidth - rect.width - 8))+'px',
+        width:Math.min(rect.width, window.innerWidth - 16)+'px', maxHeight:Math.min(300, room)+'px'});
+      menu.showPopover?.();
+      menu.style.top = (above ? Math.max(8, rect.top-menu.getBoundingClientRect().height-6) : rect.bottom+6)+'px';
+    }
+    anchor.setAttribute('aria-expanded', 'true'); highlight();
+    window.addEventListener('scroll', moved, true);
+    window.addEventListener('resize', moved);
   };
   const key = (event: KeyboardEvent): void => {
     if (event.key === 'Escape' || event.key === 'Tab') { close(); return; }

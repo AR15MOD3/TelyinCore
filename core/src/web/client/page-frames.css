@@ -1,0 +1,329 @@
+/* Page headers and footers belong to the viewport. Only content panes scroll. */
+#content :is(.page-people, .page-experience, .page-settings, .page-memory,
+  .page-persona, .page-engine, .plugin-workspace, .page-qq-settings, .page-plugin-config) {
+  overflow: hidden;
+  min-height: 0;
+}
+#content .page-scroll {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  scrollbar-gutter: stable;
+}
+#content :is(.page-people, .page-experience) > .head,
+#content :is(.memory-head, .set-bar, .persona-head, .core-page-head, .plugin-config-head) {
+  flex-shrink: 0;
+}
+#content :is(.page-people, .page-experience) > .head { margin-bottom: 20px; }
+#content :is(.page-people, .page-experience) > .tail,
+#content :is(.page-memory, .persona-column) > .persona-memory-tail {
+  flex-shrink: 0;
+  margin-top: 16px;
+  padding-top: 12px;
+}
+#content .memory-scroll { width: 100%; }
+#content .memory-scroll > * { flex-shrink: 0; }
+#content .page-memory > .memory-head { width: 100%; margin-bottom: 20px; }
+#content .page-memory > .memory-head { padding-bottom:15px; }
+#content .page-memory > .memory-head > .plugins-title { margin:0; }
+#content .page-memory > .memory-head > .memory-figs { margin-top:12px; }
+#content .page-memory > .memory-head > .plugins-note:not(:empty) { margin-top:12px; }
+#content .page-memory > .persona-memory-tail { width: 100%; }
+
+/* Index and document panes keep independent reading positions. */
+#content .page-people > .faces,
+#content .page-settings > .set-book,
+#content .engine-workspace {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+  align-items: stretch;
+}
+#content .page-people .faces > :is(.roster, .portrait-detail),
+#content .page-settings .set-book > :is(.set-tabs, .set-body),
+#content .engine-workspace .engine-right,
+#content .engine-workspace > .engine-left {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  scrollbar-gutter: stable;
+  padding-bottom: 8px;
+}
+#content .page-people .faces > .portrait-detail { padding-right: 8px; }
+#content .page-settings .set-tabs { position: static; }
+#content .page-settings .set-body { padding-right: 8px; }
+
+/* Persona keeps its save controls, chapter navigation and closing row in view. */
+#content .page-persona { padding-bottom: 24px; }
+#content .persona-column { display: flex; flex: 1; flex-direction: column; min-height: 0; gap: 18px; }
+#content .persona-workspace {
+  display: grid;
+  grid-template-columns: 152px minmax(0, 1fr);
+  gap: 28px;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+#content .persona-workspace > .persona-nav {
+  grid-row: auto;
+  position: static;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+}
+#content .persona-scroll { padding-right: 8px; }
+#content .persona-scroll > :is(.persona-segments, .persona-other) { width: 100%; }
+#content .persona-column > .persona-memory-tail { margin-top: 0; }
+
+/* Model actions stay with the selected configuration, above the scrolling form. */
+#content .page-engine { display: flex; flex-direction: column; gap: 18px; }
+#content .page-engine > .page-title { flex-shrink: 0; margin: 0; }
+#content .engine-workspace { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 24px; width: 100%; }
+#content .engine-right { align-content: start; padding-right: 8px; }
+#content .engine-editor { display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; }
+#content .engine-editor > .engine-right { flex: 1; min-height: 0; }
+#content .engine-page-actions { width: 100%; flex-shrink: 0; margin-bottom: 16px; padding-right: 8px; }
+#content .engine-page-actions .engine-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 20px; padding: 0 0 14px; margin: 0; border: 0; border-bottom: 1px solid var(--color-line); background: transparent; }
+#content .engine-action-title { flex: 1; min-width: 120px; overflow-wrap: anywhere; font-size: 14px; font-weight: 600; color: var(--color-ink); }
+#content .engine-page-actions .engine-foot { margin: 0; }
+#content .engine-page-actions .engine-notice { flex-basis: 100%; margin: 0; }
+#content .engine-page-actions .engine-notice:empty { display: none; }
+
+/* Marketplace filters stay with the list; action controls stay with the detail. */
+#content .plugin-workspace > .pw-body { flex: 1; min-height: 0; align-items: stretch; overflow: hidden; }
+#content .plugin-workspace .pw-browser { position: static; height: 100%; min-height: 0; }
+#content .plugin-workspace .pw-detail { display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+#content .pw-detail > :is(.pw-hero, .pw-metadata, .pw-actions) { flex-shrink: 0; }
+#content .pw-detail > .pw-actions { margin-bottom: 12px; padding-bottom: 12px; }
+#content .pw-detail-scroll { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior-y: contain; scrollbar-gutter: stable; padding-right: 4px; }
+#content .plugin-workspace > :is(.pw-operation-progress, .pw-restart-summary) { flex-shrink: 0; max-height: 24vh; overflow-y: auto; }
+
+/* Native QQ tabs remain visible; the selected pane retains its own controls. */
+#content .page-qq-settings > .infinity-qq-panel { display: flex; flex: 1; min-height: 0; flex-direction: column; overflow: hidden; }
+#content .page-qq-settings .infinity-qq-panel > :not(.qq-panel-scroll) { flex-shrink: 0; }
+#content .page-qq-settings .qq-panel-scroll { padding-right: 8px; }
+#content .page-qq-settings > .infinity-message:empty { display: none; }
+#content .page-qq-settings .infinity-tabs { margin-top: 12px; }
+
+/* Third-party pages keep the host header; iframe height is bounded by the pane,
+   including plugins that request document-sized auto-height through the bridge. */
+#content .page-plugin-config .plugin-config-head { width: 100%; margin-bottom: 16px; }
+#content .page-plugin-config .plugin-config-head h1 { font-size: clamp(21px, 1.5vw, 24px); font-weight: 650; margin: 0 0 12px; }
+#content .plugin-config-content { display: flex; flex: 1; min-height: 0; overflow: hidden; width: 100%; }
+#content .plugin-config-content .generic-plugin-form { flex: 1; min-height: 0; overflow-y: auto; margin: 0; padding: 0 8px 12px 0; align-content: start; }
+#content .plugin-config-content .plugin-config-frame { flex: 1; min-height: 0; height: 100%!important; margin: 0; }
+#content .plugin-config-actions { display: flex; flex-shrink: 0; flex-wrap: wrap; align-items: center; gap: 10px; width: 100%; padding-top: 12px; border-top: 1px solid var(--color-line); }
+#content .plugin-config-actions:not(:has(> :not([hidden]))) { display: none; }
+#content .plugin-config-actions .infinity-hint { margin: 0; }
+
+@container console (max-width: 760px) {
+  #content .engine-workspace { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(70px, 24%) minmax(0, 1fr); gap: 16px; }
+  #content .page-settings .set-book { display: flex; flex-direction: column; gap: 16px; }
+  #content .page-settings .set-tabs { flex-shrink: 0; max-height: 100px; }
+  #content .page-settings .set-body { flex: 1; }
+}
+@container (max-width: 640px) {
+  #content .persona-workspace { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); gap: 12px; }
+  #content .persona-workspace > .persona-nav { max-height: 100px; }
+  #content .persona-workspace .persona-navlist { flex-direction: row; flex-wrap: nowrap; overflow-x: auto; }
+  #content .persona-workspace .persona-navlist > * { flex-shrink: 0; }
+}
+@media (max-width: 720px) {
+  #content .page-people > .faces { grid-template-rows: minmax(64px, 22%) minmax(0, 1fr); gap: 14px; }
+}
+@container core-plugin-page (max-width: 580px) {
+  #content .plugin-workspace > .pw-body { display: flex; flex-direction: column; overflow-y: auto; }
+  #content .plugin-workspace .pw-browser { flex-shrink: 0; height: 260px; }
+  #content .plugin-workspace .pw-detail { flex-shrink: 0; overflow: visible; }
+  #content .plugin-workspace .pw-detail-scroll { overflow: visible; }
+}
+
+#content .persona-column, #content .page-engine { align-items: stretch; }
+#content .persona-column > .persona-head { width: 100%; }
+#content .page-live {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  width: 100%;
+  max-width: 1920px;
+  margin-inline: auto;
+  min-height: 0;
+  overflow: hidden;
+  padding: 28px clamp(16px, 1.65vw, 32px) 0;
+}
+#content .live-page-head { width: 100%; max-width: none; margin-inline: 0; flex-shrink: 0; }
+#content .live-page-head .page-title { margin: 0; padding-bottom: 20px; border-bottom: 1px solid var(--color-line); }
+#content .page-live > .live { width: 100%; max-width: none; min-height: 0; padding: 0 0 24px; }
+#content .page-load-status { flex-shrink: 0; max-height: 100px; overflow-y: auto; }
+
+/* Persona and Settings use the same page frame as the other workspaces. */
+#content .persona-column { max-width: none; }
+#content .persona-head .persona-title { margin: 0; align-self: start; }
+#content .page-settings > .set-bar {
+  border-bottom: 1px solid var(--workspace-line);
+  padding-bottom: 15px;
+  margin-bottom: 20px;
+}
+#content .page-settings .set-book { column-gap: 28px; }
+@container console (min-width: 761px) {
+  #content .page-settings .set-book { grid-template-columns: 152px minmax(0, 1fr); }
+}
+@media (max-width: 600px) {
+  #content .page-settings > .set-bar { padding-bottom: 10px; }
+}
+
+@media (max-width: 760px) {
+  #content .page-persona { padding-inline: 20px; }
+}
+
+#content .engine-page-actions .engine-foot > .btn:first-child { color: var(--color-mint-text); background: var(--color-mint-wash); font-weight: 600; }
+
+/* A shared closing bar: the same typography and spacing on every page. */
+#content .page-footer,
+#content .page-world > .tail.page-footer,
+#content .persona-column > .persona-memory-tail,
+#content .page-memory > .persona-memory-tail {
+  display: flex; align-items: center; flex-wrap: wrap; flex-shrink: 0;
+  gap: 8px 20px; width: 100%; min-height: 34px; order: 10;
+  margin: 16px 0 0; padding: 12px 0 0;
+  border: 0; border-top: 1px solid var(--workspace-line);
+  background: transparent; box-shadow: none;
+  color: var(--color-faint); font: 400 12px/1.7 var(--font-sans);
+  font-variant-numeric: tabular-nums;
+}
+#content .page-footer-label { flex-shrink: 0; }
+#content .page-footer-summary { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 14px; margin-left: auto; }
+#content .page-footer button { font: inherit; color: var(--color-dim); background: transparent; border: 0; border-radius: 4px; padding: 0 4px; cursor: pointer; }
+#content .page-footer button:hover { color: var(--color-mint-text); background: var(--color-wash); }
+#content .page-footer button:focus-visible { outline: 2px solid var(--color-mint); outline-offset: 3px; }
+#content .page-footer button:disabled { opacity: .5; cursor: default; }
+#content .page-footer .page-footer-link { color: var(--color-mint-text); }
+#content .experience-source-dialog { width: min(560px, calc(100vw - 32px)); max-height: 76vh; padding: 24px; }
+#content .experience-source-dialog .experience-source-list { display: flex; flex-direction: column; gap: 0; padding: 0; max-height: 48vh; overflow-y: auto; }
+#content .experience-source-dialog .one { display: flex; justify-content: space-between; gap: 20px; padding: 12px 0; border-bottom: 1px solid var(--workspace-line); font-size: 13px; }
+#content .experience-source-dialog .thin { flex-shrink: 0; color: var(--color-faint); }
+
+/* An empty/hidden composer must not leave a second blank footer behind. */
+#bottom:not(:has(> :not([hidden]))) { display: none; }
+#content :is(.page-world, .memory) { padding-bottom: 24px; }
+#content .persona-column > .persona-memory-tail { margin-top: 0; }
+@media (max-width: 760px) { #content .page-live { padding-inline: 20px; padding-top: 30px; } }
+
+/* Static configuration sections and explicit read-only detail windows. */
+#content :is(.set-group,.set-advanced,.set-spec,.model-proxy-details,.qq-tool-item,.qq-voice-setup,.voice-corpus,.snow-onboarding,.identity-advanced,.portrait-encounters,.pw-versions,.pw-version-notes,.memory-entry,.memory-skill-entry,.memory-skill-maintenance,.group) > h3 { cursor: default; list-style: none; }
+#content :is(.set-group,.set-advanced,.set-spec,.model-proxy-details,.qq-tool-item,.qq-voice-setup,.voice-corpus,.snow-onboarding,.identity-advanced,.portrait-encounters,.pw-versions,.pw-version-notes,.memory-entry,.memory-skill-entry,.memory-skill-maintenance,.group) > h3::before,
+#content :is(.set-group,.set-advanced,.set-spec,.model-proxy-details,.qq-tool-item,.qq-voice-setup,.voice-corpus,.snow-onboarding,.identity-advanced,.portrait-encounters,.pw-versions,.pw-version-notes,.memory-entry,.memory-skill-entry,.memory-skill-maintenance,.group) > h3::after { content: none; }
+#content .set-group > h3, #content .model-proxy-details > h3, #content .pw-versions > h3 { font-size: 13px; font-weight: 600; margin: 12px 0; }
+#content .portrait-encounters > h3 { font-size: 12px; font-weight: 500; }
+#content .memory-entry-detail { max-height: 360px; overflow-y: auto; }
+#content .pw-version-notes > p { max-height: 260px; overflow-y: auto; white-space: pre-wrap; }
+#content .console-system-notice > button { border: 0; padding: 0; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+#content .persona-receipt { border: 0; padding: 0; background: transparent; font: inherit; color: var(--color-mint-text); cursor: pointer; }
+.text-detail-dialog { width: min(760px,calc(100vw - 32px)); max-height: 80vh; }
+.text-detail-body { max-height: 56vh; overflow-y: auto; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.8; font-size: 14px; }
+
+#content section > h3 { cursor: default; }
+#content .memory-skill-entry > h3:hover { color: var(--color-ink); }
+#content .qq-tool-item > h3 { font-size: 13px; font-weight: 600; }
+#content .memory-skill-entry .memory-skill-excerpt { display: none; }
+#content button.qq-sticker-details { padding: 6px 10px; font: inherit; color: var(--color-mint-text); border: 1px solid var(--color-line); background: transparent; border-radius: 6px; cursor: pointer; }
+
+/* Occasional setup and identity operations stay compact until requested. */
+#content .compact-disclosure > summary {
+  display: flex; align-items: center; gap: 10px; list-style: none;
+  cursor: pointer; color: var(--color-ink); font-size: 13px; font-weight: 600;
+}
+#content .compact-disclosure > summary::-webkit-details-marker { display: none; }
+#content .compact-disclosure > summary::before {
+  content: ''; flex: 0 0 6px; width: 6px; height: 6px;
+  border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor;
+  transform: rotate(-45deg); transition: transform .12s ease;
+}
+#content .compact-disclosure[open] > summary::before { transform: rotate(45deg); }
+#content .compact-disclosure > summary:focus-visible { outline: 2px solid var(--color-mint); outline-offset: 5px; }
+#content .page-people .identity-link { padding: 16px 20px; }
+#content .page-people .identity-link > summary.line1 { margin: 0; font-size: 14px; }
+#content .page-people .identity-link[open] > summary { margin-bottom: 14px; }
+#content .snow-first-setup[hidden] { display: none; }
+#content .page-qq-settings .compact-disclosure:not([open]) { padding-bottom: 12px; }
+
+/* A stable two-line preview; complete text never stretches neighbouring cards. */
+#content .compact-more { flex-shrink: 0; align-self: start; padding: 0; border: 0; background: transparent; color: var(--color-mint-text); font: 12px/1.7 var(--font-sans); cursor: pointer; }
+#content .compact-more:hover { text-decoration: underline; }
+#content .compact-more:focus-visible { outline: 2px solid var(--color-mint); outline-offset: 3px; }
+#content .qq-tools-groups { grid-template-columns: minmax(0,1fr); align-items: start; }
+#content .qq-tools-section { align-content: start; display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px; }
+#content .qq-tools-section > h4 { grid-column: 1/-1; margin: 16px 0 0; }
+#content .qq-tool-item { display: flex; flex-direction: column; gap: 10px; min-width: 0; padding: 16px; border: 1px solid var(--workspace-line); border-radius: 9px; }
+#content .qq-tool-item > h3 { padding: 0; margin: 0; height: 43px; align-items: start; }
+#content .qq-tool-label { min-width: 0; display: grid; gap: 4px; }
+#content .qq-tool-label > span, #content .qq-tool-label > code { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+#content .qq-tool-description { margin: 0; height: 3.2em; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+#content .qq-tool-item > .compact-more { margin-top: auto; }
+#content .memory-skill-entry { padding: 14px 0; }
+#content .memory-skill-entry > h3 { margin: 0 0 10px; padding: 0; height: 22px; }
+#content .memory-skill-overview { min-width: 0; display: block; }
+#content .memory-skill-overview > span:first-child { display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+#content .memory-skill-body { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; height: 3.7em; max-height: none; padding: 0; background: transparent; white-space: normal; border-radius: 0; }
+#content .memory-skill-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 10px; min-height: 21px; }
+#content .memory-skill-footer .memory-skill-metadata { margin: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+#content .memory-skill-footer .compact-more { align-self: center; }
+
+/* Let short plugin descriptions finish naturally while keeping long ones scrollable. */
+#content .plugin-workspace .pw-detail { align-self: start; max-height: 100%; }
+#content .pw-detail-scroll { flex: 0 1 auto; }
+#content .pw-feature-list { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 18px 24px; margin-top: 24px; }
+#content .pw-feature h4 { margin: 0 0 6px; font-size: 13px; font-weight: 600; }
+#content .pw-feature p, #content .pw-feature-note { margin: 0; font-size: 12px; line-height: 1.8; color: var(--color-dim); }
+#content .pw-feature-note { margin-top: 22px; color: var(--color-faint); }
+@media (max-width: 900px) { #content .qq-tools-section { grid-template-columns: minmax(0,1fr); } }
+@media (max-width: 600px) { #content .pw-feature-list { grid-template-columns: minmax(0,1fr); } }
+
+/* Keep the optional audio picker aligned with the self-check controls. */
+#content .qq-voice-setup-actions { font: 13px/20px var(--font-sans); }
+#content .qq-voice-setup-actions > :is(button, input[type="file"]) { box-sizing: border-box; height: 36px; font: inherit; }
+#content .qq-voice-setup-actions > input[type="file"] { min-width: 0; max-width: 100%; line-height: 34px; }
+#content .qq-voice-setup-actions > input[type="file"]::file-selector-button { box-sizing: border-box; height: 36px; padding: 0 12px; font: inherit; vertical-align: top; }
+
+/* Keep the page title in the shared frame; only messages and the composer use the reading column. */
+.console:has(.page-live) { --terminal-page-gutter:calc(var(--workspace-gutter) + clamp(16px, 1.65vw, 32px)); }
+#content .live-page-head { overflow-y:hidden; scrollbar-gutter:stable; }
+#content .live-page-head .page-title { width:100%; max-width:none; margin:0; padding-bottom:15px; }
+.console:has(.page-live) #bottom { max-width:none; margin-inline:0; padding-inline:var(--terminal-page-gutter); }
+@media(max-width:760px) { .console:has(.page-live) { --terminal-page-gutter:20px; } }
+
+@media(max-width:760px) {
+  #content .page-live { padding-inline:12px; }
+  #content .page-live > .live { width:calc(100% - 16px); align-self:center; }
+}
+
+/* Reflow against the space left by the sidebar, not the full screen width. */
+@container console (min-width: 641px) and (max-width: 1000px) {
+  #content .page-knowledge > .book { grid-template-columns: 180px minmax(0, 1fr); gap: 24px; }
+  #content .page-people > .faces { grid-template-columns: 170px minmax(0, 1fr); gap: 24px; }
+}
+@container console (max-width: 640px) {
+  #content .page-knowledge > .book,
+  #content .page-people > .faces {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(72px, 26%) minmax(0, 1fr);
+    gap: 14px;
+  }
+  #content .page-knowledge .toc {
+    padding: 0 0 10px;
+    border-right: 0;
+    border-bottom: 1px solid var(--workspace-line);
+    max-height: none;
+  }
+  #content .page-people .roster {
+    display: flex;
+    overflow-x: auto;
+    padding: 0 0 10px;
+    border: 0;
+  }
+  #content .page-people .roster .one { flex: 0 0 160px; }
+  #content .page-people .identity-link { padding: 18px; }
+}

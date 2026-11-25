@@ -1,3 +1,4 @@
+import { installQuickSearch } from './quick-search';
 import { uiLabel } from './ui-language';
 import { corePhrase, coreSetUIAttribute, coreSetUIText } from './ui-language';
 import { installRailResize } from './rail-resize';
@@ -79,6 +80,7 @@ export const ICONS: Record<string, string> = {
   layers: 'M10 3.2l6.4 3.3-6.4 3.3-6.4-3.3zM3.6 10.2l6.4 3.3 6.4-3.3M3.6 13.4l6.4 3.3 6.4-3.3',
   search: 'M8.5 3.5a5 5 0 1 0 0 10 5 5 0 0 0 0-10zM12 12l4.5 4.5',
   close: 'M5.5 5.5l9 9M14.5 5.5l-9 9',
+  edit: 'M11.8 4.2l4 4M3.5 16.5l4.5-1 9-9a1.5 1.5 0 0 0 0-2.1l-1.4-1.4a1.5 1.5 0 0 0-2.1 0l-9 9z',
 };
 
 /** 一个线型图标（尺寸走那一处词汇里的 `--icon`）。 */
@@ -206,7 +208,6 @@ export interface TopbarView {
   readonly provider: HTMLElement;
   /** 第二层那一格（"缓存 —" 那一处）：它报的是这台机器上过了多少 token 的上下文。 */
   /** 第二层那个绿点：它的 `title` 写"这台机器在不在转"（与暂停那一格同一个答案）。 */
-  readonly status: HTMLElement;
 }
 
 /** 壳那四块的把手 —— 页与入口只从这儿拿它们要的那一格。 */
@@ -471,7 +472,7 @@ async function pressTheGate(button: HTMLElement): Promise<void> {
 
 const RAIL_ACTIONS = [
   { key: 'run', glyph: '▶', title: '唤醒 / 静候：恢复处理或暂停新请求' },
-  { key: 'settings', glyph: '⚙', title: '设置 —— 主题 ／ 颜色 ／ 预设' },
+  { key: 'settings', glyph: '⚙', title: '高级设置' },
   { key: 'shutdown', glyph: '⏻',
     title: '休止：结束当前服务' },
 ] as const;
@@ -589,10 +590,9 @@ async function uploadAvatar(blob: Blob, signal?: AbortSignal): Promise<boolean> 
   return true;
 }
 
-/** 左下角那块：圆形头像 ＋ 名字 ＋ 三个小图标（▶ ⚙ ⏻）。 */
-function railFoot(): HTMLElement {
-  const foot = node('div', 'rail-foot');
-  const who = node('div', 'rail-who');
+/** Current Bot identity in the second row of the global header. */
+function botIdentity(): HTMLElement {
+  const who = node('div', 'rail-who bot-context');
   // **那一枚圆球**（2026-10-09 作者：「点击特字圆球可以打开浏览本地的 JPG 这类图片格式，
   // 给 BOT 上传头像…」）—— 它现在**点得动** ：点它开文件选择 。
   const face = node('span', 'rail-avatar', speaker().slice(0, 1));
@@ -628,15 +628,25 @@ function railFoot(): HTMLElement {
   who.append(face, picker);
   const name = node('button', 'rail-name', speaker());
   coreSetUIText(name, 'title', corePhrase("双击修改显示名（不更改文件夹名）"));
-  name.addEventListener('dblclick', () => {
+  const editName = (): void => {
     void botDialog(name.textContent || speaker())
       .catch(error => { void notifyAction('显示名无法更新', String(error)); });
-  });
-  who.append(name);
-  foot.append(who);
+  };
+  name.addEventListener('dblclick', editName);
+  const copy = node('div', 'bot-context-copy');
+  const caption = node('span', 'bot-context-caption');
+  coreSetUIText(caption, 'textContent', corePhrase('当前 Bot'));
+  copy.append(caption, name);
+  who.append(copy);
   void loadAvatar();
   void loadLook();
-  const actions = node('div', 'rail-actions');
+  return who;
+}
+
+/** Settings and runtime controls remain at the foot of the navigation rail. */
+function railFoot(): HTMLElement {
+  const foot = node('div', 'rail-foot');
+  const secondary = node('div', 'rail-secondary');
   for (const { key, title, glyph } of RAIL_ACTIONS) {
     const button = node('button', `rail-action rail-${key}`, glyph);
     button.title = title;
@@ -662,34 +672,32 @@ function railFoot(): HTMLElement {
       // （ 它从前只亮着 —— `title` 那句「页面上没有这一下」作废 ）。
       button.addEventListener('click', () => { void shutItDown(button); });
     }
-    actions.append(button);
+    if (key === 'settings') {
+      const label = node('span', 'rail-action-label');
+      uiLabel(label, '高级设置');
+      button.append(label);
+      secondary.prepend(button);
+    } else secondary.append(button);
   }
-  foot.append(actions);
+  foot.prepend(secondary);
   return foot;
 }
 
-/** 顶栏那两层（ 第一层：四枚计数 ＋ 右边那两格；第二层：绿点 ＋ 模型名 ＋ 缓存那一格）。
- *
- *  ⚠️⚠️ **本波改了第一层的末尾**（Minor #2）：`已连接`那一枚原先挂在**第二层**，
- *     而设计稿 §三 与实物都是"**第一层**：… ＋ `当前模型供应商`〔灰胶囊〕 ＋ `已连接`"
- *     （实测实物：`.pill.on` 在 `y=14`，与计数同一行；第二层是会话那几张卡）。
- *     ⇒ 它现在跟着 `.topbar-right` 一起落在第一层的末尾，而第二层只剩
- *     **绿点 ＋ 名字 ＋ 缓存那一格**（不再重复报一次连接）。
- * 判据落在 `tests/test_web.py` 那一条：**`.topbar-provider` 必须是
- *     `.topbar-summary` 的子节点**，且**不在** `.topbar-status` 里 —— 搬回去当场红。 */
-function topbar(): HTMLElement {
+/** Metrics and model occupy the first row; Bot identity and updates occupy the second. */
+function topbar(identity: HTMLElement): HTMLElement {
   const bar = node('header', 'topbar');
   const summary = node('div', 'topbar-summary');
   const right = node('div', 'topbar-right');
   // ⚠️ **2026-10-05 删掉我上一笔多加的那一格**（`topbar-providername`）：
   //    顶栏**本来就有** `topbar-model` 那一格（入口从 `/state` 写它）⇒ 我那一格没人写、
   //    于是永远显示它那个默认的 `—`（作者："把那个 - 去掉就行"）。
-  right.append(node('span', 'topbar-providerlabel', corePhrase('当前模型')),
-               node('span', 'topbar-model', '—'),
-               providerChip());
+  const modelLink = node('a', 'topbar-model', '—') as HTMLAnchorElement;
+  modelLink.href = '#/engine';
+  modelLink.setAttribute('aria-label', '打开模型配置');
+  right.append(node('span', 'topbar-providerlabel', corePhrase('当前模型')), modelLink, providerChip());
   summary.append(node('div', 'topbar-chips'), right);
   const row = node('div', 'topbar-status');
-  row.append(node('span', 'sdot'), node('span', 'topbar-name', speaker()));
+  row.append(identity);
   bar.append(summary, row);
   return bar;
 }
@@ -714,10 +722,11 @@ export function createShell(root: HTMLElement): { shell: Chrome; topbar: TopbarV
   brand.title = 'TelyinCore';
   brand.append(mark, node('span', 'rail-brandname', 'TelyinCore'));
   const nav = node('nav', 'rail-nav');
+  const identity = botIdentity();
   const foot = railFoot();
   rail.append(brand, nav, foot);
 
-  const bar = topbar();
+  const bar = topbar(identity);
   bar.id = 'topbar';
   const content = node('main', 'content');
   content.id = 'content';
@@ -740,13 +749,12 @@ export function createShell(root: HTMLElement): { shell: Chrome; topbar: TopbarV
   root.addEventListener('keydown', event => { if (event.key === 'Escape' && root.classList.contains('compact-menu-open')) { closeMenu(); menuToggle.focus(); } });
   root.replaceChildren(rail, column, menuToggle);
   installRailResize(root, rail);
+  installQuickSearch(rail);
 
   const query = (cls: string): HTMLElement => bar.querySelector(cls) as HTMLElement;
-  // **那三格名字**（左栏那两格在 `foot` 底下，顶栏那一格在 `bar` 底下）——
-  //    `setSpeaker()` 是它们唯一的写入口 ⇒ 名字换一处就够，页上不再有第二处字面名字。
-  const face = foot.querySelector('.rail-avatar') as HTMLElement;
-  const railName = foot.querySelector('.rail-name') as HTMLElement;
-  const topName = query('.topbar-name');
+  // These references stay stable while display-name and avatar data load.
+  const face = identity.querySelector('.rail-avatar') as HTMLElement;
+  const railName = identity.querySelector('.rail-name') as HTMLElement;
   const chips = query('.topbar-chips');
   const counters = (pairs: ReadonlyArray<readonly [string, string]>): void => {
     chips.replaceChildren();
@@ -774,7 +782,6 @@ export function createShell(root: HTMLElement): { shell: Chrome; topbar: TopbarV
       right: query('.topbar-right'),
       model: query('.topbar-model'),
       provider: query('.topbar-provider'),
-      status: query('.sdot'),
     },
     counters,
     /** 第 **i** 组的落点（页表那一列里第 i 个组 —— 壳只认**位次**）。
@@ -791,15 +798,11 @@ export function createShell(root: HTMLElement): { shell: Chrome; topbar: TopbarV
       if (previous) previous.replaceWith(next);
       else nav.append(next);
     },
-    /** **把那个名字写进那三处**（`.rail-avatar` 的首字 ／ `.rail-name` ／ `.topbar-name`）
-     * —— 名字从她自己的档案读（`speaker.ts`），而壳自己**不 fetch**：入口读好递进来。 */
+    /** Refresh the current Bot identity from the shared display-name source. */
     setSpeaker(name: string): void {
       face.textContent = name.slice(0, 1);
       railName.textContent = name;
-      topName.textContent = name;
-      for (const label of [railName, topName]) {
-        label.setAttribute('data-name-loading', String(!speakerReady()));
-      }
+      railName.setAttribute('data-name-loading', String(!speakerReady()));
     },
   };
   return { shell, topbar: shell.bar };

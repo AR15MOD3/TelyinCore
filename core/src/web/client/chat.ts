@@ -1,3 +1,4 @@
+import { showTextDetail } from './text-detail';
 import { corePhrase, coreSetUIAttribute, coreSetUIText } from './ui-language';
 import { toolReceiptFailed } from './tool-activity';
 // 聊天区 —— 那条推的通道每来一帧，就往这儿放一帧。
@@ -270,7 +271,7 @@ const toolLabels: Record<string, string> = { pending_read: '读取待议记录',
 
 function toolText(frame: Frame): string {
   const text = (frame.text || '').trim();
-  if (!text) return frame.stage === 'result' ? '回执未提供正文。' : '未记录调用参数。';
+  if (!text) return frame.stage === 'result' ? '未返回结果正文。' : '未记录调用参数。';
   if (frame.stage !== 'result' && text === '{}') return '无需参数。';
   return frame.text;
 }
@@ -294,19 +295,19 @@ function showTool(group: ToolGroup): void {
   const caption = document.createElement('span'); caption.className = 'tool-inspector-caption'; caption.textContent = toolLabels[step.name] || '工具详情';
   identity.append(name, caption);
   const state = document.createElement('span'); state.className = 'tool-inspector-status' + (failed ? ' has-error' : '');
-  coreSetUIText(state, 'textContent', (failed ? corePhrase("执行失败") : (step.result ? ((step.call ? corePhrase("已返回") : corePhrase("仅有回执"))) : corePhrase("等待回执"))));
+  coreSetUIText(state, 'textContent', (failed ? corePhrase("执行失败") : (step.result ? ((step.call ? corePhrase("已返回") : corePhrase("仅有结果"))) : corePhrase("等待结果"))));
   const close = document.createElement('button'); close.className = 'tool-inspector-close'; close.type = 'button';
-  coreSetUIAttribute(close, 'aria-label', corePhrase("收起工具详情"));
+  coreSetUIAttribute(close, 'aria-label', corePhrase("关闭工具详情"));
   close.addEventListener('click', () => { const button = group.selected?.element; group.selected = null; showTool(group); button?.focus(); });
   head.append(identity, state, close);
   let parameters = step.call ? toolText(step.call) : '未记录对应调用参数。';
   if (step.call && step.call.text.trim() && step.call.text.trim() !== '{}') {
     try { parameters = JSON.stringify(JSON.parse(step.call.text), null, 2); } catch { /* Preserve plain arguments. */ }
   }
-  const output = step.result ? toolText(step.result) : '尚未收到回执。';
+  const output = step.result ? toolText(step.result) : '尚未收到结果。';
   const toolbar = document.createElement('div'); toolbar.className = 'tool-inspector-toolbar';
   const tabs = document.createElement('div'); tabs.className = 'tool-inspector-tabs'; tabs.setAttribute('role', 'tablist'); coreSetUIAttribute(tabs, 'aria-label', corePhrase("工具详情内容"));
-  for (const [key, label] of [['result', '执行回执'], ['arguments', '调用参数']] as const) {
+  for (const [key, label] of [['result', '执行结果'], ['arguments', '调用参数']] as const) {
     const tab = document.createElement('button'); tab.type = 'button'; tab.className = 'tool-inspector-tab';
     tab.textContent = label; tab.id = group.inspector.id + '-' + key; tab.setAttribute('role', 'tab'); tab.setAttribute('aria-selected', String(group.view === key));
     tab.tabIndex = group.view === key ? 0 : -1; tab.setAttribute('aria-controls', group.inspector.id + '-pane');
@@ -330,7 +331,7 @@ function showTool(group: ToolGroup): void {
   toolbar.append(tabs, copy);
   const pane = document.createElement('pre'); pane.tabIndex = 0; coreSetUIAttribute(pane, 'aria-label', corePhrase("工具详情正文，可滚动查看")); pane.className = 'tool-inspector-pane' + (group.view === 'arguments' ? ' is-code' : '');
   pane.id = group.inspector.id + '-pane'; pane.setAttribute('aria-labelledby', group.inspector.id + '-' + group.view);
-  pane.textContent = content; pane.setAttribute('role', 'tabpanel'); coreSetUIAttribute(pane, 'aria-label', (group.view === 'arguments' ? corePhrase("调用参数") : corePhrase("执行回执")));
+  pane.textContent = content; pane.setAttribute('role', 'tabpanel'); coreSetUIAttribute(pane, 'aria-label', (group.view === 'arguments' ? corePhrase("调用参数") : corePhrase("执行结果")));
   group.inspector.append(head, toolbar, pane);
 }
 
@@ -343,7 +344,7 @@ function appendTool(chat: HTMLElement, frame: Frame): HTMLElement {
     const body = document.createElement('div'); body.className = 'tool-process';
     const inspector = document.createElement('section'); inspector.className = 'tool-inspector'; inspector.hidden = true;
     inspector.id = 'tool-inspector-' + (++toolInspectorSerial);
-    coreSetUIAttribute(inspector, 'aria-label', corePhrase("工具用法与回执"));
+    coreSetUIAttribute(inspector, 'aria-label', corePhrase("工具参数与结果"));
     row.append(summary, body, inspector);
     group = { row, summary, body, inspector, selected: null, view: 'result', steps: [] };
     toolGroups.set(chat, group); chat.append(row);
@@ -381,8 +382,8 @@ function appendTool(chat: HTMLElement, frame: Frame): HTMLElement {
   step.context.textContent = activityText(step, chat) + ' ';
   step.element.textContent = name;
   if (name === 'handoff_note') { coreSetUIText(step.context, 'textContent', corePhrase("交接笔记 · 点击查看 ")); handoffGroups.set(chat, group); }
-  coreSetUIText(step.element, 'title', [[name, corePhrase(" · ")], ((failed ? corePhrase("执行失败") : (step.result ? ((step.call ? corePhrase("已返回") : corePhrase("仅有回执"))) : corePhrase("等待回执"))))]);
-  coreSetUIAttribute(step.element, 'aria-label', [step.element.title, corePhrase("，查看参数和回执")]);
+  coreSetUIText(step.element, 'title', [[name, corePhrase(" · ")], ((failed ? corePhrase("执行失败") : (step.result ? ((step.call ? corePhrase("已返回") : corePhrase("仅有结果"))) : corePhrase("等待结果"))))]);
+  coreSetUIAttribute(step.element, 'aria-label', [step.element.title, corePhrase("，查看参数和结果")]);
   step.element.setAttribute('aria-expanded', String(group.selected === step));
   step.element.setAttribute('aria-controls', group.inspector.id);
   const calls = group.steps.filter(s => s.call).length;
@@ -390,7 +391,7 @@ function appendTool(chat: HTMLElement, frame: Frame): HTMLElement {
   const failures = group.steps.filter(s => toolReceiptFailed(s.name, s.result?.text)).length;
   group.summary.replaceChildren();
   const title = document.createElement('span'); title.className = 'tool-group-title'; coreSetUIText(title, 'textContent', corePhrase("过程"));
-  const count = document.createElement('span'); count.className = 'tool-group-count'; coreSetUIText(count, 'textContent', [[[calls, corePhrase(" 次调用 · ")], results], corePhrase(" 条回执")]);
+  const count = document.createElement('span'); count.className = 'tool-group-count'; coreSetUIText(count, 'textContent', [[[calls, corePhrase(" 次调用 · ")], results], corePhrase(" 条结果")]);
   group.summary.append(title, count);
   if (failures) {
     const state = document.createElement('span'); state.className = 'tool-group-status has-error'; coreSetUIText(state, 'textContent', [failures, corePhrase(" 项失败")]); group.summary.append(state);
@@ -433,16 +434,18 @@ export function appendFrame(chat: HTMLElement, frame: Frame,
     batch.heading.style.display = '';
   }
   if (frame.kind === 'system-notice') {
-    const row = document.createElement('details');
+    const row = document.createElement('section');
     row.className = 'console-system-notice';
-    const summary = document.createElement('summary');
+    const summary = document.createElement('button');
+    summary.type = 'button';
     const body = document.createElement('div'); body.className = 'console-system-detail';
     const text = frame.text.replace(/^\[system\]\s*/i, '');
     const heading = text.split(/[。\n]/)[0];
     coreSetUIText(summary, 'textContent', [corePhrase("系统 · "), ((heading.length > 48 ? [heading.slice(0, 48), corePhrase("…")] : heading))]);
-    summary.title = frame.at || '展开系统事件详情';
+    summary.title = frame.at || '查看系统事件';
+    summary.addEventListener('click', () => showTextDetail('系统事件', text));
     body.textContent = text;
-    row.append(summary, body);
+    row.append(summary);
     const handoff = /^交接完/.test(text) ? handoffGroups.get(chat) : undefined;
     if (handoff && chat.contains(handoff.row)) {
       // Keep the real, persisted receipt beside the wake notice that follows it.
@@ -523,7 +526,7 @@ export function mountChat(host: HTMLElement): ChatView {
   // —— 与其余七页**同一个数** 。
   const title = document.createElement('h1');
   title.className = 'page-title';
-  coreSetUIText(title, 'textContent', corePhrase("终端 · TERMINAL"));
+  coreSetUIText(title, 'textContent', corePhrase("控制台 · CONSOLE"));
   const stream = document.createElement('div');
   stream.className = 'live-stream';
 
@@ -536,8 +539,14 @@ export function mountChat(host: HTMLElement): ChatView {
   document.addEventListener('visibilitychange', back);
   window.addEventListener('focus', back);
   back();
-  column.append(title, stream);
-  host.replaceChildren(column);
+  const page = document.createElement('section');
+  page.className = 'page-live';
+  const header = document.createElement('header');
+  header.className = 'live-page-head';
+  header.append(title);
+  column.append(stream);
+  page.append(header, column);
+  host.replaceChildren(page);
   let theirs = speaker(); // 这一列现在用的那个名字（一处，随这一列走）
   let watcher: (() => void) | null = null; // "画完一帧就叫一下"那一个（见接口上那条 ）
   // **已经画上去、还没等到那一帧的"我说的话"**（2026-10-05 作者："为什么我的话发了两遍"）：
@@ -610,7 +619,7 @@ export function mountChat(host: HTMLElement): ChatView {
         for (const url of images) {
           const picture = document.createElement('img');
           picture.src = url;
-          picture.alt = '发出去的一张图';
+          picture.alt = '已发送图片';
           strip.append(picture);
         }
         row.append(strip);

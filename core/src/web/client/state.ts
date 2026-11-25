@@ -75,6 +75,6 @@ export function engineRows(s: State): Array<[string, string]> {
     ['模型', m === null || m.model === null ? '—' : m.model],
     ['连接', m?.model_available === false ? '本地模型离线'
       : m?.model_available === true ? '本地模型在线'
-        : s.connected ? `页面接着（${s.clients} 条）` : '页面没接上'],
+        : s.connected ? `页面已连接（${s.clients} 条）` : '页面未连接'],
   ];
 }

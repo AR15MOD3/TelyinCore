@@ -1,3 +1,4 @@
+import { showTextDetail } from './text-detail';
 interface PackageStatus {
   platform: string;
   channel?: 'stable' | 'acceptance';
@@ -104,6 +105,7 @@ function paint(card: HTMLElement, state: PackageStatus) {
   timing.hidden = !timing.textContent;
   card.querySelector<HTMLButtonElement>('[data-check-update]')!.textContent =
     state.status === 'unavailable' ? '重新检查' : '检查更新';
+  card.querySelector<HTMLButtonElement>('[data-update-inspect]')!.disabled = false;
 }
 
 function paintTopbar(checking = false) {
@@ -183,7 +185,10 @@ export function startPackageUpdates() {
     const label = document.createElement('span');
     label.className = 'topbar-version-label';
     label.textContent = '版本';
-    button.append(mark, label);
+    const caption = document.createElement('span');
+    caption.className = 'topbar-update-caption';
+    caption.textContent = '检查更新';
+    button.append(caption, mark, label);
     button.title = '版本更新 · 检查更新';
     button.setAttribute('aria-haspopup', 'dialog');
     button.setAttribute('aria-label', button.title);
@@ -275,23 +280,31 @@ export function packageUpdateCard() {
   const timing = document.createElement('p');
   timing.dataset.updateTiming = '';
   timing.hidden = true;
-  const details = document.createElement('details');
+  const details = document.createElement('section');
   details.dataset.updateDetails = '';
   details.hidden = true;
-  const summary = document.createElement('summary');
+  const summary = document.createElement('h3');
   summary.textContent = '更新详情';
   const platform = document.createElement('p');
   platform.dataset.updatePlatform = '';
   const connection = document.createElement('p');
   connection.dataset.updateConnection = '';
   details.append(summary, platform, connection, timing, history);
-  details.hidden = false;
+  details.hidden = true;
+  const inspect = document.createElement('button'); inspect.type = 'button';
+  inspect.className = 'infinity-text-link'; inspect.textContent = '查看更新详情';
+  inspect.dataset.updateInspect = '';
+  inspect.disabled = true;
+  inspect.onclick = () => showTextDetail('更新详情',
+    [platform, connection, timing, history].filter(e => !e.hidden)
+      .map(e => e.textContent).filter(Boolean).join('\n\n')
+      || notice.textContent || '版本信息正在读取，请稍后重试。');
   const links = document.createElement('div');
   links.dataset.updateLinks = '';
   const actions = document.createElement('div');
   actions.className = 'package-update-actions';
   actions.append(button, install);
-  card.append(title, current, notice, links, details, actions);
+  card.append(title, current, notice, links, details, inspect, actions);
   if (last) paint(card, last);
   else notice.textContent = '正在读取版本信息…';
   void check();

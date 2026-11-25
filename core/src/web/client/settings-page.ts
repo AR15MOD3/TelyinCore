@@ -21,7 +21,7 @@ const GROUPS: readonly (readonly [string, readonly (readonly [string, string])[]
   ['背景层级', [
     ['--color-canvas', '页面背景'], ['--color-rail', '左栏背景'],
     ['--color-card', '主卡片背景'], ['--color-bubble', '聊天气泡'],
-    ['--color-focus', '聚焦那一格'], ['--color-white', '纯白'],
+    ['--color-focus', '焦点背景'], ['--color-white', '内容背景'],
     ['--color-wash', '淡底'], ['--color-scrim', '遮罩']]],
   ['文字与边界', [
     ['--color-ink', '主要文字'], ['--color-dim', '次级文字'],
@@ -30,8 +30,8 @@ const GROUPS: readonly (readonly [string, readonly (readonly [string, string])[]
     ['--color-mint', '主强调'], ['--color-mint-text', '强调色上文字'],
     ['--color-mint-wash', '强调淡底'], ['--color-mint-pick', '选中淡底'],
     ['--color-mint-select', '选中边'], ['--color-soft-red', '危险／失败'],
-    ['--color-flag-neutral', '中性小标'], ['--color-flag-ink', '小标上的字'],
-    ['--color-flag-mint', '强调小标']]],
+    ['--color-flag-neutral', '普通标签'], ['--color-flag-ink', '标签文字'],
+    ['--color-flag-mint', '强调标签']]],
   ['圆角', [
     ['--radius-chip', '小标'], ['--radius-row', '一行'],
     ['--radius-card', '卡片'], ['--radius-pill', '胶囊'],
@@ -64,7 +64,7 @@ function labelOf(name: string): string {
 const MODES: readonly (readonly [string, string, string])[] = [
   ['auto', '跟随系统', '◐'],
   ['light', '浅色', '☀'],
-  ['dark', '黑夜', '☾'],
+  ['dark', '深色', '☾'],
 ];
 
 /** 把当前那一档点亮 。 */
@@ -293,20 +293,16 @@ function oneItem(name: string,
 
 
 function specimen(): HTMLElement {
-  const box = document.createElement('details');
+  const box = document.createElement('section');
   box.className = 'set-spec settings-card';
 
-  const head = document.createElement('summary');
+  const head = document.createElement('h3');
   head.className = 'set-spec-head';
   const title = document.createElement('span');
   coreSetUIText(title, 'textContent', corePhrase("聊天预览"));
   const note = document.createElement('span');
   note.className = 'set-spec-note';
-  coreSetUIText(note, 'textContent', corePhrase("展开查看 · 配色实时同步"));
-  box.addEventListener('toggle', () => {
-    coreSetUIText(note, 'textContent', box.open
-      ? corePhrase('配色实时同步') : corePhrase('展开查看 · 配色实时同步'));
-  });
+  coreSetUIText(note, 'textContent', corePhrase("配色实时同步"));
   head.append(title, note);
   box.append(head);
 
@@ -405,7 +401,7 @@ export function settingsPage(shell: Chrome): Panel {
     controls.className = 'set-controls';
     controls.append(left);
     two.append(controls, right);
-    const preview = specimen() as HTMLDetailsElement;
+    const preview = specimen();
     right.append(preview); body.append(two);
 
     const appearanceTitle = document.createElement('h3');
@@ -536,23 +532,14 @@ export function settingsPage(shell: Chrome): Panel {
       byGroup.set(key, [...(byGroup.get(key) ?? []), name]);
     }
     const order = [...GROUPS.map((one) => one[0]), '其它'];
-    let activePaletteGroup = order.find(key => byGroup.has(key)) ?? '';
     refreshPalette = (): void => {
       palette.replaceChildren(ptitle);
       for (const key of order) {
         const mine = byGroup.get(key);
         if (mine === undefined || mine.length === 0) continue;
-        const box = document.createElement('details');
+        const box = document.createElement('section');
         box.className = 'set-group';
-        box.open = key === activePaletteGroup;
-        box.addEventListener('toggle', () => {
-          if (!box.isConnected || !box.open) return;
-          activePaletteGroup = key;
-          for (const other of palette.querySelectorAll<HTMLDetailsElement>('.set-group')) {
-            if (other !== box) other.open = false;
-          }
-        });
-        const h = document.createElement('summary');
+        const h = document.createElement('h3');
         h.className = 'set-group-title';
         uiLabel(h, key);
         box.append(h);
@@ -564,15 +551,12 @@ export function settingsPage(shell: Chrome): Panel {
       }
     };
     refreshPalette();
-    const advanced = document.createElement('details');
+    const advanced = document.createElement('section');
     advanced.className = 'settings-card set-advanced';
-    const advancedTitle = document.createElement('summary');
+    const advancedTitle = document.createElement('h3');
     coreSetUIText(advancedTitle, 'textContent', corePhrase("高级外观"));
     advanced.append(advancedTitle, palette);
-    advanced.addEventListener('toggle', () => {
-      two.classList.toggle('is-editing', advanced.open);
-      if (advanced.open) preview.open = true;
-    });
+    two.classList.add('is-editing');
     two.append(advanced);
 
     // 右边那一列就是试色 （ 而 `two` 到这一刻才挂上 ）
@@ -594,7 +578,7 @@ export function settingsPage(shell: Chrome): Panel {
     const bit = document.createElement('button');
     bit.className = 'set-tab';
     uiLabel(bit, label);
-    bit.addEventListener('click', () => { draws[key](); markTheTab(key); });
+    bit.addEventListener('click', () => { draws[key](); body.scrollTop = 0; markTheTab(key); });
     bit.dataset.tab = key;
     tabs.append(bit);
   }

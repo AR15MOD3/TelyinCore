@@ -40,8 +40,8 @@
   }
 
   :is(.live, .set-spec-demo) .line.tool { border-radius: var(--radius-row); background: transparent; }
-  :is(.live, .set-spec-demo) .line.tool > summary { align-items: center; gap: 10px; padding: 9px 12px; }
-  :is(.live, .set-spec-demo) .line.tool > summary::after {
+  :is(.live, .set-spec-demo) .line.tool > :is(summary, h3) { align-items: center; gap: 10px; padding: 9px 12px; }
+  :is(.live, .set-spec-demo) .line.tool > :is(summary, h3)::after {
     content: '›';
     margin-left: auto;
     color: var(--color-faint);
@@ -50,8 +50,8 @@
     transition: transform .15s ease;
   }
 
-  :is(.live, .set-spec-demo) .line.tool[open] > summary::after { transform: rotate(90deg); }
-  :is(.live, .set-spec-demo) .line.tool > summary:hover { background: var(--color-wash); }
+  :is(.live, .set-spec-demo) .line.tool:is([open], section) > :is(summary, h3)::after { transform: rotate(90deg); }
+  :is(.live, .set-spec-demo) .line.tool > :is(summary, h3):hover { background: var(--color-wash); }
   :is(.live, .set-spec-demo) .line.tool .tool-name { flex: none; font-size: 11px; }
   :is(.live, .set-spec-demo) .line.tool .tool-brief { min-width: 0; font-size: 11px; }
   :is(.live, .set-spec-demo) .line.tool .tool-body {
@@ -85,7 +85,7 @@
   .composer .composer-row > button:hover { background-color: var(--color-wash); }
   .composer .composer-row > .composer-send:hover { background-color: var(--color-mint); }
   .composer button:focus-visible,
-  :is(.live, .set-spec-demo) summary:focus-visible {
+  :is(.live, .set-spec-demo) :is(summary, h3):focus-visible {
     outline: 2px solid var(--color-mint);
     outline-offset: 2px;
   }
@@ -97,7 +97,7 @@
 
 /* Legacy .line rules are unlayered; keep the disclosure surface in the same cascade. */
 :is(.live, .set-spec-demo) .line.tool { padding: 0; background: transparent; }
-:is(.live, .set-spec-demo) .line.tool > summary { padding: 9px 12px; }
+:is(.live, .set-spec-demo) .line.tool > :is(summary, h3) { padding: 9px 12px; }
 
 
 /* Process reads like a quiet paragraph; tools are inline links, one inspector below. */
@@ -277,9 +277,9 @@
   margin: 12px 0 12px var(--console-detail-indent, 24px);
   color: var(--color-faint); font-size: 12px; min-width: 0;
 }
-.console-system-notice > summary { cursor: pointer; padding: 6px 0; overflow-wrap: anywhere; }
-.console-system-notice > summary:hover { color: var(--color-ink); }
-.console-system-notice > summary:focus-visible { outline: 2px solid var(--color-mint); outline-offset: 3px; }
+.console-system-notice > :is(summary, h3) { cursor: pointer; padding: 6px 0; overflow-wrap: anywhere; }
+.console-system-notice > :is(summary, h3):hover { color: var(--color-ink); }
+.console-system-notice > :is(summary, h3):focus-visible { outline: 2px solid var(--color-mint); outline-offset: 3px; }
 .console-system-detail { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 240px;
   overflow: auto; padding: 12px; border-left: 2px solid var(--color-line); }
 

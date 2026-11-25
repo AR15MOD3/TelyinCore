@@ -45,7 +45,9 @@ export function installRailResize(root: HTMLElement, rail: HTMLElement): void {
   const apply = (dragging = false): void => {
     width = dragging ? dragRailWidth(preferred, window.innerWidth)
       : clampRailWidth(preferred, window.innerWidth);
-    const nextCompact = width < 134;
+    // Use the same breakpoint during dragging and after release. Below this
+    // width the expanded controls cannot fit, even before the rail snaps shut.
+    const nextCompact = width < 200;
     const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true;
     const changing = initialized && compact !== nextCompact && !reduced;
     // FLIP the icons and footer controls instead of letting flex-direction and
@@ -55,9 +57,9 @@ export function installRailResize(root: HTMLElement, rail: HTMLElement): void {
       animations.clear();
     }
     const movers = changing ? Array.from(rail.querySelectorAll?.<HTMLElement>(
-      '.rail-item > .icon, .rail-avatar, .rail-action, .rail-brandmark') ?? []) : [];
+      '.rail-item > .icon, .rail-search > .icon, .rail-action, .rail-mark') ?? []) : [];
     const before = movers.map(element => element.getBoundingClientRect());
-    if (changing && nextCompact) {
+    if (changing && nextCompact && !dragging) {
       // Keep outgoing text briefly as a visual-only overlay so display/clip
       // changes in the existing compact layout can still fade gracefully.
       for (const label of rail.querySelectorAll?.<HTMLElement>(
@@ -76,8 +78,8 @@ export function installRailResize(root: HTMLElement, rail: HTMLElement): void {
         const animation = ghost.animate([{ opacity: 1 }, { opacity: 0,
           transform: 'translateX(-6px)' }],
           { duration: 120, easing: 'ease-out' });
-        animation.onfinish = () => ghost.remove();
-        animation.oncancel = () => ghost.remove();
+        animation.onfinish = () => { ghost.remove(); animations.delete(animation); };
+        animation.oncancel = () => { ghost.remove(); animations.delete(animation); };
         animations.add(animation);
       }
     }
@@ -91,14 +93,19 @@ export function installRailResize(root: HTMLElement, rail: HTMLElement): void {
         const animation = element.animate([
           { transform: `translate(${from.left - after.left}px, ${from.top - after.top}px)` },
           { transform: 'translate(0, 0)' },
-        ], { duration: 260, easing: 'cubic-bezier(.22, 1, .36, 1)' });
+        ], { duration: dragging ? 120 : 260, easing: 'cubic-bezier(.22, 1, .36, 1)' });
         animations.add(animation);
+        animation.onfinish = () => animations.delete(animation);
+        animation.oncancel = () => animations.delete(animation);
       });
-      if (!nextCompact) {
+      if (!nextCompact && !dragging) {
         for (const label of rail.querySelectorAll?.<HTMLElement>(
           '.rail-label, .rail-brandname, .rail-name') ?? []) {
-          animations.add(label.animate([{ opacity: 0 }, { opacity: 1 }],
-            { duration: 200, delay: 60, fill: 'backwards', easing: 'ease-out' }));
+          const animation = label.animate([{ opacity: 0 }, { opacity: 1 }],
+            { duration: 200, delay: 60, fill: 'backwards', easing: 'ease-out' });
+          animations.add(animation);
+          animation.onfinish = () => animations.delete(animation);
+          animation.oncancel = () => animations.delete(animation);
         }
       }
     }

@@ -174,7 +174,7 @@ function stateOf(plugin: InstalledPlugin): string {
 
   if (plugin.installed === false) return '未安装';
 
-  if (plugin.contract) return '契约不兼容';
+  if (plugin.contract) return '接口不兼容';
 
   if (plugin.loaded) return '运行中';
 
@@ -222,6 +222,7 @@ export function infinityPage(shell: Chrome, pluginName = ''): Panel {
   const message = node('p', 'infinity-message');
 
   const qqPanel = node('section', 'infinity-qq-panel');
+  const panelScroll = node('div', 'page-scroll qq-panel-scroll');
 
 
   const health = node('div', 'infinity-health');
@@ -702,7 +703,9 @@ export function infinityPage(shell: Chrome, pluginName = ''): Panel {
   const firstSetup = node('section', 'snow-first-setup');
   const firstSetupToggle = node('button', 'infinity-action', '查看首次部署步骤') as HTMLButtonElement;
   firstSetupToggle.type = 'button';
+  firstSetup.hidden = true;
   firstSetupToggle.setAttribute('aria-expanded', 'false');
+
   const setupActions = node('div', 'snow-setup-actions');
   setupActions.append(initialPassword, passwordResult);
   const checklist = node('ol', 'snow-first-checklist');
@@ -726,13 +729,14 @@ export function infinityPage(shell: Chrome, pluginName = ''): Panel {
   firstSetup.append(checklist);
   firstSetup.id = 'snow-first-setup';
   firstSetupToggle.setAttribute('aria-controls', firstSetup.id);
-  firstSetup.hidden = true;
+  firstSetup.prepend(node('h3', '', '首次部署步骤'));
   firstSetupToggle.addEventListener('click', () => {
     firstSetup.hidden = !firstSetup.hidden;
-    if (firstSetup.hidden) clearInitialPassword();
     firstSetupToggle.setAttribute('aria-expanded', String(!firstSetup.hidden));
-    firstSetupToggle.textContent = !firstSetup.hidden ? '收起首次部署步骤' : '查看首次部署步骤';
+    firstSetupToggle.textContent = firstSetup.hidden ? '查看首次部署步骤' : '收起首次部署步骤';
+    if (!firstSetup.hidden) firstSetup.scrollIntoView({block: 'nearest'});
   });
+
 
   serviceActions.append(serviceIdentity, serviceUtilities);
 
@@ -747,13 +751,12 @@ export function infinityPage(shell: Chrome, pluginName = ''): Panel {
   connectionTools.append(connectionActions, firstSetupToggle);
   commonActions.append(serviceActions, connectionTools);
 
-  const setupDetails = node('details', 'snow-onboarding');
+  const setupDetails = node('details', 'snow-onboarding compact-disclosure');
 
-  setupDetails.open = true;
+
 
   setupDetails.append(node('summary', '', '账号与管理凭据'), accountFields, accountActions);
 
-  let setupInitialStateApplied = false;
 
   const setupHint = node('p', 'infinity-hint');
   setupHint.setAttribute('role', 'status');
@@ -782,6 +785,7 @@ export function infinityPage(shell: Chrome, pluginName = ''): Panel {
       tab.addEventListener('click', () => {
         clearFeedback();
         tabTouched = true;
+        panelScroll.scrollTop = 0;
         writePluginTab('core-infinity-qq', section.id);
         if (section.pane !== snowPane) clearInitialPassword();
         for (const [position, item] of sections.entries()) {
@@ -830,8 +834,9 @@ export function infinityPage(shell: Chrome, pluginName = ''): Panel {
   configFields.append(voiceGrid);
   if (knownConfig) configPresentation(voiceGrid, 'loading');
 
+  panelScroll.append(configFields, ...(knownConfig ? [toolbox.root, environmentPane] : []));
   qqPanel.append(node('h2', 'qq-section-title', 'QQ 接入与消息设置'),
-    health, tabs, configFields, ...(knownConfig ? [toolbox.root, environmentPane] : []), feedback);
+    health, tabs, panelScroll, feedback);
 
   qqPanel.hidden = !knownConfig;
 
@@ -845,6 +850,10 @@ export function infinityPage(shell: Chrome, pluginName = ''): Panel {
   if (knownConfig) root.append(head, message, qqPanel);
   else root.append(head, summary, cards, message, qqPanel);
 
+  const pageFooter = node('footer', 'page-footer qq-page-footer');
+  const footerScope = node('span', 'page-footer-summary', '正在读取接收范围…');
+  pageFooter.append(node('span', 'page-footer-label', 'QQ 连接 · OneBot v11'), footerScope);
+  if (knownConfig) root.append(pageFooter);
   shell.content.replaceChildren(root);
 
 
@@ -976,6 +985,8 @@ export function infinityPage(shell: Chrome, pluginName = ''): Panel {
   }
 
   const updateLive = (state: QQState): void => {
+    footerScope.textContent = `接收范围：私聊 ${state.routing.privates.length} 个 · 群聊 ${state.routing.groups.length} 个`;
+
 
     configFields.disabled = mutationPending || pluginMissing;
 
@@ -1065,16 +1076,7 @@ export function infinityPage(shell: Chrome, pluginName = ''): Panel {
 
     coreSetUIText(routeAccount, 'textContent', (state.snowluma.recovery?.targetUin ? [corePhrase("当前 Bot 的 QQ："), state.snowluma.recovery.targetUin, corePhrase(" · 名单只作用于这个 Bot。")] : corePhrase("尚未选择登录 QQ；可先保存会话名单，再到 SnowLuma 页完成账号接入。")));
 
-    if (!setupInitialStateApplied) {
-
-      setupDetails.open = !(state.plugin?.configured && (state.snowluma.recovery?.loginCompleted
-        || freshProtocolSample(state.snowluma)));
-
-      setupInitialStateApplied = true;
-
-    }
-
-    snowProcess.hidden = false;
+snowProcess.hidden = false;
 
     const serviceLabel = state.snowluma.managed ? '已启动'
       : state.snowluma.sharedService ? '共用服务'
@@ -2117,7 +2119,7 @@ export function infinityPage(shell: Chrome, pluginName = ''): Panel {
       } else if (action === 'snowluma_start_service') {
         showFeedback(corePhrase("SnowLuma 已启动。管理页就绪后，在那里选择并加载 QQ。"));
       } else if (action === 'snowluma_recover') {
-        showFeedback(corePhrase("正在核对 QQ 进程，请查看折叠区中的结果。"));
+        showFeedback(corePhrase("正在核对 QQ 进程，请查看检测结果。"));
       } else if (typeof action === 'string' && action.startsWith('snowluma_confirm_')) {
         showFeedback(corePhrase("加载确认已提交；正在核验目标进程与实际账号。"));
       } else if (route === '/infinity/qq/routes' && currentQQ.plugin?.configured !== true) {

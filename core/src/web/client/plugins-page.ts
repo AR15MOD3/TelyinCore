@@ -127,12 +127,12 @@ export interface PluginsView extends Panel {
 // 真因不是"接没接上"，而是**页一建出来就在那一格里摆着那句话** ⇒
 // 它在"第一次问回来"之前一直摆着 ⇒ 慢一点就看得见它一闪 。
 // ⇒ 现在：**起始空着**（不占一行、不闪 ）， 而**真出错**时才说话 。
-const NONE_YET = '还没有装任何插件。';
+const NONE_YET = '暂无已安装插件。';
 // 而这一句去掉那半句附注（"不当成零个插件"）—— 那半句是**写给我们自己看的**，
 // 摆在页上只会让人以为"页面在解释一个不存在的问题" （ 而事实照旧说清：读不到就是读不到 ）。
 const READ_FAILED = '无法读取本机插件。';
 // 同一个道理（那一句是"没拉到 GitHub"那一种 —— 而它说的是事实，不带附注 ）。
-const MARKET_NOT_WIRED = '这次没拉到 GitHub。';
+const MARKET_NOT_WIRED = '暂时无法连接 GitHub。';
 const FILTERED_OUT = '没有符合条件的本机插件。';
 
 /** **这一份的源代码仓库在哪**（2026-10-05 作者："2也要做" ⇒ 照参考那张底下那枚
@@ -159,7 +159,7 @@ const REFRESH_FAILED = '列表刷新失败，当前显示可能不是最新。';
  *  而「分支，没打 tag」那一类**不补**（它不是一个版本号）。 */
 function showVersion(said: string): string {
   const one = (said || '').trim();
-  if (!one) { return '（没写版本）'; }
+  if (!one) { return '未声明版本'; }
   return /^[0-9]/.test(one) ? `v${one}` : one;
 }
 
@@ -688,7 +688,7 @@ export function pluginsPage(shell: Chrome, mode: 'market'|'overview' = 'market')
       // 元信息照它那一行（"内置扩展 · 版本 · 作者"）—— 我们这几格今天有的是这些
       // 2026-10-05 作者：「参考图1这个，图2现在这个太简洁了」——图1那一行是**写实**的两行：
       //   「包名：…」／「版本：… 作者：…」。⇒ 照它写（别写成"infinity · 版本 …"那种设计腔）。
-      coreSetUIText(meta, 'textContent', [[corePhrase("版本："), showVersion(one.version || ''), corePhrase("")], [corePhrase("　作者："), one.author || '（没写）', corePhrase("")]]);
+      coreSetUIText(meta, 'textContent', [[corePhrase("版本："), showVersion(one.version || ''), corePhrase("")], [corePhrase("　作者："), one.author || '未声明', corePhrase("")]]);
       names.append(who, meta);
       const update = updateFor(one.name);
       if (!overview&&update?.status === 'available') names.append(pluginUpdateNotice(one.name));
@@ -837,7 +837,7 @@ export function pluginsPage(shell: Chrome, mode: 'market'|'overview' = 'market')
 
     const say = document.createElement('p');
     say.className = 'plugins-detail-said';
-    say.textContent = one.description || '（这一份没写简介）';
+    say.textContent = one.description || '暂无简介';
 
     const info = document.createElement('div');
     info.className = 'plugins-kv-box';
@@ -846,13 +846,13 @@ export function pluginsPage(shell: Chrome, mode: 'market'|'overview' = 'market')
       const box = one as InstalledPlugin;
       info.append(
         row('插件名', box.name),
-        row('作者', box.author || '（没写）'),
+        row('作者', box.author || '未声明'),
         row('版本', showVersion(box.version || '')),
         row(box.installed === false ? '内置源目录' : '安装位置', box.where || ''),
         row('入口', box.entry || 'index.py'),
-        row('许可证', box.license || '（没写）'),
+        row('许可证', box.license || '未声明'),
         row('体积', `${box.bytes ?? 0} 字节（${box.files ?? 0} 个文件）`),
-        row('关键字', (box.keywords || []).join('　') || '（没写）'),
+        row('关键字', (box.keywords || []).join('　') || '未声明'),
         // 内置插件（含未安装的源）来源写“核心”；第三方继续按 origin 如实显示。
         row('来源', box.builtin === true
           ? '核心'
@@ -861,7 +861,7 @@ export function pluginsPage(shell: Chrome, mode: 'market'|'overview' = 'market')
             : '-')),
         // 2026-10-05 作者："浮窗内的 状态 改成 启用或是停用"
         row('状态', box.enabled ? '启用' : '停用'),
-        row('契约', box.api === null ? '（没写契约号）' : `infinity · api ${box.api}`),
+        row('契约', box.api === null ? '未声明接口版本' : `infinity · api ${box.api}`),
       );
       if (box.contract) {
         const warn = document.createElement('p');
@@ -873,11 +873,11 @@ export function pluginsPage(shell: Chrome, mode: 'market'|'overview' = 'market')
       const box = one as MarketPackage;
       info.append(
         row('插件名', box.name),
-        row('作者', box.author || '（没写）'),
+        row('作者', box.author || '未声明'),
         row('版本', showVersion(box.version || '')),
         row('仓库', box.full || ''),
-        row('更新于', box.date || '（没写）'),
-        row('关键字', (box.keywords || []).join('　') || '（没写）'),
+        row('更新于', box.date || '未声明'),
+        row('关键字', (box.keywords || []).join('　') || '未声明'),
         row('来源', box.source || ''),
         row('归档链接', box.url || ''),
       );
@@ -1038,7 +1038,7 @@ export function pluginsPage(shell: Chrome, mode: 'market'|'overview' = 'market')
       // ⚠️ **那一句删了**（2026-10-05 作者："共0个插件（ 都装过了 —— 上面那个开关可以放开）。
       // 这句话删了。"）—— 而**那一行数照旧在**（"一个不剩"与"本来就空"是两件事，
       // 而"藏起来了"这件事页上**本来就看得出**：上面那个开关正勾着 ）。
-      coreSetUIText(marketCount, 'textContent', (marketFind.value.trim() || category!=='all' ? corePhrase("共0个插件（ 筛过之后一个都没有）。") : ((answer.stale ? corePhrase("共0个插件（ 这是上次问到的，正在重问）。") : corePhrase("共0个插件。")))));
+      coreSetUIText(marketCount, 'textContent', (marketFind.value.trim() || category!=='all' ? corePhrase("没有匹配的插件。") : ((answer.stale ? corePhrase("缓存中暂无插件，正在刷新。") : corePhrase("暂无插件。")))));
       marketBox.append(marketCount);
       return;
     }
@@ -1069,7 +1069,7 @@ export function pluginsPage(shell: Chrome, mode: 'market'|'overview' = 'market')
       meta.className = 'plugins-meta';
       // 元信息那一行 —— 而**来源要说出来**（"从哪儿来的"是本仓那条口径 ）
       // 同上：照图1写实（那一张是「版本：1.0.0　作者：alont1」）
-      coreSetUIText(meta, 'textContent', [[corePhrase("版本："), showVersion(one.version || ''), corePhrase("")], [corePhrase("　作者："), one.author || '（没写）', corePhrase("")]]);
+      coreSetUIText(meta, 'textContent', [[corePhrase("版本："), showVersion(one.version || ''), corePhrase("")], [corePhrase("　作者："), one.author || '未声明', corePhrase("")]]);
       names.append(who, meta);
       // 那枚标签（照它卡上那枚"已加载"）—— 写**来源**： 那就是"它从哪儿来"
       const tag = document.createElement('span');
@@ -1150,7 +1150,7 @@ export function pluginsPage(shell: Chrome, mode: 'market'|'overview' = 'market')
       list.append(item);
     }
     marketBox.replaceChildren(list);
-    coreSetUIText(marketCount, 'textContent', [[[corePhrase("共"), rows.length, corePhrase("个插件")], [corePhrase("（本页显示 "), sliceOut.length ? fromOut + 1 : 0, corePhrase("-"), fromOut + sliceOut.length, corePhrase("）")]], ((answer.stale ? corePhrase("（ 这是上次问到的，正在重问）。") : corePhrase("。")))]);
+    coreSetUIText(marketCount, 'textContent', [[[corePhrase("共"), rows.length, corePhrase("个插件")], [corePhrase("（本页显示 "), sliceOut.length ? fromOut + 1 : 0, corePhrase("-"), fromOut + sliceOut.length, corePhrase("）")]], ((answer.stale ? corePhrase("（缓存结果，正在刷新）") : corePhrase("。")))]);
     marketBox.append(marketCount);
     marketBox.append(pager(pagesOut, pageOut, (n) => { pageOut = n; drawMarket(answer); }));
   };

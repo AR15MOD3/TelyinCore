@@ -145,7 +145,13 @@ export function enginePage(shell: Chrome): Panel {
   // （`.page-engine > h1` 那一条 ）。⚠️ 英文照作者**写的原样**：`Model`
   // （ 2026-10-09 作者：「**用全大写。我是笔误了。**」 —— 于是与另外几页同一个写法 ）。
   const title = el("h1", "page-title", corePhrase("模型 · MODEL"));
-  column.append(title, left, right, notice);
+  const workspace = el('div', 'engine-workspace');
+  const editor = el('div', 'engine-editor');
+  const actionsHost = el('div', 'engine-page-actions');
+  actionsHost.append(notice);
+  editor.append(actionsHost, right);
+  workspace.append(left, editor);
+  column.append(title, workspace);
   shell.content.replaceChildren(column);
 
   let report: Reply<Awaited<ReturnType<typeof engineReport>>['data']> | null = null;
@@ -229,7 +235,7 @@ export function enginePage(shell: Chrome): Panel {
       const ours = Number(maxOut.value || 0);
       if (ours > spec.max_output_tokens) {
         maxOut.value = String(spec.max_output_tokens);
-        coreSetUIText(maxOut, 'title', [corePhrase("上游说这一条最多 "), spec.max_output_tokens, corePhrase(" token，已压到它")]);
+        coreSetUIText(maxOut, 'title', [corePhrase("该模型的输出上限为 "), spec.max_output_tokens, corePhrase(" token，已自动调整")]);
       }
     }
     if (temp && !specOverrides.has('temperature')) {
@@ -264,7 +270,7 @@ export function enginePage(shell: Chrome): Panel {
       if (said === undefined || said === null) {
         cellsVision.dataset.on = spec?.input_images === true ? 'yes' : 'no';
       }
-      coreSetUIText(cellsVision, 'title', (spec?.input_images === true ? corePhrase("这一条能收图（上游或公开目录报的）") : (spec?.input_images === false ? corePhrase("报的是只看文本") : corePhrase("上游没说这一条 —— 可以自己扳"))));
+      coreSetUIText(cellsVision, 'title', (spec?.input_images === true ? corePhrase("服务商或模型目录声明支持图片输入") : (spec?.input_images === false ? corePhrase("服务商声明仅支持文本输入") : corePhrase("尚未确认图片能力，可手动设置"))));
     }
   }
 
@@ -354,7 +360,7 @@ function onClick(target: HTMLElement, run: () => void): void {
     try {
       run();
     } catch (exc) {
-      say(`这一下没做成：${short(exc, 60)}`, true);
+      say(`操作失败：${short(exc, 60)}`, true);
       throw exc;
     }
   });
@@ -407,7 +413,7 @@ function onClick(target: HTMLElement, run: () => void): void {
       //    （档案里存着的 `model_name`；没有就退回 `model`）。
       const shownModel = (one.data?.profiles ?? []).find((p) => p.name === rowOne.name)
         ?.model_name || rowOne.model;
-      for (const text of [rowOne.kind, shownModel || '（没选模型）', rowOne.base_url]) {
+      for (const text of [rowOne.kind, shownModel || '未选择模型', rowOne.base_url]) {
         pills.append(el('span', 'pill', text));
       }
       cardEl.append(pills);
@@ -417,7 +423,7 @@ function onClick(target: HTMLElement, run: () => void): void {
       const missingKey = rowOne.auth !== 'chatgpt' && !isLocalService(rowOne.base_url)
         && one.data?.secret?.[rowOne.secret] === 'missing';
       marks.append(el('span', hasModel && !missingKey ? 'ok-mark' : 'warn-mark',
-        missingKey ? '待配置 API 密钥' : hasModel ? '模型已配置' : '还差一个模型'));
+        missingKey ? '待配置 API 密钥' : hasModel ? '模型已配置' : '未选择模型'));
       cardEl.append(marks);
       cardEl.addEventListener('click', () => {
         fresh = false; // 点了某一页/某一张卡 ⇒ 就不是"新建中"了
@@ -456,7 +462,7 @@ function onClick(target: HTMLElement, run: () => void): void {
       const draftFoot = el('div', 'engine-draft-foot');
       draftFoot.append(el('span', 'engine-draftmark', corePhrase('✎ 草稿')));
       const giveUp = el('button', 'engine-card-drop', '🗑');
-      coreSetUIText(giveUp, 'title', corePhrase("丢掉这张草稿"));
+      coreSetUIText(giveUp, 'title', corePhrase("删除草稿"));
       giveUp.addEventListener('click', (ev) => {
         ev.stopPropagation();
         changeDraft(undefined);
@@ -477,7 +483,7 @@ function onClick(target: HTMLElement, run: () => void): void {
       //    —— 新建意味着"还没有那一条"，留着上一条的钥匙与模型名就错了。
       typedKey = '';
       modelValue = '';
-      say('已填默认值 —— 填完按「保存」');
+      say('已填入默认值，请检查后保存。');
       draw();
     });
     left.append(list);
@@ -595,7 +601,7 @@ function onClick(target: HTMLElement, run: () => void): void {
     // （＝"和客户端在同一台机器上跑的服务" ／ 英文 `local server` —— 这是**通用**说法 ）。
     // 那一行的小字**删掉了**（2026-10-05 作者：「删掉……」）—— 信息挪进 `title`：
     // 不占地方，鼠标停上去还在 （与「API 密钥」那一行用 `title` 说清是同一手法 ）。
-    coreSetUIText(kindIn, 'title', [[corePhrase("写的是 `/v1/…` 的后半段。「本地服务」不是一种协议 —— 它们各有各的说法："), corePhrase("vLLM ／ Ollama ／ LM Studio 默认说 `chat/completions`，而 `Local` 那条（NInfer）两套都会说")], corePhrase("（它选 `responses` —— 那是选择，不是限制）。 只有 `responses` 拿得到「思考过程」。")]);
+    coreSetUIText(kindIn, 'title', corePhrase('选择服务支持的 API 协议，地址与协议需匹配。'));
     basic.append(row('协议', kindIn));
     // ⚠️ 这里从前挂着一个"换协议 ⇒ 那两格跟着灰/亮"的监听器 —— **2026-10-04 拿掉了**：
     //    那两格现在**永远可编辑**（作者要的），也就没有"跟着变"这回事了。
@@ -648,7 +654,7 @@ function onClick(target: HTMLElement, run: () => void): void {
     // **兜底不再共用一把**（2026-10-05 作者：「保存了就存对应的。不要混用」）——
     // ⚠️ 从前对不上预设时一律落回共用的 `TELYIN_API_KEY` ⇒ 两条自定义档案会**顶着
     //      同一个变量名**（今天量到：盘上 `DEEPSEEK_API_KEY` 与 `TELYIN_API_KEY` 是**同一把
-    // 钥匙** —— 那是"混用"留下的痕迹）。
+    // 钥匙** —— 那是"混用"自我记录痕迹）。
     // ⇒ 按**档案自己那个名字**生成一个专属变量名 ：大写、非字母数字一律换成 `_`。
     // （名字那一格在这一步之前已经有值 —— 见上面 `nameIn.value = …` ）
     const ownName = (nameIn.value.trim() || 'CUSTOM').toUpperCase().replace(/[^A-Z0-9]+/g, '_');
@@ -667,7 +673,7 @@ function onClick(target: HTMLElement, run: () => void): void {
       || (!fresh && (one.data?.secret?.[secretName] ?? 'missing') !== 'missing');
     coreSetUIText(secretIn, 'placeholder', (configured ? corePhrase("已配置——输入新 API 密钥可替换") : corePhrase("输入 API Key")));
     // 提示行按作者的话删了 ⇒ 那"是哪一把钥匙"就挂在悬停上（一个字都不多占）。
-    coreSetUIText(secretIn, 'title', (configured ? [corePhrase(""), secretName, corePhrase(" 里已有一把 —— 输入新值会替换它")] : [corePhrase("保存时写进 data/engine.env（变量名 "), secretName, corePhrase("）")]));
+    coreSetUIText(secretIn, 'title', (configured ? [corePhrase(""), secretName, corePhrase(" 已保存密钥，输入新值可替换")] : [corePhrase("保存时写进 data/engine.env（变量名 "), secretName, corePhrase("）")]));
     // 把**还没保存的那把**填回去（见 `typedKey` 那一段）；打字时记下来。
     secretIn.value = typedKey;
     secretIn.addEventListener('input', () => { typedKey = secretIn.value; });
@@ -692,7 +698,7 @@ function onClick(target: HTMLElement, run: () => void): void {
         coreSetUIText(secretIn, 'title', corePhrase("当前本地服务无需 API 密钥"));
       } else {
         coreSetUIText(secretIn, 'placeholder', (configured ? corePhrase("已配置——输入新 API 密钥可替换") : corePhrase("输入 API Key")));
-        coreSetUIText(secretIn, 'title', (configured ? [corePhrase(""), secretName, corePhrase(" 里已有一把 —— 输入新值会替换它")] : [corePhrase("保存时写进 data/engine.env（变量名 "), secretName, corePhrase("）")]));
+        coreSetUIText(secretIn, 'title', (configured ? [corePhrase(""), secretName, corePhrase(" 已保存密钥，输入新值可替换")] : [corePhrase("保存时写进 data/engine.env（变量名 "), secretName, corePhrase("）")]));
       }
     };
     urlIn.addEventListener('input', applyKeyRow);
@@ -713,7 +719,7 @@ function onClick(target: HTMLElement, run: () => void): void {
       const pills = draft?.querySelector<HTMLElement>('.engine-pills');
       if (title) title.textContent = instanceNameIn.value.trim() || nameIn.value.trim() || '未命名实例';
       if (pills) {
-        const model = (cells.model as HTMLInputElement | undefined)?.value || '（没选模型）';
+        const model = (cells.model as HTMLInputElement | undefined)?.value || '未选择模型';
         pills.replaceChildren(...[kindIn.value, model, urlIn.value || '（未填地址）']
           .map((value) => el('span', 'pill', value)));
       }
@@ -855,7 +861,7 @@ function onClick(target: HTMLElement, run: () => void): void {
           probeOut.dataset.state = 'ok';
           return;
         }
-        const why = got.data?.error ?? `读不到回话（HTTP ${got.status}）`;
+        const why = got.data?.error ?? `服务未返回有效响应（HTTP ${got.status}）`;
         // detail 仅含服务整理的安全摘要，不回显上游原始错误正文。
         const said = String(got.data?.detail ?? '');
         const detail = said ? `（上游：${short(said)}）` : '';
@@ -929,7 +935,7 @@ function onClick(target: HTMLElement, run: () => void): void {
               const why = got.data?.error ?? (got.data?.ok ? '上游没有返回可选模型' : `HTTP ${got.status}`);
               // 上游原话**截短**（播报不许长到换行 —— 作者要的）。
               const said = String(got.data?.detail ?? '');
-              say(`取不到模型列表：${why}${said ? `（上游：${short(said)}）` : ''}`, true);
+              say(`无法获取模型列表：${why}${said ? `（上游：${short(said)}）` : ''}`, true);
               notice.title = said; // 完整那句挂在 title 上
               return;
             }
@@ -1041,7 +1047,7 @@ function onClick(target: HTMLElement, run: () => void): void {
         // **先照档案自己那一格画**（存得住的那一格，照参考 `multimodal`）；
         // ⚠️ 取回列表之后 `applySpecOf()` 会按上游报的那一格覆盖它 。
         sees.dataset.on = profile?.multimodal ? 'yes' : 'no';
-        coreSetUIText(sees, 'title', corePhrase("上游报了会自动开；也可以自己扳"));
+        coreSetUIText(sees, 'title', corePhrase("根据模型信息自动设置，也可手动调整"));
         // **它能点**（2026-10-05 作者："选择了支持多模态的模型，图片输入依旧点不动"）：
         //    上游报了 **自动开**，而人也能自己扳（那是一份偏好 —— 页上不该只有一个死开关）。
         sees.addEventListener('click', () => {
@@ -1139,13 +1145,13 @@ function onClick(target: HTMLElement, run: () => void): void {
     }
     colRight.append(gen);
 
-    // 操作区紧接连接配置，收成一排；播报仍在按钮上方。
-    const act = el('div', 'engine-section engine-actions');
-    // ⚠️ 那一行播报**搬进这一张卡**里（它从前挂在整页底下）—— 位置上"在按钮的上面"。
-    act.append(notice);
+    // Keep actions beside the selected configuration and outside its scrolling form.
+    const act = el('div', 'engine-actions');
+    const actionTitle = el('strong', 'engine-action-title', profile?.display_name || profile?.name || corePhrase('新建模型配置'));
+    act.append(actionTitle);
     const actions = el('div', 'engine-foot');
-    act.append(actions);
-    colLeft.append(act);
+    act.append(actions, notice);
+    actionsHost.replaceChildren(act);
 
     // ⚠️ **复制那一颗删掉了**（作者要的）；删除还在 —— 它是这一页唯一那条删路。
     // **「高级」那张卡删掉了**（2026-10-04 作者：这个高级不用了）。
@@ -1278,7 +1284,7 @@ function onClick(target: HTMLElement, run: () => void): void {
     });
     const use = button('设为当前', 'btn ghost');
     use.disabled = !(profile && profile.model.trim());
-    coreSetUIText(use, 'title', (use.disabled ? corePhrase("没有模型的档案不许设为当前") : corePhrase("")));
+    coreSetUIText(use, 'title', (use.disabled ? corePhrase("请先选择模型，再设为当前") : corePhrase("")));
     onClick(use, () => {
       void engineCommand({ action: 'use', name: profile?.name ?? '' }).then(after);
     });
@@ -1291,7 +1297,7 @@ function onClick(target: HTMLElement, run: () => void): void {
   }
 
   function after(got: Reply<unknown>): void {
-    say(got.ok ? '已保存' : `没成（HTTP ${got.status}）：${short(got.note)}`, !got.ok);
+    say(got.ok ? '已保存' : `操作失败（HTTP ${got.status}）：${short(got.note)}`, !got.ok);
     if (got.ok) {
       fresh = false; // 存下了 ⇒ 就不是"新建中"了（它自己会高亮）
       const epoch = editEpoch;
@@ -1314,7 +1320,7 @@ function onClick(target: HTMLElement, run: () => void): void {
       // **一个异常不许把整页留白**（那正是"点了没反应"最难查的那种形状：
       //    右列停在 `replaceChildren()` 那一步，页上**一个字的线索都没有**）。
       //    ⇒ 把话说出来（人看得见、我也看得见），再把异常抛上去（控制台里也要有）。
-      say(`这一页画不出来：${short(exc, 60)}`, true);
+      say(`页面加载失败：${short(exc, 60)}`, true);
       throw exc;
     }
   }
@@ -1341,7 +1347,7 @@ function onClick(target: HTMLElement, run: () => void): void {
       col.append(el('div', 'engine-section'), el('div', 'engine-section'));
       return col;
     };
-    right.replaceChildren(el('h2', 'card-title', corePhrase('正在读…')), bone(), bone());
+    right.replaceChildren(el('h2', 'card-title', corePhrase('加载中…')), bone(), bone());
   }
 
   let readEpoch = 0;

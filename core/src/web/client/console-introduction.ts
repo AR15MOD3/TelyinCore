@@ -40,7 +40,7 @@ export function mountConsoleIntroduction(root: HTMLElement, composer: HTMLFormEl
       const status = line('');
       status.setAttribute('role', 'status');
       form.append(input, save, later);
-      guide.replaceChildren(heading, greeting, line('填个常用的名字吧，我会把它记在你的控制台画像里。'), form, status);
+      guide.replaceChildren(heading, greeting, line('设置你在控制台使用的称呼。'), form, status);
       guide.hidden = false;
       setPending(true);
       form.onsubmit = async (event) => {
@@ -61,7 +61,7 @@ export function mountConsoleIntroduction(root: HTMLElement, composer: HTMLFormEl
             if (reply.status === 409) { form.remove(); setPending(false); }
             throw new Error(result.said || '保存失败，请重试。');
           }
-          guide.replaceChildren(heading, line('记住了，' + name + '。'));
+          guide.replaceChildren(heading, line('已保存称呼：' + name));
           setPending(false);
         } catch (error) {
           status.textContent = error instanceof Error ? error.message : '保存状态未确认，请重试。';

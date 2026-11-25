@@ -1,3 +1,4 @@
+import { showTextDetail } from './text-detail';
 type Face = { id: string; url: string; description: string; tags: string[]; reason: string; addedBy?: string; editedReason?: boolean };
 
 export function qqStickers() {
@@ -124,8 +125,8 @@ export function qqStickers() {
       if (face.tags.length > 3) chips.append(element('small', '+' + (face.tags.length - 3)));
       const body = element('div'); body.className = 'qq-sticker-body'; body.append(summary, chips);
       const top = element('div'); top.className = 'qq-sticker-overview'; top.append(preview, body);
-      const details = element('details'); details.className = 'qq-sticker-details';
-      details.append(element('summary','详情'));
+      const details = element('button', '查看详情'); details.className = 'qq-sticker-details';
+      details.type = 'button';
       const fields = element('dl');
       for (const [label, value] of [
         ['添加来源', face.addedBy || '账号原有·来源未记录'],
@@ -133,7 +134,7 @@ export function qqStickers() {
         ['标签', face.tags.join(' · ') || '暂无标签'],
         [face.editedReason ? '手动备注' : face.addedBy === 'Bot 自主收藏' ? '收藏理由' : '使用想法', face.reason || '尚未记录'],
       ]) fields.append(element('dt', label), element('dd', value));
-      details.append(fields);
+      details.onclick = () => showTextDetail('表情详情', Array.from(fields.children).map(e => e.textContent || '').join('\n'));
       const actions = element('div'); actions.className = 'qq-sticker-actions';
       actions.append(button('编辑', () => edit(face)), button('删除', () => {
         if (!window.confirm('从当前 QQ 账号删除这张收藏表情？')) return;

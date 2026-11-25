@@ -119,7 +119,7 @@ function fitWithin(width: number, height: number,
 function readAsDataUrl(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onerror = () => reject(new Error('这一张读不出来'));
+    reader.onerror = () => reject(new Error('图片读取失败'));
     reader.onload = () => { resolve(String(reader.result ?? '')); };
     reader.readAsDataURL(blob);
   });
@@ -132,10 +132,10 @@ function encodeTo(bitmap: ImageBitmap, width: number, height: number,
   canvas.width = width;
   canvas.height = height;
   const ctx = canvas.getContext('2d');
-  if (!ctx) { throw new Error('这一台浏览器画不了图'); }
+  if (!ctx) { throw new Error('当前浏览器无法处理图片'); }
   ctx.drawImage(bitmap, 0, 0, width, height);
   return new Promise((resolve, reject) => {
-    canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error('这一张转不出来'))),
+    canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error('图片转换失败'))),
                   mime, quality);
   });
 }
@@ -143,13 +143,13 @@ function encodeTo(bitmap: ImageBitmap, width: number, height: number,
 /* 归一化图片并返回 data URL：够小则保留原字节；超长边则缩放；仍超字节上限则转 JPEG 0.85，再超限或解码失败则拒收。 */
 export async function normalizeImage(file: File): Promise<string> {
   if (!IMAGE_MIMES.includes(file.type)) {
-    throw new Error('只收图片（jpeg ／ png ／ webp ／ gif）');
+    throw new Error('请选择 JPEG、PNG、WebP 或 GIF 图片');
   }
   let bitmap: ImageBitmap;
   try {
     bitmap = await createImageBitmap(file);
   } catch {
-    throw new Error('这一张解不开（不是图，或文件坏了）');
+    throw new Error('无法打开图片，文件格式不支持或已损坏');
   }
   try {
     const fitted = fitWithin(bitmap.width, bitmap.height, MAX_IMAGE_EDGE);
@@ -163,7 +163,7 @@ export async function normalizeImage(file: File): Promise<string> {
       blob = await encodeTo(bitmap, fitted.width, fitted.height, 'image/jpeg', 0.85);
     }
     if (blob.size > MAX_IMAGE_BYTES) {
-      throw new Error('这一张太大了（缩到上限还是超过 6 MB）');
+      throw new Error('图片压缩后仍超过 6 MB，请先缩小图片');
     }
     return await readAsDataUrl(blob);
   } finally {
@@ -177,7 +177,7 @@ export async function normalizeImage(file: File): Promise<string> {
  * ⚠️ 更早的一版写的是「**本机**上的任何一页」 —— 「本机」在**开源**项目里容易歧义
  * （别人会以为是他自己那台）⇒ 那一版就已经去掉了它 。
  */
-const PLACEHOLDER = '和她说句话试试。';
+const PLACEHOLDER = '输入消息…';
 
 /** `composer()` 交回的两样：那一行本身 ／ 那个计数的那一格。 */
 interface Composer {
@@ -269,7 +269,7 @@ function composer(onSend: (text: string, images: readonly string[]) => void,
   handoffButton.type = 'button';
   handoffButton.className = 'btn ghost composer-handoff';
   handoffButton.textContent = HANDOFF_LABEL;
-  coreSetUIText(handoffButton, 'title', [corePhrase("请它交接一次 —— 把这一段收一收，换一段干净的上下文接着走；"), corePhrase("整理态是它的副产品（她会自己动手写那两份）")]);
+  coreSetUIText(handoffButton, 'title', [corePhrase("整理当前对话摘要，并在新的上下文中继续。"), corePhrase("相关记忆会在后台整理。")]);
   handoffButton.addEventListener('click', () => {
     void fetch('/handoff', { method: 'POST' }).then(async (res) => {
       if (!res.ok) {
@@ -379,22 +379,20 @@ function composer(onSend: (text: string, images: readonly string[]) => void,
       cacheBody.append(row);
     }
     cacheBody.append(usageLine(cache.note, 'cache-summary-note'));
-    const diagnostic = document.createElement('details');
+    const diagnostic = document.createElement('section');
     diagnostic.className = 'cache-diagnostics';
-    diagnostic.open = cacheDiagnosticOpen;
-    const summary = document.createElement('summary');
+    const summary = document.createElement('h3');
     coreSetUIText(summary, 'textContent', corePhrase("诊断"));
     diagnostic.append(summary);
     for (const line of cache.diagnostics) {
       diagnostic.append(usageLine(line, 'usage-note'));
     }
-    diagnostic.addEventListener('toggle', () => { cacheDiagnosticOpen = diagnostic.open; });
     cacheBody.append(diagnostic);
     // cache_note is the deprecated legacy accumulator note; do not mix scopes.
   const woke = (typeof got.next_wake === 'object' && got.next_wake !== null
     ? got.next_wake as { at?: string; what?: string } : null);
   if (woke !== null && typeof woke.at === 'string') {
-    const what = typeof woke.what === 'string' && woke.what !== '' ? woke.what : '自己醒';
+    const what = typeof woke.what === 'string' && woke.what !== '' ? woke.what : '主动唤醒';
     coreSetUIText(cacheCell, 'title', [corePhrase(""), cacheCell.title, corePhrase("\n下一次"), what, corePhrase("："), woke.at.replace('T', ' ').slice(0, 16), corePhrase("")]);
   }
   };
@@ -504,12 +502,12 @@ function composer(onSend: (text: string, images: readonly string[]) => void,
       cell.className = 'composer-thumb';
       const picture = document.createElement('img');
       picture.src = url;
-      picture.alt = '这一张要发出去';
+      picture.alt = '待发送图片';
       const drop = document.createElement('button');
       drop.type = 'button';
       drop.className = 'composer-thumb-x';
       drop.textContent = '×';
-      coreSetUIText(drop, 'title', corePhrase("不要这一张"));
+      coreSetUIText(drop, 'title', corePhrase("移除图片"));
       drop.addEventListener('click', () => { attached.splice(index, 1); drawAttached(); });
       cell.append(picture, drop);
       thumbs.append(cell);
@@ -524,7 +522,7 @@ function composer(onSend: (text: string, images: readonly string[]) => void,
       try {
         attached.push(await normalizeImage(file));
       } catch (exc) {
-        onNote(exc instanceof Error ? exc.message : '这一张读不出来');
+        onNote(exc instanceof Error ? exc.message : '图片读取失败');
       }
     }
     drawAttached();
@@ -552,7 +550,7 @@ function composer(onSend: (text: string, images: readonly string[]) => void,
   const ringLabel = document.createElement('span');
   ringLabel.textContent = '—';
   ring.append(gaugeIcon(), ringLabel); // 图标在前、数字在后（照那一份 ）
-  coreSetUIText(ring, 'title', corePhrase("上下文用了多少 —— 点一下看它占在哪几块"));
+  coreSetUIText(ring, 'title', corePhrase("查看上下文用量明细"));
   const readCache = latestCacheRead(fetch);
   const showUsage = async (): Promise<void> => {
     await readCache((got) => {
@@ -616,7 +614,6 @@ function composer(onSend: (text: string, images: readonly string[]) => void,
   cachePanel.className = 'composer-stages composer-cache-details';
   cachePanel.hidden = true;
   const cacheBody = document.createElement('div');
-  let cacheDiagnosticOpen = false;
   cachePanel.append(cacheBody);
 
 
@@ -715,6 +712,7 @@ function composer(onSend: (text: string, images: readonly string[]) => void,
  */
 export function chatPage(shell: Chrome): Panel & { view: ChatView } {
   const chat = mountChat(shell.content);
+  const page = chat.root.parentElement ?? chat.root;
   const activity = document.createElement('div'); activity.className = 'console-control-note';
   activity.setAttribute('role', 'status'); activity.setAttribute('aria-live', 'polite');
   activity.hidden = true;
@@ -841,12 +839,12 @@ export function chatPage(shell: Chrome): Panel & { view: ChatView } {
   shell.bottom.replaceChildren(form); // 底部那一行（壳给的那一格）
 
   return {
-    root: chat.root,
+    root: page,
     view: chat,
     show: (): void => { const wasStopped = stopped; stopped = false;
-      if (wasStopped) chat.refreshHistory!(); chat.listen(true); chat.root.hidden = false;
+      if (wasStopped) chat.refreshHistory!(); chat.listen(true); page.hidden = false; chat.root.hidden = false;
       form.hidden = false; },
-    stop: (): void => { stopped = true; chat.listen(false); chat.root.hidden = true;
+    stop: (): void => { stopped = true; chat.listen(false); page.hidden = true; chat.root.hidden = true;
       form.hidden = true; },
   };
 }

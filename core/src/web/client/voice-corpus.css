@@ -1,6 +1,6 @@
 
 .voice-corpus { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--color-line); }
-.voice-corpus > summary { cursor: pointer; font-weight: 600; padding: 4px 0; }
+.voice-corpus > :is(summary, h3) { cursor: pointer; font-weight: 600; padding: 4px 0; }
 .voice-corpus > label { display: flex; gap: 8px; align-items: center; margin: 12px 0; }
 .voice-corpus-toolbar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center;
   margin: 10px 0; }

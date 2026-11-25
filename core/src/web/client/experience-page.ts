@@ -1,3 +1,5 @@
+import { showTextDetail } from './text-detail';
+import { experienceSourceName } from './record-labels';
 import { corePhrase, coreSetUIAttribute, coreSetUIText, coreUITextNode } from './ui-language';
 import { recordRefresh } from './record-refresh';
 import { pageLoad } from './page-load';
@@ -95,11 +97,11 @@ interface ExperienceAnswer {
   readonly wired?: boolean;
 }
 
-const READ_FAILED = '读不到经历那一格。';
-const NOT_WIRED = '经历这一层没接上读法。';
-const NOTHING_YET = '还没有经历记下来 —— 说过的话、写过的一段，都会落到这儿。';
+const READ_FAILED = '经历加载失败，请重试。';
+const NOT_WIRED = '当前服务暂不支持查看经历。';
+const NOTHING_YET = '暂无经历。保存的对话和记录会显示在这里。';
 
-/** 一组里先摆几条（ 稿子里那四行 —— 其余"再往下看" ）。 */
+/** 一组里先摆几条（ 稿子里那四行 —— 其余"展开更多" ）。 */
 const SHOWN = 4;
 
 /** **这一条是谁说的**（ 话由页上说 —— 而**两边都用名字** ）。
@@ -250,19 +252,13 @@ const thePrefixShape = (
   flip: () => void,
 ): HTMLElement => {
   const hot = one.room !== '';
-  const box = make(hot ? 'button' : 'span', hot ? 'ch ch-interactive' : 'ch', '');
+  const box = make('span', 'ch', '');
   box.append(document.createTextNode('['));
   box.append(make('span', 'ch-who', one.label));
   box.append(make('span', 'ch-dot', '·'));
   const word = make('span', opened ? 'ch-scope is-open' : 'ch-scope',
                     opened ? one.scope + '·' + one.room : one.scope);
-  if (hot) {
-    box.setAttribute('type', 'button');
-    box.setAttribute('aria-expanded', String(opened));
-    coreSetUIText(box, 'title', (opened ? corePhrase("收起会话号") : corePhrase("展开会话号")));
-    box.setAttribute('aria-label', `${one.label}·${one.scope}：${box.title}`);
-    box.addEventListener('click', flip);
-  }
+  if (hot) box.title = `${one.label} · ${one.scope} · ${one.room}`;
   box.append(word);
   box.append(document.createTextNode(']'));
   return box;
@@ -350,23 +346,34 @@ export function experiencePage(shell: Chrome): Panel {
   root.append(head);
 
   const axis = line('div', 'axis');
-  root.append(axis);
+  const scroll = line('div', 'page-scroll experience-scroll');
+  scroll.append(axis);
+  root.append(scroll);
 
-  // 那一列"一份一份的小结"（ 稿子 v2 那块 `.sources` ）—— 它是"次"⇒ 沉在时间轴下面 。
-  // ⚠️ **它也是那一份"文档"唯一露脸的地方** （ `.md` 不是记录流，上不了时间轴 ）。
-  const sources = line('div', 'sources');
-  root.append(sources);
-
-  const tail = document.createElement('div');
-  tail.className = 'tail';
-  root.append(tail);
+  const sources = line('div', 'experience-source-list');
+  const sourceDialog = document.createElement('dialog');
+  sourceDialog.className = 'avatar-crop-dialog experience-source-dialog';
+  sourceDialog.setAttribute('aria-label', '记录来源');
+  const closeSources = line('button', '', '关闭') as HTMLButtonElement;
+  closeSources.type = 'button';
+  closeSources.onclick = () => sourceDialog.close();
+  const sourceActions = line('div', 'avatar-crop-actions');
+  sourceActions.append(closeSources);
+  sourceDialog.append(line('h2', '', '记录来源'), sources, sourceActions);
+  const sourceButton = line('button', 'page-footer-link', '记录来源') as HTMLButtonElement;
+  sourceButton.type = 'button';
+  sourceButton.onclick = () => { sourceDialog.showModal(); closeSources.focus(); };
+  sourceDialog.addEventListener('close', () => { if (!root.hidden) sourceButton.focus(); });
+  sourceDialog.addEventListener('click', event => event.stopPropagation());
+  sourceDialog.addEventListener('keydown', event => event.stopPropagation());
+  const tail = document.createElement('footer');
+  tail.className = 'tail page-footer';
+  root.append(tail, sourceDialog);
 
   shell.content.replaceChildren(root);
 
-  /** 已经摊开的那些天（ "再往下看"点过的 ）／ 已经摊开的那些条（ "展开"点过的 ）。 */
-  const unfoldedDays = new Set<string>();
-  const dayScroll = new Map<string, number>();
-  const openedBeats = new Set<string>();
+  /** 已经摊开的那些天（ "展开更多"点过的 ）／ 已经摊开的那些条（ "展开"点过的 ）。 */
+  const dayLimits = new Map<string, number>();
   /** 已经点开"会话号"的那些前缀（键 = 那一条自己的 id ＋ 标记本身）。 */
   const openedHeads = new Set<string>();
   let mine: ExperienceAnswer | null = null;
@@ -376,41 +383,23 @@ export function experiencePage(shell: Chrome): Panel {
   const stamp = (key: string, label: string, sub: string, rows: A_Row[]): HTMLElement => {
     const box = line('div', 'stamp');
     box.dataset.dayKey = key;
-    const day = line('div', 'day', label === '' ? '更早' : label);
+    const day = line('div', 'day', label === '' ? '日期未记录' : label);
     if (sub !== '') day.append(line('span', '', sub));
     box.append(day, line('div', 'dot'));
-    const open = unfoldedDays.has(key);
-    const body = line('div', open ? 'day-beats is-open' : 'day-beats');
+    const limit = dayLimits.get(key) ?? SHOWN;
+    const body = line('div', 'day-beats');
     body.id = 'experience-day-' + encodeURIComponent(key);
     body.setAttribute('role', 'region');
-    coreSetUIAttribute(body, 'aria-label', [(label || '更早'), corePhrase("的经历")]);
-    if (open) body.setAttribute('tabindex', '0');
-    body.addEventListener('scroll', () => dayScroll.set(key, body.scrollTop));
-    const toggle = (caption: string): HTMLElement => {
-      const button = line('button', 'fold-toggle', caption);
-      button.setAttribute('type', 'button');
-      button.setAttribute('aria-expanded', String(open));
-      button.setAttribute('aria-controls', body.id);
-      button.addEventListener('click', () => {
-        if (open) {
-          unfoldedDays.delete(key);
-          dayScroll.delete(key);
-          for (const one of rows) openedBeats.delete(one.id);
-        } else unfoldedDays.add(key);
-        draw(mine, asked);
-        // Keep keyboard focus usable after replacing the day contents.
-        const updated = [...axis.querySelectorAll<HTMLElement>('.stamp')]
-          .find((item) => item.dataset.dayKey === key);
-        updated?.querySelector<HTMLElement>(open ? '.fold-toggle' : '.stamp-meta .fold-toggle')
-          ?.focus({ preventScroll: true });
-      });
+    coreSetUIAttribute(body, 'aria-label', [(label || '日期未记录'), corePhrase('的经历')]);
+    const more = (): HTMLElement => {
+      const button = line('button', 'fold-toggle', '显示更多'); button.setAttribute('type', 'button');
+      button.addEventListener('click', () => { dayLimits.set(key, limit + 20); draw(mine, asked); });
       return button;
     };
     const meta = line('div', 'stamp-meta');
     meta.append(line('span', 'n', String(rows.length) + ' 条'));
-    if (open && rows.length > SHOWN) meta.append(toggle('收起'));
     box.append(meta, body);
-    const showed = open ? rows : rows.slice(0, SHOWN);
+    const showed = rows.slice(0, limit);
     for (const one of showed) {
       const whole = one.beat.text;
       const row = line('div', 'beat');
@@ -462,51 +451,25 @@ export function experiencePage(shell: Chrome): Panel {
       }
       txt.append(line('span', 'src', one.from));
       row.append(txt);
-      // **多行的那几条：一行里先摆头一行，后面挂一个「展开」**
-      // ⚠️ 这是本仓那条老规矩（记忆页那几格同一条）： **就地展开，不浮窗** ——
-      // 上下文不丢，而 **一个字都没删** （ 展开就是原话全文 ）。
+      // Keep the timeline concise; the complete text opens in a separate reader.
       if (theFold(whole)) {
-        // **写法照仓里本来就有的那一条** （记忆页："还有 N 行 ▾" ——
-        // 点一下**就地展开** ／ 不浮窗、上下文不丢 ）。
-        // ⚠️ **这一枚是本波多出来的** （ v4 那一稿里没有它 ）——
-        // 理由： v4 那四行**都是短的**（稿子是手写的 ），
-        // 而 盘上真有的那几条**长到 1295 字** ⇒ 全摊在那一行里
-        // 一屏只看得到三条 （ 真页上看见的 ）
-        // ⇒ 折起来 ＋ **一个字都不删**（ 点它就是原话全文 ）。
-        const op = line('button', 'op',
-                        openedBeats.has(one.id) ? '收起 ▴' : '还有 ' + String(theRest(whole)) + ' 行 ▾');
-        op.setAttribute('type', 'button');
-        op.setAttribute('aria-expanded', String(openedBeats.has(one.id)));
-        op.addEventListener('click', () => {
-          if (openedBeats.has(one.id)) {
-            openedBeats.delete(one.id);
-          } else {
-            openedBeats.add(one.id);
-          }
-          draw(mine, asked);
-        });
-        txt.append(op);
+        const view = line('button', 'op', '查看全文'); view.setAttribute('type', 'button');
+        view.addEventListener('click', () => showTextDetail('经历记录', whole)); txt.append(view);
       }
       body.append(row);
-      if (theFold(whole) && openedBeats.has(one.id)) {
-        body.append(line('div', 'beat-full', whole));
-      }
     }
     const left = rows.length - showed.length;
-    if (rows.length > SHOWN) {
-      const fold = line('div', 'fold', open ? '点击空白处也可收起 · '
-        : '还有 ' + String(left) + ' 条 —— ');
-      fold.append(toggle(open ? '收起' : '再往下看'));
-      box.append(fold);
+    if (left > 0) {
+      const status = line('div', 'fold', '还有 ' + left + ' 条 · '); status.append(more()); box.append(status);
     }
-    if (open) requestAnimationFrame(() => { body.scrollTop = dayScroll.get(key) ?? 0; });
     return box;
   };
 
   const draw = (answer: ExperienceAnswer | null, q: string): void => {
     axis.replaceChildren();
     sources.replaceChildren();
-    tail.replaceChildren();
+    tail.replaceChildren(line('span', 'page-footer-label', '对话与经历'));
+    sourceButton.disabled = true;
     mine = answer;
     asked = q;
 
@@ -538,32 +501,27 @@ export function experiencePage(shell: Chrome): Panel {
     // **筛**（ 手里那一份，就地 ）—— 一个都没对上的时候照实说 。
     if (q !== '') flat = flat.filter((one) => hit(one, q));
 
-    // ── 按"天"摞起来（ 最新的在顶上 ／ 再往前收进一处「更早」）────────────
+    // Keep dated groups newest first and show undated records separately at the end.
     const days = new Map<string, A_Row[]>();
     for (const one of flat) {
-      const key = one.day.day === '' ? '（没有时刻）' : one.day.day;
+      const key = one.day.day;
       const box = days.get(key) ?? [];
       box.push(one);
       days.set(key, box);
     }
-    const keys = [...days.keys()].sort((a, b) => b.localeCompare(a));
+    const keys = [...days.keys()].filter(key => key !== '').sort((a, b) => b.localeCompare(a));
+    if (days.has('')) keys.push('');
     for (const entries of days.values()) entries.sort((a, b) =>
       (b.beat.sort_ts ?? 0) - (a.beat.sort_ts ?? 0));
     if (flat.length === 0) {
       const prose = line('div', 'prose');
-      prose.append(line('p', 'fade', q === '' ? NOTHING_YET : '「' + q + '」没对上哪一件。'));
+      prose.append(line('p', 'fade', q === '' ? NOTHING_YET : '「' + q + '」没有匹配记录。'));
       axis.append(prose);
     } else {
-      for (const key of keys.slice(0, 2)) {
+      for (const key of keys) {
         const box = days.get(key) as A_Row[];
-        axis.append(stamp(key, box[0].day.label, box[0].day.sub, box));
-      }
-      const older = keys.slice(2);
-      if (older.length > 0) {
-        const last = days.get(older[older.length - 1]) as A_Row[];
-        const all: A_Row[] = [];
-        for (const key of older) for (const one of days.get(key) as A_Row[]) all.push(one);
-        axis.append(stamp('更早', '更早', '到 ' + (last[0].day.label || last[0].day.day), all));
+        const label = key === '' ? '日期未记录' : (box[0].day.label || key);
+        axis.append(stamp(key || 'undated', label, key === '' ? '' : box[0].day.sub, box));
       }
     }
 
@@ -581,17 +539,21 @@ export function experiencePage(shell: Chrome): Panel {
           if (mine2.some((x) => String(x).toLowerCase().includes(needle))) kept.add(one.name);
         }
       }
+      const sourceList = sources;
       for (const one of rows) {
         if (q !== '' && !kept.has(one.name)) continue;
-        const bit = line('span', 'one', theOwnName(one.name));
-        bit.append(line('span', 'thin', one.kind === '记录' ? '记录 · ' + theCount(one)
+        const bit = line('span', 'one', experienceSourceName(one.name));
+        bit.title = one.name;
+        bit.append(line('span', 'thin', one.kind === '记录' ? theCount(one)
                                                               : '文档'));
-        sources.append(bit);
+        sourceList.append(bit);
       }
     }
 
-    tail.append(line('span', '', '世界里的事'),
-                line('span', '', '共 ' + String(rows.length) + ' 份 · '
+    sourceButton.disabled = sources.childElementCount === 0;
+    sourceButton.textContent = '记录来源 · ' + sources.childElementCount;
+    tail.append(sourceButton,
+                line('span', 'page-footer-summary', '共 ' + String(rows.length) + ' 份 · '
                       + String(howMany) + ' 条'));
   };
 
@@ -619,26 +581,6 @@ export function experiencePage(shell: Chrome): Panel {
 
   find.onAsk((q) => { if (mine !== null) draw(mine, q); });
 
-  const collapseOpen = (): void => {
-    if (unfoldedDays.size === 0 && openedBeats.size === 0) return;
-    unfoldedDays.clear();
-    openedBeats.clear();
-    dayScroll.clear();
-    draw(mine, asked);
-  };
-  root.addEventListener('click', (event) => {
-    const target = event.target;
-    if (!(target instanceof Element) || window.getSelection()?.toString()) return;
-    // Blank space only: selecting text, following a link, and editing search do not fold it.
-    const interactive = 'button, a, input, textarea, select, [role="button"], '
-      + '.txt, .at, .beat-full';
-    if (target.closest(interactive)) return;
-    collapseOpen();
-  });
-  root.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape') collapseOpen();
-  });
-
   const liveRecords = recordRefresh(root, refresh);
 
   return {
@@ -657,6 +599,7 @@ export function experiencePage(shell: Chrome): Panel {
     },
     stop(): void {
       liveRecords.stop();
+      if (sourceDialog.open) sourceDialog.close();
       requestId += 1;
       root.hidden = true;
     },

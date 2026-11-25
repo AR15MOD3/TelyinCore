@@ -10,7 +10,7 @@ const element = (tag: string, cls: string, label?: string): HTMLElement => {
 };
 export function pluginStorageSettings(): HTMLElement {
   const root = element('section', 'settings-card plugin-storage');
-  root.append(element('h3', '', '插件页面状态'), element('p', 'pcs-scope', '当前 Bot · 当前浏览器标签页 · 页签、分页与展开状态'));
+  root.append(element('h3', '', '插件页面状态'), element('p', 'pcs-scope', '当前 Bot · 当前浏览器标签页 · 页签和分页等显示状态'));
   const panel = element('div', 'pcs-panel');
   const toolbar = element('div', 'pcs-toolbar');
   const search = document.createElement('input'); search.type = 'search'; search.maxLength = 128;

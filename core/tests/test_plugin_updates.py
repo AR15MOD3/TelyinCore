@@ -105,8 +105,13 @@ def test_service_start_without_browser_and_nonblocking_endpoint(tmp_path):
 def test_remote_manifest_is_bounded_and_validated(tmp_path,monkeypatch):
     import base64
     raw=json.dumps({'name':'demo','version':'0.2.4','telyincore':{'kind':'infinity','api':1},'keywords':['core-infinity']}).encode()
-    monkeypatch.setattr('telyincore.download_sources.github_json',lambda *a,**kw:{'type':'file','size':len(raw),'encoding':'base64','content':base64.b64encode(raw).decode()})
-    assert remote_manifest('owner/demo',tmp_path)=={'name':'demo','version':'0.2.4'}
+    def ask(url,*args,**kw):
+        if '/releases?' in url: return [{'tag_name':'v0.2.4'}]
+        if '/commits/' in url: return {'sha':'a'*40}
+        assert url.endswith('contents/package.json?ref='+'a'*40)
+        return {'type':'file','size':len(raw),'encoding':'base64','content':base64.b64encode(raw).decode()}
+    monkeypatch.setattr('telyincore.download_sources.github_json',ask)
+    assert remote_manifest('owner/demo',tmp_path)=={'name':'demo','version':'0.2.4','tag':'v0.2.4','release_status':'stable'}
 
 
 def test_removal_and_source_change_invalidate_visible_update(tmp_path):

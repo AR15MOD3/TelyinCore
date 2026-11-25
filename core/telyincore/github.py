@@ -57,28 +57,13 @@ def _ask(url: str, proxy=None) -> Any:
 
 
 def _an_archive(owner: str, repo: str, branch: str, proxy=None) -> tuple[str, str]:
-    """ **一条能下载的归档链接**（ 有 tag 就用 tag，没有就退回那个分支 ）。
-
-    交回 `(链接, 用的是哪个)`： 第二个**要说出来** —— "从分支拿的"与"从发布拿的"
-    不是一回事（ 前者会**随仓库变** ，而用户有权知道手里那一份是哪种 ）。
-
-    ⚠️ **tag 那一次可能失败**（没有 tag 的仓库、或者那一跳被限流 ）⇒ **退回分支**
-       —— 而**不许静默**：第二种退路**照实说出来**（走 `said` 那一格 ）。
-    """
+    """Only published stable releases may be offered by the marketplace."""
+    from .plugin_releases import latest_release
     try:
-        url = f"{REPOS_URL}/{owner}/{repo}/tags?per_page={TAGS_PER_REPO}"
-        tags = _ask(url, proxy) if proxy else _ask(url)
-        if isinstance(tags, list) and tags:
-            name = str(tags[0].get("name") or "")
-            if name:
-                # **版本就是那个 tag 名**（2026-10-05 作者给的排法：「版本：v0.1.0」）——
-                # 原先是"发布 v0.1.0"那种带前缀的话 ⇒ 页上没法直接当版本用 。
-                return (f"https://github.com/{owner}/{repo}/archive/refs/tags/{name}.tar.gz", name)
-    except Exception: # noqa: BLE001 —— 退回分支（而下面说出来 ）
-        pass
-    # 退回分支那一种：**照样把话说全**（"这一份会随仓库变" ）—— 而它**不是**一个版本号
-    return (f"https://github.com/{owner}/{repo}/archive/refs/heads/{branch}.tar.gz",
-            f"{branch}（分支，没打 tag）")
+        choice=latest_release(f'{owner}/{repo}',lambda path:_ask(f'{REPOS_URL}/{owner}/{repo}/{path}',proxy))
+        return (choice['download'],choice['version']) if choice else ('','暂无正式发布')
+    except Exception:
+        return ('','正式版本暂时无法读取')
 
 
 from threading import Lock
@@ -124,7 +109,7 @@ def _fetch_fresh(cache: Any = None, proxy=None) -> dict[str, Any]:
     answer = {"found": rows, "wired": True, "where": url,
               "said": (f"GitHub 上打了「{TOPIC}」这一格的仓库有 {len(rows)} 个。"
                        if rows else f"GitHub 上还没有仓库打上「{TOPIC}」这一格。"),
-              "at": time.time(), "stale": False}
+              "at": time.time(), "stale": False, "release_policy": 2}
     global _last_error, _retry_after
     _last_error = ""
     _retry_after = 0.0
@@ -149,7 +134,7 @@ def _on_disk(cache: Any) -> dict[str, Any] | None:
         got = json.loads(Path(cache).read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return None
-    return got if isinstance(got, dict) and "found" in got else None
+    return got if isinstance(got, dict) and "found" in got and got.get("release_policy")==2 else None
 
 
 #: ⚠️ **同一个时刻只许一个预热线程**（2026-10-05）：不加这个闸，每次刷页都会开一个 ——

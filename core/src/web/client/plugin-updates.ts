@@ -2,7 +2,7 @@
 import { pageFetch as fetch } from './status-json';
 export interface PluginUpdate {
   name: string; displayName: string; current: string; latest?: string; repository: string;
-  status: 'pending'|'available'|'current'|'ahead'|'prerelease'|'managed'|'unsupported'|'unavailable';
+  status: 'pending'|'available'|'current'|'ahead'|'prerelease'|'managed'|'unsupported'|'unavailable'|'unreleased';
   stale?: boolean; error?: string; message?: string; checkedAt?: number;
 }
 interface UpdateState {rows: PluginUpdate[]; checking: boolean; message?: string;}
@@ -32,7 +32,7 @@ function summary(): string {
   const count = available().length;
   const unknown = state.rows.filter(row => row.status === 'pending' || row.status === 'unavailable' || row.stale).length;
   const unsupported=state.rows.filter(row=>row.status==='unsupported').length;
-  const checked=state.rows.filter(row=>['current','ahead','prerelease'].includes(row.status)&&!row.stale).length;
+  const checked=state.rows.filter(row=>['current','ahead','prerelease','unreleased'].includes(row.status)&&!row.stale).length;
   return count ? `${count} 个插件发现新版本${unknown ? `，${unknown} 项待复查` : ''}`
     : unknown ? `${unknown} 个插件尚未确认版本` : checked ? `已检查 ${checked} 个插件，暂无更新` : unsupported ? `${unsupported} 个插件无法自动检查，请查看来源` : state.rows.length ? '内置插件随 Core 更新' : loaded ? '暂无已安装插件' : '等待读取插件更新状态';
 }
@@ -94,7 +94,7 @@ export function pluginUpdatesPanel() {
   controls.append(search,filter,check);
   const hint=el('p',summary(),'plugin-update-hint');hint.setAttribute('role','status');
   const list=el('div','','plugin-update-list');
-  const foot=el('p','服务启动时检查，空闲时每 6 小时复查。版本来自仓库默认分支；实际发布请查看作者说明。','plugin-update-footnote');
+  const foot=el('p','服务启动时检查，空闲时每 6 小时复查。只检查正式 Release；不包含开发分支、预发布版或未发布的标签。','plugin-update-footnote');
   root.append(controls,hint,list,foot);
   let renderKey='';
   const render=()=>{

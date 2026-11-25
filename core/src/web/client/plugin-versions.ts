@@ -17,12 +17,10 @@ export function pluginVersions(repo:string,name:string,current:string,blocked:bo
   function draw(){
     body.replaceChildren();
     const controls=el('div','','pw-version-controls');
-    const kind=el('select');kind.setAttribute('aria-label','版本来源');kind.add(new Option('正式发布与预发布','releases'));kind.add(new Option('全部版本标签','tags'));kind.value=s.kind;kind.disabled=s.loading||blocked;
-    kind.onchange=()=>{s.kind=kind.value;s.page=1;s.selected='';s.data=undefined;void read();};
-    const refresh=button(s.loading?'正在读取…':s.data?'刷新版本':'读取版本',()=>{void read();});refresh.disabled=s.loading||blocked;controls.append(kind,refresh);body.append(controls);
+    const refresh=button(s.loading?'正在读取…':s.data?'刷新版本':'读取版本',()=>{void read();});refresh.disabled=s.loading||blocked;controls.append(el('span','正式发布版本'),refresh);body.append(controls);
     if(s.error){const error=el('p',s.error,'pw-operation');error.setAttribute('role','status');body.append(error);}
-    if(!s.data){body.append(el('p',s.loading?'正在读取版本…':'点击“读取版本”获取可安装的历史版本。'));return;}
-    if(!s.data.rows.length){body.append(el('p',s.kind==='releases'?'作者尚未创建 Release，可切换到“全部版本标签”。':'作者尚未发布版本标签。'));}
+    if(!s.data){body.append(el('p',s.loading?'正在读取版本…':'点击“读取版本”查看正式版和历史正式版。'));return;}
+    if(!s.data.rows.length){body.append(el('p','作者尚未发布正式 Release，暂不提供下载。'));}
     else{
       const select=el('select');select.setAttribute('aria-label','选择插件版本');select.disabled=blocked||s.loading;
       for(const row of s.data.rows)select.add(new Option(row.tag+(row.prerelease?' · 预发布':'')+(row.date?' · '+row.date.slice(0,10):'')+(row.tag.replace(/^v/,'')===current?' · 当前版本':''),row.tag));
@@ -31,7 +29,7 @@ export function pluginVersions(repo:string,name:string,current:string,blocked:bo
       const row=s.data.rows.find(row=>row.tag===s.selected)!;
       const actions=el('div','','pw-version-controls');const apply=button(current?'安装所选版本':'安装此版本',()=>install(row));apply.disabled=blocked||s.loading;actions.append(apply,link('下载源码包 ↗',row.download),link('发布说明 ↗',row.source));body.append(actions);
       if(row.notes){const notes=el('section','','pw-version-notes');notes.append(el('h3','版本说明'),el('p',row.notes));body.append(notes);}
-      body.append(el('p',current?'切换前请先停用插件。原安装包会备份，配置和缓存保留；旧版是否兼容现有配置，以作者说明为准。':'按所选标签安装并核对插件清单，安装后默认停用。','pw-version-hint'));
+      body.append(el('p',current?'切换前请先停用插件。原安装包会备份，配置和缓存保留；旧版是否兼容现有配置，以作者说明为准。':'按所选正式版本安装并核对插件清单，安装后默认停用。','pw-version-hint'));
     }
     if(s.page>1||s.data.more){const pages=el('div','','pw-version-controls');const previous=button('上一页',()=>{s.page--;s.selected='';void read();});previous.disabled=blocked||s.loading||s.page===1;const next=button('下一页',()=>{s.page++;s.selected='';void read();});next.disabled=blocked||s.loading||!s.data.more;pages.append(previous,el('span','第 '+s.page+' 页'),next);body.append(pages);}
   }

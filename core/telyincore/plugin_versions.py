@@ -43,27 +43,14 @@ def _ask(root, repo, path, *, official=False, network_root=None):
 
 def history(root, repo, page=1, kind='releases'):
     checked_repo(repo)
-    if type(page) is not int or not 1 <= page <= 1000 or kind not in ('releases','tags'):
-        raise ValueError('版本分页参数无效')
+    if type(page) is not int or not 1 <= page <= 1000 or kind != 'releases':
+        raise ValueError('仅支持正式 Release 版本')
     key=(str(Path(root).resolve()),repo.lower(),page,kind)
     with _guard:
         cached=_cache.get(key)
         if cached and time.monotonic()-cached[0]<300: return cached[1]
-    data=_ask(root,repo,f'{kind}?per_page=20&page={page}')
-    if not isinstance(data,list): raise ValueError('GitHub 版本列表格式错误')
-    rows=[]
-    for row in data:
-        if not isinstance(row,dict) or row.get('draft'): continue
-        tag=row.get('tag_name' if kind=='releases' else 'name')
-        if not isinstance(tag,str) or not tag or len(tag)>200 or any(ord(c)<32 for c in tag): continue
-        tag_url=quote(tag,safe='')
-        rows.append({'tag':tag,'title':str(row.get('name') or tag)[:200],
-            'date':row.get('published_at') if kind=='releases' else None,
-            'prerelease':row.get('prerelease') is True,
-            'notes':str(row.get('body') or '')[:12000],
-            'source':f'https://github.com/{repo}/'+('releases/tag/' if kind=='releases' else 'tree/')+tag_url,
-            'download':f'https://github.com/{repo}/archive/refs/tags/{tag_url}.tar.gz'})
-    result={'rows':rows,'page':page,'more':len(data)==20,'kind':kind}
+    from .plugin_releases import release_page
+    result=release_page(repo,lambda path:_ask(root,repo,path,official=True),page)
     with _guard:
         if len(_cache)>=128: _cache.pop(next(iter(_cache)))
         _cache[key]=(time.monotonic(),result)
@@ -131,18 +118,47 @@ def install_version(root, repo, tag, name, current='', *, proxy_root=None, ready
             if not (declared or recorded) or any(value and value.lower()!=repo.lower() for value in (declared,recorded)):
                 raise ValueError('所选仓库与已安装来源不一致，不能覆盖')
     check_source()
+    from .plugin_releases import require_release
+    release=require_release(repo,tag,lambda path:_ask(root,repo,path,official=True,network_root=proxy_root))
     # Resolve only a tag, not a same-named branch. Pin the install to that commit.
     commit=_ask(root,repo,'commits/'+quote('refs/tags/'+tag,safe=''),official=True,network_root=proxy_root)
     sha=commit.get('sha') if isinstance(commit,dict) else None
     if not isinstance(sha,str) or not re.fullmatch('[a-f0-9]{40}',sha): raise ValueError('无法核验所选标签对应的提交')
     url=f'https://github.com/{repo}/archive/{sha}.tar.gz'
     def publish(core,n,stage,dest):
-        Version(read_json(stage/'package.json').get('version'))
+        version=read_json(stage/'package.json').get('version')
+        if version!=release['version']: raise ValueError('正式版本标签与插件清单版本不一致')
+        Version(version)
         def checked_ready():
             check_source();ready()
+
+        if bundled(core,n): raise ValueError('Core 内置插件随 Core 更新')
         publish_version(core,n,stage,dest,current,ready=checked_ready)
     result=install_url(root,url,proxy_root=proxy_root,expected_name=name,publisher=publish)
     if result.get('ok'):
         result.update(tag=tag,commit=sha,version=read_json(destination/'package.json').get('version'),
             said='所选版本已安装，插件保持停用；请核对配置后启用。')
+    return result
+
+
+def install_release(root, repo, tag, *, expected_name='', proxy_root=None):
+    """First install from a stable Release, with its commit pinned before download."""
+    from .plugin_releases import require_release
+    from .market import install_url
+    from .plugin_uninstall import publish_package
+    checked_repo(repo)
+    ask=lambda path:_ask(root,repo,path,official=True,network_root=proxy_root)
+    release=require_release(repo,tag,ask)
+    commit=ask('commits/'+quote('refs/tags/'+tag,safe=''))
+    sha=commit.get('sha') if isinstance(commit,dict) else None
+    if not isinstance(sha,str) or not re.fullmatch('[a-f0-9]{40}',sha):
+        raise ValueError('无法核验正式版本提交')
+    def publish(core,name,stage,dest):
+        if bundled(core,name): raise ValueError('Core 内置插件随 Core 更新')
+        if read_json(stage/'package.json').get('version') != release['version']:
+            raise ValueError('正式版本标签与插件清单版本不一致')
+        publish_package(core,name,stage,dest)
+    result=install_url(root,f'https://github.com/{repo}/archive/{sha}.tar.gz',
+        proxy_root=proxy_root,expected_name=expected_name,publisher=publish)
+    if result.get('ok'): result.update(tag=tag,commit=sha)
     return result

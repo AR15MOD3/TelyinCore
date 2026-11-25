@@ -36,19 +36,21 @@ def setup(tmp_path,version='2.0.0',name='demo'):
 def network(monkeypatch,spec=None):
     calls=[]
     def ask(root,repo,path,**kwargs):
-        calls.append((repo,path,kwargs));return {'sha':'a'*40}
+        calls.append((repo,path,kwargs))
+        if path.startswith('releases/tags/'): return {'tag_name':path.split('/')[-1]}
+        return {'sha':'a'*40}
     monkeypatch.setattr(v,'_ask',ask)
     monkeypatch.setattr('telyincore.market._fetch',lambda *args:archive(spec or package()))
     return calls
 
 
 def test_history_pagination_filters_drafts_and_builds_own_links(tmp_path,monkeypatch):
-    monkeypatch.setattr(v,'_ask',lambda *a,**kw:[{'tag_name':'v1/old','body':'<script>hi</script>','html_url':'https://evil.test','prerelease':True},{'tag_name':'draft','draft':True}])
+    monkeypatch.setattr(v,'_ask',lambda *a,**kw:[{'tag_name':'v1.0.0','body':'<script>hi</script>','html_url':'https://evil.test'}, {'tag_name':'v2.0.0','prerelease':True},{'tag_name':'draft','draft':True}])
     data=v.history(tmp_path,'owner/demo')
     assert len(data['rows'])==1
     row=data['rows'][0]
-    assert row['tag']=='v1/old' and row['prerelease']
-    assert row['source']=='https://github.com/owner/demo/releases/tag/v1%2Fold'
+    assert row['tag']=='v1.0.0' and not row['prerelease']
+    assert row['source']=='https://github.com/owner/demo/releases/tag/v1.0.0'
     assert row['notes']=='<script>hi</script>'
     with pytest.raises(ValueError):v.history(tmp_path,'owner/..')
     with pytest.raises(ValueError):v.history(tmp_path,'owner/demo',0)
@@ -58,7 +60,8 @@ def test_version_downgrade_retains_data_and_backup_without_import(tmp_path,monke
     folder=setup(tmp_path);calls=network(monkeypatch)
     result=v.install_version(tmp_path,'owner/demo','v1.0.0','demo','2.0.0')
     assert result['ok'] and result['commit']=='a'*40
-    assert calls[0][1]=='commits/refs%2Ftags%2Fv1.0.0' and calls[0][2]['official']
+    assert calls[0][1]=='releases/tags/v1.0.0' and calls[0][2]['official']
+    assert calls[1][1]=='commits/refs%2Ftags%2Fv1.0.0'
     assert json.loads((folder/'package.json').read_text())['version']=='1.0.0'
     assert (folder/'config.json').read_text()=='{"mine":true}'
     assert (folder/'cache/image.png').read_bytes()==b'image'
@@ -77,7 +80,7 @@ def test_failure_never_replaces_current_package(tmp_path,monkeypatch,reason):
     network(monkeypatch,package('wrong' if reason=='wrong-name' else 'demo'))
     def call():
         return v.install_version(tmp_path,'other/repo' if reason=='source' else 'owner/demo',
-            'v1','demo','0.0.0' if reason=='changed' else '2.0.0',
+            'v1.0.0','demo','0.0.0' if reason=='changed' else '2.0.0',
             ready=(lambda:(_ for _ in ()).throw(ValueError('enabled'))) if reason=='ready' else lambda:None)
     if reason=='source':
         with pytest.raises(ValueError):call()
@@ -95,14 +98,14 @@ def test_rename_failure_rolls_back(tmp_path,monkeypatch):
         if Path(src).name.startswith('.装到一半-'):raise OSError('disk error')
         real(src,dst)
     monkeypatch.setattr(v.os,'replace',fail)
-    assert not v.install_version(tmp_path,'owner/demo','v1','demo','2.0.0')['ok']
+    assert not v.install_version(tmp_path,'owner/demo','v1.0.0','demo','2.0.0')['ok']
     assert (folder/'index.py').read_text()=='old executable'
 
 
 def test_builtin_cannot_be_installed_from_independent_version(tmp_path,monkeypatch):
     p=tmp_path/'builtin/infinity/demo';p.mkdir(parents=True);(p/'package.json').write_text(json.dumps(package()))
     monkeypatch.setattr(v,'_ask',lambda *a,**k:pytest.fail('no network'))
-    with pytest.raises(ValueError,match='随 Core'):v.install_version(tmp_path,'owner/demo','v1','demo')
+    with pytest.raises(ValueError,match='随 Core'):v.install_version(tmp_path,'owner/demo','v1.0.0','demo')
 
 
 def test_core_sync_updates_whole_package_without_changing_bot_choices(tmp_path):

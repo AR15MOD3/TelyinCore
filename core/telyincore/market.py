@@ -204,6 +204,20 @@ def install_url(root: Any, url: str, *, proxy_root=None, expected_name="", publi
        "读本机任意文件"的一条口子 ； 本机那一份走 `install_from` ）。
     """
     import shutil
+    # Internal pinned installs provide a publisher after validating the Release.
+    if publisher is None:
+        import re
+        from urllib.parse import unquote
+        from .plugin_versions import install_release
+        from .plugin_updates import repository
+        repo=repository(url)
+        if repo:
+            match=re.fullmatch(r'https://github\.com/[\w.-]+/[\w.-]+/archive/refs/tags/(.+)\.tar\.gz',url)
+            if not match: return {'ok':False,'said':'插件市场仅支持正式 Release，不支持开发分支或裸提交安装'}
+            try:
+                return install_release(root,repo,unquote(match[1]),expected_name=expected_name,proxy_root=proxy_root)
+            except Exception as exc:
+                return {'ok':False,'said':'正式版本安装失败：'+str(exc)}
 
     from .plugins import KEYWORD, MANIFEST, the_place
 

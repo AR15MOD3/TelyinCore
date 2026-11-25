@@ -164,7 +164,7 @@ export function pluginWorkspace(shell:Chrome,view:View='local'):Panel {
       const configure=node('a','pw-button pw-primary','打开配置');configure.href=`#/infinity/${encodeURIComponent(e.name)}`;if(busy){configure.removeAttribute('href');configure.setAttribute('aria-disabled','true');}actions.append(configure);
       const toggle=button(p!.restart_required&&p!.restart_action!=='config'?(p!.enabled?'撤销启用':'撤销停用'):p!.enabled?'停用插件':'启用插件',()=>{void mutate(e,'switch');});toggle.disabled=busy||!!pluginOperation()?.busy;actions.append(toggle);
       const status=node('span','pw-runtime',runtime(p!));status.dataset.tone=p!.loaded?'on':'off';metadata.append(status);
-    }else{const install=button(p?.builtin?'恢复安装':'安装插件',()=>{void mutate(e,'install');},'pw-primary');install.disabled=busy||!!pluginOperation()?.busy||!p?.builtin&&!m?.url;actions.append(install);}
+    }else{const install=button(p?.builtin?'恢复安装':!m?.url?'暂无正式版':'安装插件',()=>{void mutate(e,'install');},'pw-primary');install.disabled=busy||!!pluginOperation()?.busy||!p?.builtin&&!m?.url;actions.append(install);}
     if(exists&&p?.builtin){const check=button('检查 Core 更新',()=>openCoreUpdateDialog(check));actions.append(check);}
     else if(exists){const check=button(checkingUpdates||pluginUpdateSnapshot().checking?'检查中…':'检查更新',()=>{void checkUpdates();});check.disabled=busy||!!pluginOperation()?.busy||checkingUpdates||pluginUpdateSnapshot().checking;actions.append(check);}
     const source=repo(e);

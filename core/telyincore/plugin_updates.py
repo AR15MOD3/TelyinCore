@@ -57,10 +57,20 @@ def read_json(path, limit=65536):
 
 def remote_manifest(repo, root):
     from .download_sources import github_json, public_network, settings_root
-    result=github_json(f'https://api.github.com/repos/{repo}/contents/package.json?check={int(time.time()//3600)}',
-        {'User-Agent':'TelyinCore-plugin-updates','Accept':'application/vnd.github+json'},
-        public_network(settings_root(root),'market'),limit=100000,timeout=4,
-        official_only=False)
+    from .plugin_releases import latest_release
+    from urllib.parse import quote
+    def ask(path):
+        return github_json(f'https://api.github.com/repos/{repo}/{path}',
+            {'User-Agent':'TelyinCore-plugin-updates','Accept':'application/vnd.github+json'},
+            public_network(settings_root(root),'market'),limit=2*1024*1024,timeout=8,
+            official_only=True)
+    release=latest_release(repo,ask)
+    if release is None: return {'release_status':'none'}
+    commit=ask('commits/'+quote('refs/tags/'+release['tag'],safe=''))
+    sha=commit.get('sha') if isinstance(commit,dict) else None
+    if not isinstance(sha,str) or not re.fullmatch('[a-f0-9]{40}',sha):
+        raise ValueError('无法核验正式版本提交')
+    result=ask('contents/package.json?ref='+sha)
     if (not isinstance(result,dict) or result.get('type')!='file' or result.get('encoding')!='base64'
             or type(result.get('size')) is not int or not 0<result['size']<=65536):
         raise ValueError('仓库根目录没有合规的插件清单')
@@ -75,7 +85,8 @@ def remote_manifest(repo, root):
         raise ValueError('远端插件契约不兼容')
     Version(spec.get('version'))
     if not isinstance(spec.get('name'),str) or len(spec['name'])>200: raise ValueError('远端插件名称无效')
-    return {'name':spec['name'],'version':spec['version']}
+    if spec['version'] != release['version']: raise ValueError('正式版本标签与插件清单版本不一致')
+    return {'name':spec['name'],'version':spec['version'],'tag':release['tag'],'release_status':'stable'}
 
 class PluginUpdates:
     def __init__(self,root,fetch=None,clock=time.time):
@@ -88,9 +99,9 @@ class PluginUpdates:
     def _state(self):
         try:
             state=read_json(self.path(),2*1024*1024)
-            if state.get('schema')!=1 or not isinstance(state.get('cache'),dict) or not isinstance(state.get('attempts'),list): raise ValueError()
+            if state.get('schema')!=2 or not isinstance(state.get('cache'),dict) or not isinstance(state.get('attempts'),list): raise ValueError()
             return state
-        except (OSError,ValueError): return {'schema':1,'cache':{},'attempts':[]}
+        except (OSError,ValueError): return {'schema':2,'cache':{},'attempts':[]}
     def _save(self,state):
         path=self.path();path.parent.mkdir(parents=True,exist_ok=True)
         with tempfile.NamedTemporaryFile(mode='w',encoding='utf-8',dir=path.parent,delete=False) as file:
@@ -145,6 +156,9 @@ class PluginUpdates:
                 checked=float(cached.get('checkedAt',0));last=float(cached.get('attemptAt',0))
                 row.update(checkedAt=checked or None,attemptAt=last or None,
                     stale=not 0<=now-checked<TTL,error=str(cached.get('error',''))[:200])
+                if cached.get('release_status')=='none':
+                    row.update(status='unreleased',message='暂无正式发布')
+                    continue
                 if cached.get('name')!=row['name']:
                     row.update(status='unavailable' if cached else 'pending',message=row['error'] or '远端清单名称未确认')
                     continue
@@ -185,8 +199,9 @@ class PluginUpdates:
                     self._save(state) # Shared request budget survives process exit.
                     try:
                         remote=self.fetch(repo)
-                        Version(remote['version'])
-                        if not isinstance(remote['name'],str): raise ValueError('清单名称无效')
+                        if remote.get('release_status')!='none':
+                            Version(remote['version'])
+                            if not isinstance(remote['name'],str): raise ValueError('清单名称无效')
                         state['cache'][key]={**remote,'attemptAt':now,'checkedAt':self.clock(),'error':''}
                         self._error=''
                     except Exception as exc:

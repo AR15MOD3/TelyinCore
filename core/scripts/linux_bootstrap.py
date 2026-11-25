@@ -22,6 +22,8 @@ def fingerprint(core):
 
 def main(argv=None):
     args=list(sys.argv[1:] if argv is None else argv);core=CORE
+    from scripts.linux_relocation import check_environment
+    check_environment(core)
     marker=core/'.linux-startup.json';now=fingerprint(core)
     if not args and marker.is_file():
         try:cached=json.loads(marker.read_text())

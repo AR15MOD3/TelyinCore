@@ -19,7 +19,10 @@ def prepare_workspace(core=CORE, *, configure_qq=False):
         from bot_registry import bot_id
         actual = json.loads(marker.read_text()) if marker.is_file() else {}
         if isinstance(actual.get('bot'), str): expected['bot'] = bot_id(actual['bot'])
-        if not marker.is_file() or actual!=expected:
+        if marker.is_file():
+            from scripts.linux_relocation import reconcile_marker
+            reconcile_marker(core,workspace,marker,expected)
+        if not marker.is_file() or json.loads(marker.read_text())!=expected:
             raise ValueError('Bot 档案目录归属不匹配，无法启动')
     else:
         workspace.mkdir(mode=0o700);marker.write_text(json.dumps(expected))

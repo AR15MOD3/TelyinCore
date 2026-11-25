@@ -47,7 +47,7 @@ def verify_bot(core, bot):
     return base if bot == _object(safe_path(core, base/'bot-runtime-owner.json'))['baseline'] else base/'bot-runtimes'/bot
 
 
-def relocate_deliveries(core, bot, home, store):
+def relocate_deliveries(core, bot, home, store, *, previous=None, linux_profile=False):
     from contextlib import ExitStack
     from telyincore.ingress_delivery import digest
     from telyincore.ingress_review import validate
@@ -68,9 +68,15 @@ def relocate_deliveries(core, bot, home, store):
             row = disk.read()
             if row.get('binding') == new:
                 continue
-            if home != safe_path(core.parent, core.parent/'bots'/bot_id(bot)/'memory') or events != verify_bot(core, bot)/'events':
+            event_root = core/'data' if linux_profile else verify_bot(core, bot)
+            if linux_profile:
+                marker = GuardedStore(core.parent, core.parent/'acceptance.json').read()
+                if marker.get('mode') != 'linux-profile-acceptance' or marker.get('bot') != bot:
+                    raise ValueError('Linux 收件记录归属不符')
+            if home != safe_path(core.parent, core.parent/'bots'/bot_id(bot)/'memory') or events != event_root/'events':
                 raise ValueError('收件记录与当前 Bot 的运行目录不一致，原记录已保留。')
-            previous = previous_installation(core)
+            if previous is None:
+                previous = previous_installation(core)
             if previous is None or path_digest(previous/events.relative_to(core.parent)) != row.get('binding'):
                 raise ValueError('未能核实收件记录的原安装路径。如已整体搬家，请在 runtime/previous-installation.txt 填写原安装目录后重试。')
             validate(row, row['binding'])

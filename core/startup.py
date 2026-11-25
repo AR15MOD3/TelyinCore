@@ -296,6 +296,11 @@ def _main_owned(argv=None, *, host_registry=None, launch_options=None,
     folder = book.folder(name)
     if not book.valid(folder):
         raise ValueError(f'档案 {name} 缺少可读取的人设文件；请到「档案 → 处理档案异常」检查')
+    if os.name == 'nt' and host_registry is None:
+        from windows_relocation import reconcile
+        repaired = reconcile(core, name)
+        if repaired:
+            print('已完成安装目录迁移自检：', repaired, flush=True)
     # No support-file writes before identity preflight; child performs initialization.
     if host_registry is not None:
         refuse_existing_instance(core, name, host_registry)

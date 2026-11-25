@@ -40,6 +40,9 @@ def prepare_workspace(core: Path = CORE) -> Path:
     expected = {"version": 1, "mode": "isolated-linux-dev", "source_core": str(core)}
     _plain_path(core, marker)
     if workspace.exists():
+        if marker.is_file():
+            from scripts.linux_relocation import reconcile_marker
+            reconcile_marker(core,workspace,marker,expected)
         if not marker.is_file() or json.loads(marker.read_text()) != expected:
             raise ValueError("开发目录缺少匹配的隔离标记，拒绝复用或覆盖")
     else:

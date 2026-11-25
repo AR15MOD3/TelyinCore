@@ -1,15 +1,15 @@
 """Public Linux acceptance distribution. Never include the source project's runtime or Bots."""
 from pathlib import Path
-import argparse,hashlib,json,re,stat,zipfile,sys
+import argparse,hashlib,json,stat,zipfile,sys
 CORE=Path(__file__).resolve().parents[1]
 if str(CORE) not in sys.path:sys.path.insert(0,str(CORE))
 from scripts.build_windows_acceptance import source_files
+from telyincore.distribution_version import validate_release_version
 
 
 def build(core, destination, version='beta.0.3.1'):
     core=Path(core).resolve(strict=True);destination=Path(destination).resolve()
-    if not re.fullmatch(r'beta\.(?:0|[1-9][0-9]*)(?:\.(?:0|[1-9][0-9]*)){2,3}',version):
-        raise ValueError('expected beta.x.y.z or beta.x.y.z.patch')
+    validate_release_version(version)
     if destination.is_relative_to(core):raise ValueError('release directory must be outside source')
     sources={n:b for n,b in source_files(core).items() if not n.startswith("scripts/components/")}
     if (core/'start.sh').is_symlink():raise ValueError('linked launcher refused')

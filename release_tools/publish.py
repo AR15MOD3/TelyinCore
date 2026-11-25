@@ -10,6 +10,7 @@ import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT/'core'))
+from telyincore.distribution_version import validate_release_version
 from telyincore.online_install import candidate_platform, program_path, safe_file
 from telyincore.package_updates import RELEASE_REPOSITORY, overlay_name, version_key
 
@@ -40,6 +41,7 @@ def build(previous, current, out):
         p, old, a = inventory(before)
         prefix, new, b = inventory(after)
         platform, base, version = candidate_platform(new), old['version'], new['version']
+        validate_release_version(version)
         if p!=prefix or version_key(version)<=version_key(base):raise ValueError('版本或平台不匹配')
         name=overlay_name(platform,base,version)
         rows=[]

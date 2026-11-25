@@ -13,10 +13,15 @@ import json
 from pathlib import Path, PurePosixPath
 import re
 import stat
+import sys
 import tempfile
 import zipfile
 
 CORE = Path(__file__).resolve().parents[1]
+if str(CORE) not in sys.path:
+    sys.path.insert(0, str(CORE))
+from telyincore.distribution_version import validate_release_version
+
 TREES = ("telyincore", "telyincore_correlation_v2", "builtin", "templates",
          "presets", "schemas", "dist/web", "scripts", "tools")
 ROOT_FILES = ("start.bat", "start.ps1", "pyproject.toml", "LICENSE", "THIRD_PARTY_NOTICES", "README.md",
@@ -210,8 +215,7 @@ def check_index_startup_contract(sources: dict[str, bytes]) -> None:
 
 def build(core: Path, destination: Path, *, version: str = "beta.0.3.0",
           python_installer: Path | None = None, wheelhouse: Path | None = None) -> Path:
-    if not re.fullmatch(r"beta\.(?:0|[1-9][0-9]*)(?:\.(?:0|[1-9][0-9]*)){2,3}", version):
-        raise ValueError("expected beta.x.y.z or beta.x.y.z.patch")
+    validate_release_version(version)
     core = core.resolve(strict=True)
     destination = destination.absolute()
     if destination.resolve().is_relative_to(core):

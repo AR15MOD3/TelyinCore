@@ -4,6 +4,12 @@ import argparse
 import hashlib
 import json
 import zipfile
+import sys
+
+CORE = Path(__file__).resolve().parents[1]
+if str(CORE) not in sys.path:
+    sys.path.insert(0, str(CORE))
+from telyincore.distribution_version import validate_release_version
 
 
 def read_release(path):
@@ -33,6 +39,7 @@ def digest(blob):
 def build(previous, current, destination, notes):
     old_root, old, old_version = read_release(previous)
     root, new, version = read_release(current)
+    validate_release_version(version)
     if old_root != root:
         raise ValueError('platforms differ')
     excluded = ('bots/', 'core/data/', 'core/extensions/', 'runtime/',

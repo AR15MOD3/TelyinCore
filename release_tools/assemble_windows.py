@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 import zipfile
 
-from publish import ROOT, inventory, version_key
+from publish import ROOT, inventory, validate_release_version
 
 PROGRAM = """qq_host_runtime.py qq_encounters.py startup.py scripts/windows_acceptance.py bot_launcher_lifecycle.py deployment_relocation.py bot_companion_custody.py telyincore/download_sources.py launch.py infinity_control.py bot_launcher_companion.py qq_voice_services.py
 qq_conversation_privacy.py qq_poke.py qq_stickers.py qq_sticker_view.py qq_visual_request.py
@@ -26,7 +26,7 @@ def digest(data):
 
 
 def assemble(baseline, web, wheel, version, out):
-    version_key(version)
+    validate_release_version(version)
     with zipfile.ZipFile(baseline) as archive:
         prefix, candidate, ledger = inventory(archive)
         if prefix != "Telyincore_win/":

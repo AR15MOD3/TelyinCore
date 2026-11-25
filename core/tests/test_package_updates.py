@@ -11,6 +11,17 @@ from telyincore import package_updates as updates
 from telyincore.web import WebService
 
 
+def test_new_release_requires_three_segments_and_legacy_versions_still_upgrade():
+    from telyincore.distribution_version import validate_release_version
+
+    validate_release_version("beta.0.5.5")
+    validate_release_version("beta.0.2.1")
+    for old in ("beta.0.5.4.9", "beta.0.5.4.10"):
+        with pytest.raises(ValueError, match="三段"):
+            validate_release_version(old)
+        assert updates.version_key(old) < updates.version_key("beta.0.5.5")
+
+
 def installed(root, platform, version):
     schema = ("windows" if platform == "win" else platform) + "-core-acceptance-v1"
     (root / "candidate.json").write_text(json.dumps({"schema": schema, "version": version}))

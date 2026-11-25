@@ -2065,19 +2065,46 @@ dialog.pw-confirm {
 .package-update-card [data-update-links] {
   display: flex;
   flex-wrap: wrap;
-  gap: 14px;
-  margin-top: 12px;
-  font-size: 12px;
+  align-items: center;
+  gap: 6px 8px;
+  margin-top: 14px;
 }
-.package-update-card [data-update-links][hidden] {
-  display: none;
-}
-.package-update-card [data-update-links] a {
+.package-update-card [data-update-links] > :is(a, button) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  min-height: 32px;
+  padding: 4px 10px;
+  margin: 0;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-row);
+  background: transparent;
   color: var(--color-mint-text);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 20px;
+  white-space: nowrap;
   text-decoration: none;
+  cursor: pointer;
 }
-.package-update-card [data-update-links] a:hover {
-  text-decoration: underline;
+.package-update-card [data-update-links] > :is(a, button):hover {
+  background: var(--color-wash);
+  color: var(--color-ink);
+}
+.package-update-card [data-update-links] > :is(a, button):focus-visible {
+  outline: 2px solid var(--color-mint);
+  outline-offset: 2px;
+}
+.package-update-card [data-update-links] > button:disabled {
+  opacity: .55;
+  cursor: wait;
+}
+@media (pointer: coarse) {
+  .package-update-card [data-update-links] > :is(a, button) {
+    min-height: 44px;
+  }
 }
 .package-update-card :is(details, section) {
   margin-top: 18px;

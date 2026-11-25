@@ -2075,8 +2075,10 @@ snowProcess.hidden = false;
     }
 
     const mine = requestId;
-
-
+    const serviceAction = route === '/infinity/qq/process' && 'action' in body
+      && (body.action === 'snowluma_start_service' || body.action === 'snowluma_stop');
+    if (serviceAction) serviceUtilities.after(feedback);
+    else qqPanel.append(feedback);
 
     let prepared = false;
 
@@ -2134,7 +2136,7 @@ snowProcess.hidden = false;
 
       // The first save is committed. Without a server revision-bound CAS,
       // restoring a stale snapshot could overwrite another editor's changes.
-      showFeedback([((error instanceof Error ? error.message : corePhrase("操作失败。"))), ((prepared ? corePhrase("；语音设置已保存，后续动作未确认。请刷新检查后再决定；未自动回滚或重试。") : corePhrase("")))]);
+      showFeedback([((error instanceof Error ? error.message : corePhrase("操作失败。"))), ((prepared ? corePhrase("；语音设置已保存，后续动作未确认。请刷新检查后再决定；未自动回滚或重试。") : corePhrase("")))], !serviceAction);
 
       if (currentQQ) drawQQ(currentQQ);
 

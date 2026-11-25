@@ -36,6 +36,24 @@ def inventory(z):
     return prefix, candidate, result
 
 
+def add_reviewed_baselines(platform, base, row):
+    # This Windows acceptance build kept its release number while its frontend
+    # received two reviewed UI fixes, both included in the .6.2 release.
+    if (platform, base) != ("win", "beta.0.5.4.9"):
+        return
+    reviewed = {
+        ("core/dist/web/current.json", "827f7b0a5747fa9b17757a3abb6d66c17f8c65a1c6baedba959dabcacd02c38e"):
+            "547e2a7543977c4e16a6484ddb432614f12b11f80b05e348fcfcb43e806a173d",
+        ("core/src/web/client/infinity-page.ts", "de1ea97652e0f760161771faaecb44c3fbd4d01c91b857e5829726899a5773a3"):
+            "78844f73166801d2fae37d6cebf891c23970f43c48d7f86212ac1a551fcb4139",
+    }
+    value = reviewed.get((row["path"], row["old_sha256"]))
+    if value is not None:
+        alternatives = row.setdefault("old_sha256_alternatives", [])
+        if value not in alternatives:
+            alternatives.append(value)
+
+
 def build(previous, current, out):
     with zipfile.ZipFile(previous) as before, zipfile.ZipFile(current) as after:
         p, old, a = inventory(before)
@@ -54,7 +72,9 @@ def build(previous, current, out):
                 raise ValueError('基线校验失败：'+n)
             if n in b and hashlib.sha256(after.read(prefix+n)).hexdigest()!=b[n]:
                 raise ValueError('发行文件校验失败：'+n)
-            rows.append(dict(path=n,old_sha256=a.get(n),new_sha256=b.get(n)))
+            row = dict(path=n,old_sha256=a.get(n),new_sha256=b.get(n))
+            add_reviewed_baselines(platform, base, row)
+            rows.append(row)
         out.mkdir(parents=True,exist_ok=True)
         target=out/name
         with zipfile.ZipFile(target,'x',zipfile.ZIP_DEFLATED) as package:

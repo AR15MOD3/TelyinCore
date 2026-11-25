@@ -1,4 +1,5 @@
 /** Explicit operator calls from one opaque-origin plugin frame, never model tools. */
+import { confirmAction } from './confirm-dialog';
 import { pageFetch as fetch } from './status-json';
 export interface PageConfig {
   revision: string;
@@ -31,12 +32,14 @@ export function pluginPageBridge(options: {
       reply({ok:false,message:'页面请求无效、配置已变化或已有操作进行中；未执行新操作。'}); return;
     }
     // Confirmation is in trusted host chrome, not sandbox modal or an iframe flag.
-    if (rule.mutates && !window.confirm(`确认执行“${rule.label}”？\n仅影响当前 Bot 的本机记录，不注销游戏账号。操作后请核对结果。`)) {
-      reply({ok:false,message:'已取消，没有执行操作。'}); return;
-    }
     busy = true;
     void (async () => {
       try {
+        if (rule.mutates) {
+          const accepted = await confirmAction(rule.label, '', '确认');
+          if (!live()) return;
+          if (!accepted) { reply({ok:false,message:'已取消。'}); return; }
+        }
         const response = await fetch('/infinity/plugin-page/' + encodeURIComponent(options.name), {
           method:'POST',headers:{'Content-Type':'application/json'},
           body:JSON.stringify({action:request.action,payload:request.payload,

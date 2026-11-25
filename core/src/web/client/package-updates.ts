@@ -41,7 +41,7 @@ function paint(card: HTMLElement, state: PackageStatus) {
   card.querySelector<HTMLElement>('[data-update-platform]')!.textContent =
     [platform, state.current, state.localPreview ? '本机验收源' : state.channel === 'acceptance' ? '验收更新' : ''].filter(Boolean).join(' · ');
   const links = card.querySelector<HTMLElement>('[data-update-links]')!;
-  links.replaceChildren();
+  links.querySelectorAll('a').forEach(link => link.remove());
   const history = card.querySelector<HTMLElement>('[data-update-history]')!;
   const receipt = state.lastInstall;
   history.hidden = !receipt;
@@ -71,7 +71,7 @@ function paint(card: HTMLElement, state: PackageStatus) {
       download.download = file;
       download.className = 'package-download';
       download.textContent = '下载更新包';
-      links.append(download);
+      links.insertBefore(download, links.lastElementChild);
     } else if (!state.installable) {
       notice.textContent = state.required ? '请先更新再唤醒 Bot。请从发布说明获取更新包。' : '请从发布说明获取适用的更新包。';
     }
@@ -81,7 +81,7 @@ function paint(card: HTMLElement, state: PackageStatus) {
       notes.target = '_blank';
       notes.rel = 'noopener noreferrer';
       notes.textContent = '查看发布说明';
-      links.append(notes);
+      links.insertBefore(notes, links.lastElementChild);
     }
   } else if (state.status === 'current') {
     notice.textContent = '当前无需更新。';
@@ -95,7 +95,6 @@ function paint(card: HTMLElement, state: PackageStatus) {
   const details = card.querySelector<HTMLElement>('[data-update-details]')!;
   const detailText = state.status === 'unavailable' ? state.message : state.checkRoute;
   details.querySelector<HTMLElement>('[data-update-connection]')!.textContent = detailText || '';
-  links.hidden = !links.childElementCount;
   const timing = card.querySelector<HTMLElement>('[data-update-timing]')!;
   const time = (stamp: number) => new Date(stamp * 1000).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
   timing.textContent = [state.checkedAt ? '最近检查 ' + time(state.checkedAt) : '',
@@ -292,7 +291,7 @@ export function packageUpdateCard() {
   details.append(summary, platform, connection, timing, history);
   details.hidden = true;
   const inspect = document.createElement('button'); inspect.type = 'button';
-  inspect.className = 'infinity-text-link'; inspect.textContent = '查看更新详情';
+  inspect.textContent = '查看更新详情';
   inspect.dataset.updateInspect = '';
   inspect.disabled = true;
   inspect.onclick = () => showTextDetail('更新详情',
@@ -301,10 +300,11 @@ export function packageUpdateCard() {
       || notice.textContent || '版本信息正在读取，请稍后重试。');
   const links = document.createElement('div');
   links.dataset.updateLinks = '';
+  links.append(inspect);
   const actions = document.createElement('div');
   actions.className = 'package-update-actions';
   actions.append(button, install);
-  card.append(title, current, notice, links, details, inspect, actions);
+  card.append(title, current, notice, links, details, actions);
   if (last) paint(card, last);
   else notice.textContent = '正在读取版本信息…';
   void check();

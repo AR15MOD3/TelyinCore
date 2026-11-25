@@ -2105,7 +2105,7 @@ function paint3(card, state3) {
   current2.textContent = target && state3.current ? version(state3.current) + " → " + version(target) : state3.current ? "v" + version(state3.current) : "版本未识别";
   card.querySelector("[data-update-platform]").textContent = [platform, state3.current, state3.localPreview ? "本机验收源" : state3.channel === "acceptance" ? "验收更新" : ""].filter(Boolean).join(" · ");
   const links = card.querySelector("[data-update-links]");
-  links.replaceChildren();
+  links.querySelectorAll("a").forEach((link) => link.remove());
   const history = card.querySelector("[data-update-history]");
   const receipt = state3.lastInstall;
   history.hidden = !receipt;
@@ -2132,7 +2132,7 @@ function paint3(card, state3) {
       download.download = file;
       download.className = "package-download";
       download.textContent = "下载更新包";
-      links.append(download);
+      links.insertBefore(download, links.lastElementChild);
     } else if (!state3.installable) {
       notice.textContent = state3.required ? "请先更新再唤醒 Bot。请从发布说明获取更新包。" : "请从发布说明获取适用的更新包。";
     }
@@ -2142,7 +2142,7 @@ function paint3(card, state3) {
       notes.target = "_blank";
       notes.rel = "noopener noreferrer";
       notes.textContent = "查看发布说明";
-      links.append(notes);
+      links.insertBefore(notes, links.lastElementChild);
     }
   } else if (state3.status === "current") {
     notice.textContent = "当前无需更新。";
@@ -2154,7 +2154,6 @@ function paint3(card, state3) {
   const details = card.querySelector("[data-update-details]");
   const detailText = state3.status === "unavailable" ? state3.message : state3.checkRoute;
   details.querySelector("[data-update-connection]").textContent = detailText || "";
-  links.hidden = !links.childElementCount;
   const timing = card.querySelector("[data-update-timing]");
   const time = (stamp) => new Date(stamp * 1e3).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   timing.textContent = [
@@ -2363,7 +2362,6 @@ function packageUpdateCard() {
   details.hidden = true;
   const inspect = document.createElement("button");
   inspect.type = "button";
-  inspect.className = "infinity-text-link";
   inspect.textContent = "查看更新详情";
   inspect.dataset.updateInspect = "";
   inspect.disabled = true;
@@ -2373,10 +2371,11 @@ function packageUpdateCard() {
   );
   const links = document.createElement("div");
   links.dataset.updateLinks = "";
+  links.append(inspect);
   const actions = document.createElement("div");
   actions.className = "package-update-actions";
   actions.append(button4, install);
-  card.append(title, current2, notice, links, details, inspect, actions);
+  card.append(title, current2, notice, links, details, actions);
   if (last) paint3(card, last);
   else notice.textContent = "正在读取版本信息…";
   void check();
@@ -6783,6 +6782,9 @@ function infinityPage(shell2, pluginName = "") {
       return;
     }
     const mine = requestId;
+    const serviceAction = route2 === "/infinity/qq/process" && "action" in body && (body.action === "snowluma_start_service" || body.action === "snowluma_stop");
+    if (serviceAction) serviceUtilities.after(feedback);
+    else qqPanel.append(feedback);
     let prepared = false;
     mutationPending = true;
     showFeedback(corePhrase("正在处理…"), false);
@@ -6817,7 +6819,7 @@ function infinityPage(shell2, pluginName = "") {
       }
     } catch (error) {
       if (mine !== requestId || root.hidden) return;
-      showFeedback([error instanceof Error ? error.message : corePhrase("操作失败。"), prepared ? corePhrase("；语音设置已保存，后续动作未确认。请刷新检查后再决定；未自动回滚或重试。") : corePhrase("")]);
+      showFeedback([error instanceof Error ? error.message : corePhrase("操作失败。"), prepared ? corePhrase("；语音设置已保存，后续动作未确认。请刷新检查后再决定；未自动回滚或重试。") : corePhrase("")], !serviceAction);
       if (currentQQ) drawQQ(currentQQ);
     } finally {
       if (mine === requestId) {
@@ -7049,14 +7051,17 @@ function pluginPageBridge(options) {
       reply({ ok: false, message: "页面请求无效、配置已变化或已有操作进行中；未执行新操作。" });
       return;
     }
-    if (rule.mutates && !window.confirm(`确认执行“${rule.label}”？
-仅影响当前 Bot 的本机记录，不注销游戏账号。操作后请核对结果。`)) {
-      reply({ ok: false, message: "已取消，没有执行操作。" });
-      return;
-    }
     busy = true;
     void (async () => {
       try {
+        if (rule.mutates) {
+          const accepted = await confirmAction(rule.label, "", "确认");
+          if (!live2()) return;
+          if (!accepted) {
+            reply({ ok: false, message: "已取消。" });
+            return;
+          }
+        }
         const response = await pageFetch("/infinity/plugin-page/" + encodeURIComponent(options.name), {
           method: "POST",
           headers: { "Content-Type": "application/json" },

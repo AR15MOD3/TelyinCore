@@ -4,7 +4,7 @@ import type { Chrome, Panel } from './shell';
 import { ICONS } from './shell';
 import { infinityPage } from './infinity-page';
 import { pluginConfigPage } from './plugin-config-page';
-import { qqSignals, type QQHealthSnapshot, type HealthSignal } from './qq-signals';
+import { qqSignals, waitingQQSignals, type QQHealthSnapshot, type HealthSignal } from './qq-signals';
 import { getStatusJson } from './status-json';
 
 export interface PluginNavigationInfo {
@@ -34,7 +34,7 @@ export function registerPluginUI(name: string, adapter: PluginUIAdapter): void {
 }
 registerPluginUI('core-infinity-qq', { icon: 'chat', createPage: infinityPage,
   health: { endpoint: '/infinity/qq', signals: (data,
-    plugin) => qqSignals(data as QQHealthSnapshot, plugin.loaded === true) } });
+    plugin) => data ? qqSignals(data as QQHealthSnapshot, plugin.loaded === true) : waitingQQSignals(plugin.loaded, plugin.enabled) } });
 // Waves now declares its own sandboxed configPage in the installed package.
 function lifecycle(plugin: PluginNavigationInfo): HealthSignal[] {
   return [{ state: plugin.loaded ? 'on' : plugin.enabled ? 'warn' : 'off',
@@ -64,5 +64,5 @@ export async function refreshPluginHealth(plugins: PluginNavigationInfo[]): Prom
 export function pluginSignals(plugin: PluginNavigationInfo): HealthSignal[] {
   const provider = adapters.get(plugin.name)?.health;
   const value = snapshots.get(plugin.name);
-  return provider && value ? provider.signals(value, plugin) : lifecycle(plugin);
+  return provider ? provider.signals(value, plugin) : lifecycle(plugin);
 }

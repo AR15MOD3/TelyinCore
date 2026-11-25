@@ -11,6 +11,7 @@ class InstancePublisher:
         self.core,self.bot,self.client=Path(core).resolve(),bot,client
         from threading import Lock
         self._companion_rpc=Lock()
+        self._verified_companion = None
         self.companion_supported=False
         self._companion_attempted=False
         self._companion_start_pending=False
@@ -30,6 +31,22 @@ class InstancePublisher:
                 or description['bot_scope']!=(None if self.scope is None else str(self.scope))):
             self.client.close();raise ValueError('authenticated instance-only parent required')
         self.companion_supported=description.get('companion_supported') is True
+        if self.companion_supported:
+            self._verified_companion = (self.client, self.core, self.scope, self.bot)
+
+    def check_companion_binding(self, core, scope):
+        # describe belongs to the startup lease. A reopened control panel reuses
+        # the authenticated binding; every actual effect still goes to the host.
+        if self.client.closed:
+            raise ValueError('QQ 控制通道已关闭，请在启动器正常休止并重新唤醒当前 Bot。')
+        core = Path(core).resolve()
+        scope = None if scope is None else Path(scope).resolve()
+        if core != self.core or scope != self.scope:
+            raise ValueError('default companion scope/capability mismatch')
+        if self._verified_companion is None:
+            self.bind(core, self.bot)
+        if not self.companion_supported or self._verified_companion != (self.client, core, scope, self.bot):
+            raise ValueError('default companion scope/capability mismatch')
 
     def publish_instance(self,port):
         if type(port) is not int or not 1<=port<=65535:raise ValueError('owned instance port required')

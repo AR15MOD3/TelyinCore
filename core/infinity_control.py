@@ -134,10 +134,7 @@ class QQControl:
             from bot_instance_publisher import InstancePublisher
             if type(companion_lifecycle) is not InstancePublisher or process_lifecycle is not None:
                 raise ValueError('exact default companion publisher required')
-            companion_lifecycle.bind(root, companion_lifecycle.bot)
-            expected_scope = None if bot_scope is None else Path(bot_scope).resolve()
-            if companion_lifecycle.scope != expected_scope or not companion_lifecycle.companion_supported:
-                raise ValueError('default companion scope/capability mismatch')
+            companion_lifecycle.check_companion_binding(root, bot_scope)
         if process_lifecycle is not None:
             from bot_lifecycle_entry import LifecycleProcessBridge
             if type(process_lifecycle) is not LifecycleProcessBridge:

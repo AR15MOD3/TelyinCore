@@ -1,4 +1,4 @@
-// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/status-json.ts
+// core/src/web/client/status-json.ts
 var StatusHttpError = class extends Error {
   constructor(url, status) {
     super(`${url} returned ${status}`);
@@ -93,7 +93,7 @@ async function getStatusJson(url, timeoutMs = 8e3) {
   return await response.json();
 }
 
-// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/display-storage.ts
+// core/src/web/client/display-storage.ts
 var localKeys = /* @__PURE__ */ new Set([
   "ui-language",
   "telyincore-look-mode",
@@ -174,7 +174,7 @@ function initializeDisplayScope() {
   return loading;
 }
 
-// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/plugin-navigation-order.ts
+// core/src/web/client/plugin-navigation-order.ts
 var orderKey = "plugin-nav-order";
 var units = (list) => Array.from(list.children);
 function readOrder() {
@@ -499,7 +499,7 @@ function pluginNavigationOrder(rail, refresh2) {
   };
 }
 
-// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/plugin-restart.ts
+// core/src/web/client/plugin-restart.ts
 var pending = [];
 var request;
 var requested;
@@ -565,7 +565,7 @@ function startPluginRestart() {
   });
 }
 
-// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/plugin-updates.ts
+// core/src/web/client/plugin-updates.ts
 var state = { rows: [], checking: false };
 var pending2;
 var failure = "";
@@ -738,7 +738,7 @@ function startPluginUpdates() {
   });
 }
 
-// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/ui-phrases.ts
+// core/src/web/client/ui-phrases.ts
 var traditional = {
   "国内镜像始终直连。切换到官方源时，按下方用途使用代理。": "國內鏡像一律直連。切換到官方來源時，依下方用途使用代理。",
   "模型 API": "模型 API",
@@ -2053,7 +2053,7 @@ var traditional = {
   "页面未连接": "頁面未連接"
 };
 
-// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/ui-language.ts
+// core/src/web/client/ui-language.ts
 var bindings = /* @__PURE__ */ new Set();
 var owned = /* @__PURE__ */ new WeakMap();
 var listeners2 = /* @__PURE__ */ new Set();
@@ -2127,7 +2127,7 @@ function onUILanguage(listener) {
 }
 onDisplayScopeReady(() => setUILanguage(readDisplayLocal("ui-language") === "zh-Hant" ? "zh-Hant" : "zh-Hans", false));
 
-// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/text-detail.ts
+// core/src/web/client/text-detail.ts
 function showTextDetail(title, text2) {
   const opener = document.activeElement;
   const dialog = document.createElement("dialog");
@@ -2155,7 +2155,7 @@ function showTextDetail(title, text2) {
   close2.focus();
 }
 
-// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/package-updates.ts
+// core/src/web/client/package-updates.ts
 var last;
 var pending3;
 var installing = false;
@@ -2486,7 +2486,7 @@ function packageUpdateCard() {
   return card;
 }
 
-// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/quick-search.ts
+// core/src/web/client/quick-search.ts
 function installQuickSearch(rail) {
   const nav = rail.querySelector(".rail-nav");
   if (!nav) return;
@@ -2702,7 +2702,7 @@ function installQuickSearch(rail) {
   });
 }
 
-// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/rail-resize.ts
+// core/src/web/client/rail-resize.ts
 var WIDTH_KEY = "telyincore.rail-width";
 var DEFAULT_WIDTH = 280;
 function railWidthBounds(viewport) {
@@ -2903,7 +2903,7 @@ function installRailResize(root, rail) {
   window.requestAnimationFrame?.(() => root.classList.add("rail-motion-ready"));
 }
 
-// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/brand.ts
+// core/src/web/client/brand.ts
 var CORE_MARK_T = "M4 5H28L22 11H18V25L12 29V11H4Z";
 var CORE_MARK_CORE = "M24 17L29 22L24 27L19 22Z";
 function coreBrandMark() {
@@ -2923,7 +2923,7 @@ function coreBrandMark() {
   return svg;
 }
 
-// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/confirm-dialog.ts
+// core/src/web/client/confirm-dialog.ts
 var nextDialogId = 0;
 async function confirmAction(heading2, description, action, notice = false, options = {}) {
   const opener = document.activeElement;
@@ -2989,13 +2989,13 @@ async function notifyAction(heading2, description) {
   await confirmAction(heading2, description, "知道了", true);
 }
 
-// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/asset-url.ts
+// core/src/web/client/asset-url.ts
 function assetUrl(name) {
   if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(name)) throw new Error("Invalid asset name");
   return new URL(name, import.meta.url).href;
 }
 
-// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/look.ts
+// core/src/web/client/look.ts
 var THE_LOOK_ROWS = [
   ["--color-ink", "正文"],
   ["--color-dim", "次要文字"],
@@ -3196,7 +3196,7 @@ onDisplayScopeReady((prefix2) => {
   void loadLook();
 });
 
-// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/avatar-crop.ts
+// core/src/web/client/avatar-crop.ts
 function cropBounds(width, height, zoom, x, y) {
   const side = Math.min(width, height) / Math.max(1, zoom);
   return {
@@ -3415,7 +3415,7 @@ async function cropAvatar(file, save) {
   }
 }
 
-// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/speaker.ts
+// core/src/web/client/speaker.ts
 var NEUTRAL = "BOT";
 var NAME_LINE = /^[ \t]*-[ \t]*\*\*名字\*\*[ \t]*[：:][ \t]*([^。，,.;；!！?？\n（(]+)/m;
 function bodies_of(report) {
@@ -3523,7 +3523,7 @@ function loadUserLabel(force = false) {
   return labelRequest;
 }
 
-// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/bot-manager.ts
+// core/src/web/client/bot-manager.ts
 async function botDialog(shownName = speaker()) {
   const opener = document.activeElement;
   const response = await pageFetch("/infinity/bots", { cache: "no-store" });
@@ -3597,7 +3597,7 @@ async function botDialog(shownName = speaker()) {
   }
 }
 
-// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/shell.ts
+// core/src/web/client/shell.ts
 var STROKE = {
   fill: "none",
   stroke: "currentColor",
@@ -4159,7 +4159,7 @@ function createShell(root) {
   return { shell: shell2, topbar: shell2.bar };
 }
 
-// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/model-display.ts
+// core/src/web/client/model-display.ts
 function modelDisplayName(model) {
   const path = model.trim();
   const isFilePath = /^(?:[a-z]:[\\/]|\/|\\\\)/i.test(path);
@@ -4174,7 +4174,7 @@ function modelDisplayName(model) {
   return filename.replace(/\.gguf$/i, "");
 }
 
-// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/engine-events.ts
+// core/src/web/client/engine-events.ts
 var ENGINE_CHANGED = "engine-changed";
 function notifyEngineChanged() {
   if (typeof window !== "undefined" && typeof window.dispatchEvent === "function") {
@@ -4186,7 +4186,7 @@ function onEngineChanged(refresh2) {
   return () => window.removeEventListener(ENGINE_CHANGED, refresh2);
 }
 
-// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/qq-toolbox.ts
+// core/src/web/client/qq-toolbox.ts
 var QQ = "core-infinity-qq";
 var guide = [
   ["消息与语音", "qq_send_text", "发送文字"],
@@ -4299,7 +4299,7 @@ function qqToolbox() {
   return { root, refresh: refresh2 };
 }
 
-// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/qq-stickers.ts
+// core/src/web/client/qq-stickers.ts
 function qqStickers() {
   function element3(tag, text2 = "") {
     const e = document.createElement(tag);
@@ -4627,7 +4627,7 @@ function qqStickers() {
   } };
 }
 
-// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/qq-voice-setup.ts
+// core/src/web/client/qq-voice-setup.ts
 function voiceSetup(kind, selection) {
   const section = document.createElement("details");
   section.className = "qq-voice-setup compact-disclosure";
@@ -4773,7 +4773,7 @@ function voiceSetup(kind, selection) {
   };
 }
 
-// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/plugin-display-cache.ts
+// core/src/web/client/plugin-display-cache.ts
 var scope = null;
 onDisplayScopeReady((prefix2) => {
   scope = prefix2 + "plugin-page-display.v1:";
@@ -4913,7 +4913,7 @@ function fuzzyPluginMatch(name, id, query) {
   });
 }
 
-// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/builtin/infinity/core-infinity-qq/web/environment-editor.js
+// core/builtin/infinity/core-infinity-qq/web/environment-editor.js
 function environmentEditor({ read: read4, write: write2, botName }) {
   function element3(tag, className, text2 = "") {
     const node6 = document.createElement(tag);
@@ -5040,7 +5040,7 @@ function environmentEditor({ read: read4, write: write2, botName }) {
   };
 }
 
-// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/qq-diagnostics.ts
+// core/src/web/client/qq-diagnostics.ts
 function element(tag, cls, text2) {
   const item = document.createElement(tag);
   item.className = cls;
@@ -5245,7 +5245,7 @@ function createQQEnvironment() {
   });
 }
 
-// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/voice-corpus-panel.ts
+// core/src/web/client/voice-corpus-panel.ts
 function voiceCorpusPanel() {
   const root = document.createElement("section");
   root.className = "voice-corpus";
@@ -5452,13 +5452,13 @@ function voiceCorpusPanel() {
   });
 }
 
-// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/config-presentation.ts
+// core/src/web/client/config-presentation.ts
 function configPresentation(root, state3) {
   root.setAttribute("data-config-state", state3);
   root.setAttribute("aria-busy", String(state3 === "loading"));
 }
 
-// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/qq-signals.ts
+// core/src/web/client/qq-signals.ts
 function serviceSignal(name, configured, running) {
   return {
     state: !configured ? "warn" : running ? "on" : "off",
@@ -5483,6 +5483,10 @@ function snowSignal(snow) {
   const running = protocol?.schema === "onebot-readonly-v1" ? protocol.pluginConnected === true : freshSnowSample(snow) && snow?.websocketVerified === true;
   return serviceSignal("SnowLuma", snow?.configured === true, running);
 }
+function waitingQQSignals(loaded2, enabled) {
+  const first = loaded2 ? { state: "on", label: "QQ 插件 · 已加载" } : enabled === false ? { state: "off", label: "QQ 插件 · 已停用" } : { state: "warn", label: enabled ? "QQ 插件 · 已启用，等待加载" : "QQ 插件 · 状态待确认" };
+  return [first, ...["SnowLuma", "TTS", "ASR"].map((name) => ({ state: "warn", label: name + " · 状态待确认" }))];
+}
 function qqSignals(value, loaded2 = false) {
   const marker = serviceSignal;
   return [
@@ -5505,7 +5509,7 @@ function qqSignals(value, loaded2 = false) {
   ];
 }
 
-// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/download-dialog.ts
+// core/src/web/client/download-dialog.ts
 async function chooseASRSource(kind = "ASR", preferredSource) {
   const opener = document.activeElement;
   const dialog = document.createElement("dialog");
@@ -5560,7 +5564,7 @@ async function chooseASRSource(kind = "ASR", preferredSource) {
   }
 }
 
-// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/infinity-controls.ts
+// core/src/web/client/infinity-controls.ts
 function infinityField(label, input2) {
   const box = document.createElement("label");
   box.className = "infinity-field";
@@ -5592,7 +5596,7 @@ function infinityVoiceHeading(title, download) {
   return row2;
 }
 
-// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/infinity-page.ts
+// core/src/web/client/infinity-page.ts
 function node2(tag, className, text2) {
   const element3 = document.createElement(tag);
   element3.className = className;
@@ -6154,6 +6158,8 @@ function infinityPage(shell2, pluginName = "") {
   let pluginMissing = false;
   let qqLoaded = false;
   let qqFailed = false;
+  let qqReadReason = "";
+  let qqEnabled;
   let formFilled = false;
   let checkPending = false;
   let importPending = false;
@@ -6181,21 +6187,23 @@ function infinityPage(shell2, pluginName = "") {
     configFields.disabled = true;
     for (const item of commandButtons) item.disabled = true;
   };
-  const renderWaitingHealth = (failed) => {
-    if (currentQQ !== null) return;
+  const renderWaitingHealth = () => {
+    if (currentQQ !== null && !qqFailed) return;
     health.replaceChildren();
-    const badge = node2(
-      "span",
-      "infinity-health-item",
-      failed ? "QQ 状态 · 读取失败 · 自动重试" : "QQ 状态 · 读取中…"
-    );
-    badge.dataset.state = "warn";
-    health.append(badge);
+    for (const signal of waitingQQSignals(pluginLoaded, qqEnabled)) {
+      const badge = node2("span", "infinity-health-item", signal.label);
+      badge.dataset.state = signal.state;
+      health.append(badge);
+    }
   };
   const syncNotice = () => {
     liveNotice.hidden = false;
     if (mutationPending) {
       coreSetUIText(liveNotice, "textContent", corePhrase("正在处理…"));
+      return;
+    }
+    if (qqFailed && qqReadReason) {
+      liveNotice.textContent = qqReadReason;
       return;
     }
     if (qqLoaded && qqFailed) {
@@ -6219,7 +6227,7 @@ function infinityPage(shell2, pluginName = "") {
   };
   if (knownConfig) {
     lockCommands();
-    renderWaitingHealth(false);
+    renderWaitingHealth();
     showFeedback(corePhrase("正在读取 QQ 配置；数据就绪前不能保存、试听或启停进程。"));
     coreSetUIText(message, "textContent", corePhrase("正在读取插件状态…"));
   } else {
@@ -6499,6 +6507,8 @@ function infinityPage(shell2, pluginName = "") {
     hasPlugin = selected !== void 0;
     pluginMissing = !hasPlugin;
     pluginLoaded = selected?.loaded === true;
+    qqEnabled = selected?.enabled;
+    if (knownConfig && !currentQQ) renderWaitingHealth();
     if (pluginName) {
       qqPanel.hidden = !knownConfig || pluginMissing;
       if (!knownConfig) coreSetUIText(heading2, "textContent", selected ? [corePhrase(""), selected.displayName || selected.name, corePhrase(" · 配置")] : corePhrase("插件配置"));
@@ -6575,18 +6585,27 @@ function infinityPage(shell2, pluginName = "") {
     const statusRequest = /* @__PURE__ */ Symbol();
     qqStatusPending = statusRequest;
     try {
-      const state3 = await getStatusJson("/infinity/qq", 8e3);
+      const response = await pageFetch("/infinity/qq", {}, 8e3);
+      if (!response.ok) {
+        const detail = await response.json().catch(() => null);
+        const message2 = detail?.said;
+        if (typeof message2 === "string" && /lifecycle request unavailable|lifecycle channel closed|QQ 控制通道已关闭/.test(message2))
+          throw new Error("QQ 控制通道已关闭，请在启动器正常休止并重新唤醒当前 Bot。");
+        throw new Error("QQ 状态接口返回 HTTP " + response.status + "，正在自动重试。");
+      }
+      const state3 = await response.json();
       if (mine !== requestId || root.hidden || mutationPending) return;
       const first = !formFilled;
       currentQQ = state3;
       qqLoaded = true;
       qqFailed = false;
+      qqReadReason = "";
       if (knownConfig) qqPanel.hidden = pluginMissing;
       if (first) {
         fillQQForm(state3);
         formFilled = true;
         configPresentation(voiceGrid, "ready");
-        if (uiSource(feedback).startsWith("正在读取 QQ 配置") || uiSource(feedback).startsWith("QQ 状态读取失败")) feedback.textContent = "";
+        if (uiSource(feedback).startsWith("正在读取 QQ 配置") || /^(QQ 状态读取失败|QQ 控制通道已关闭|QQ 状态接口返回 HTTP )/.test(uiSource(feedback))) feedback.textContent = "";
       }
       drawQQ(state3);
       if (manual2) terminalView.update(state3.snowluma.log, true);
@@ -6594,13 +6613,14 @@ function infinityPage(shell2, pluginName = "") {
       if (error instanceof Error && error.name === "StaleStatusError") return;
       if (mine !== requestId || root.hidden) return;
       qqFailed = true;
+      qqReadReason = error instanceof Error && /^(QQ 控制通道已关闭|QQ 状态接口返回 HTTP )/.test(error.message) ? error.message : "";
       terminalView.unavailable();
       environmentView.unavailable();
+      renderWaitingHealth();
       if (currentQQ === null) {
-        renderWaitingHealth(true);
         if (!formFilled) {
           configPresentation(voiceGrid, "error");
-          showFeedback(corePhrase("QQ 状态读取失败，正在自动重试；数据就绪前不能保存。"));
+          showFeedback(qqReadReason || corePhrase("QQ 状态读取失败，正在自动重试；数据就绪前不能保存。"));
         }
       }
     } finally {
@@ -6613,7 +6633,7 @@ function infinityPage(shell2, pluginName = "") {
     if (knownConfig) {
       qqPanel.hidden = false;
       lockCommands();
-      renderWaitingHealth(false);
+      renderWaitingHealth();
       syncNotice();
     }
     coreSetUIText(message, "textContent", knownConfig ? corePhrase("正在读取插件状态…") : corePhrase("正在读取插件列表…"));
@@ -7130,7 +7150,7 @@ function infinityPage(shell2, pluginName = "") {
   };
 }
 
-// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/plugin-page-bridge.ts
+// core/src/web/client/plugin-page-bridge.ts
 function pluginPageBridge(options) {
   let busy = false;
   return (event) => {
@@ -7188,7 +7208,7 @@ function pluginPageBridge(options) {
   };
 }
 
-// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/page-load.ts
+// core/src/web/client/page-load.ts
 function pageLoad(root, label, retry) {
   const note = document.createElement("p");
   note.className = "infinity-hint page-load-status";
@@ -7223,7 +7243,7 @@ function pageLoad(root, label, retry) {
   };
 }
 
-// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/plugin-config-page.ts
+// core/src/web/client/plugin-config-page.ts
 function text(tag, className, value = "") {
   const node6 = document.createElement(tag);
   node6.className = className;
@@ -7543,7 +7563,7 @@ function pluginConfigPage(shell2, name) {
   } };
 }
 
-// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/plugin-ui-registry.ts
+// core/src/web/client/plugin-ui-registry.ts
 var legacyParents = /* @__PURE__ */ new Map([
   ["infinity-comfyui", "core-infinity-qq"],
   ["core-infinity-wavesuid", "core-infinity-qq"]
@@ -7561,7 +7581,7 @@ function registerPluginUI(name, adapter) {
 registerPluginUI("core-infinity-qq", {
   icon: "chat",
   createPage: infinityPage,
-  health: { endpoint: "/infinity/qq", signals: (data, plugin) => qqSignals(data, plugin.loaded === true) }
+  health: { endpoint: "/infinity/qq", signals: (data, plugin) => data ? qqSignals(data, plugin.loaded === true) : waitingQQSignals(plugin.loaded, plugin.enabled) }
 });
 function lifecycle(plugin) {
   return [{
@@ -7594,10 +7614,10 @@ async function refreshPluginHealth(plugins) {
 function pluginSignals(plugin) {
   const provider = adapters.get(plugin.name)?.health;
   const value = snapshots.get(plugin.name);
-  return provider && value ? provider.signals(value, plugin) : lifecycle(plugin);
+  return provider ? provider.signals(value, plugin) : lifecycle(plugin);
 }
 
-// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/engine.ts
+// core/src/web/client/engine.ts
 async function ask(url, init) {
   try {
     const resp = await pageFetch(url, init);
@@ -7684,7 +7704,7 @@ async function saveEngineDraft(asked, typed) {
   return { profile, secret };
 }
 
-// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/engine-controls.ts
+// core/src/web/client/engine-controls.ts
 var selects = /* @__PURE__ */ new Map();
 var menus = /* @__PURE__ */ new Map();
 var serial = 0;
@@ -7898,7 +7918,7 @@ function selectControl(select2, label) {
   return box;
 }
 
-// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/chatgpt-auth.ts
+// core/src/web/client/chatgpt-auth.ts
 function chatgptAuth(readName, backendReady = true) {
   const root = document.createElement("div");
   root.className = "engine-chatgpt";
@@ -8078,7 +8098,7 @@ function chatgptAuth(readName, backendReady = true) {
   };
 }
 
-// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/engine-providers.ts
+// core/src/web/client/engine-providers.ts
 function isPlanProvider(preset) {
   return preset.auth === "chatgpt" || /\/api\/coding\/paas\/v4\/?$/.test(preset.base_url);
 }
@@ -8097,7 +8117,7 @@ function nextProviderName(base, names) {
   return name;
 }
 
-// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/engine-page.ts
+// core/src/web/client/engine-page.ts
 function readDrafts() {
   try {
     const stored = JSON.parse(readDisplaySession("engine-drafts") ?? "{}");
@@ -9224,7 +9244,7 @@ function handoffNote(windowTokens, outTokens) {
   return ` 输入硬阈 ${hard}；软提醒 ${Math.floor(hard * SOFT_RATIO)}，余下 15% 为后续增长预留。`;
 }
 
-// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/composer-popovers.ts
+// core/src/web/client/composer-popovers.ts
 function popoverPosition(anchor, height, view2) {
   const edge = 12;
   const gap = 10;
@@ -9373,7 +9393,7 @@ function wireComposerPopovers(entries, refresh2) {
   }
 }
 
-// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/cache-view.ts
+// core/src/web/client/cache-view.ts
 var object = (value) => typeof value === "object" && value !== null ? value : {};
 var number = (value) => typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : null;
 var count = (value) => {
@@ -9502,7 +9522,7 @@ function latestCacheRead(fetcher) {
   };
 }
 
-// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/console-introduction.ts
+// core/src/web/client/console-introduction.ts
 function mountConsoleIntroduction(root, composer2) {
   const guide2 = document.createElement("section");
   guide2.className = "console-introduction";
@@ -9601,7 +9621,7 @@ function mountConsoleIntroduction(root, composer2) {
   void load();
 }
 
-// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/tool-activity.ts
+// core/src/web/client/tool-activity.ts
 function toolReceiptFailed(name, text2) {
   return name !== "handoff_note" && /^\s*\[tool failed\]/.test(text2 || "");
 }
@@ -9655,7 +9675,7 @@ function rememberToolTitles(result, titles) {
   if (knowledge && !/^(记录时间|修订来历|第\s*\d)/.test(knowledge[2])) titles.set(knowledge[1], knowledge[2]);
 }
 
-// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/history-feed.ts
+// core/src/web/client/history-feed.ts
 function mergeHistory(history, live2) {
   const result = [];
   const known = /* @__PURE__ */ new Set();
@@ -9736,7 +9756,7 @@ var HistoryFeed = class {
   }
 };
 
-// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/chat.ts
+// core/src/web/client/chat.ts
 var ME = "user";
 var OTHER = "bot";
 var A_BATCH = "batch";
@@ -10270,7 +10290,7 @@ function mountChat(host) {
   return view2;
 }
 
-// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/live.ts
+// core/src/web/client/live.ts
 var EXPORT_LABEL = "导出诊断";
 var SEND_LABEL = "▶";
 var HANDOFF_LABEL = "交接";
@@ -10952,7 +10972,7 @@ function chatPage(shell2) {
   };
 }
 
-// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/persona-memory.ts
+// core/src/web/client/persona-memory.ts
 function personaMemoryTail() {
   const tail = document.createElement("footer");
   tail.className = "persona-memory-tail page-footer";
@@ -10960,7 +10980,7 @@ function personaMemoryTail() {
   return tail;
 }
 
-// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/persona-page.ts
+// core/src/web/client/persona-page.ts
 var BOUNDARY_LINE_SHORT = "修改会写入人设文件。仅限本机访问不等于账号鉴权。";
 var A_STAMP = /^\d{8}-\d{6}$/;
 var REPORT_ROUTE = "/persona";
@@ -11979,7 +11999,7 @@ function personaPage(shell2, options = {}) {
   };
 }
 
-// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/display-date.ts
+// core/src/web/client/display-date.ts
 function displayDate(value) {
   if (!value) return "";
   if (!/^\d{4}-\d{2}-\d{2}T/.test(value)) return value;
@@ -11987,7 +12007,7 @@ function displayDate(value) {
   return Number.isNaN(date.getTime()) ? "日期未知" : `${date.getMonth() + 1} 月 ${date.getDate()} 日`;
 }
 
-// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/record-refresh.ts
+// core/src/web/client/record-refresh.ts
 function recordRefresh(root, read4) {
   let active2 = false;
   let running = false;
@@ -12038,7 +12058,7 @@ function recordRefresh(root, read4) {
   };
 }
 
-// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/memory-page.ts
+// core/src/web/client/memory-page.ts
 function recentPeople(everyone) {
   const recordedAt = (one) => {
     if (typeof one.recent_at === "number" && Number.isFinite(one.recent_at)) {
@@ -12697,7 +12717,7 @@ function memoryPage(shell2) {
   };
 }
 
-// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/plugin-versions.ts
+// core/src/web/client/plugin-versions.ts
 var states = /* @__PURE__ */ new Map();
 var painters = /* @__PURE__ */ new Map();
 var el4 = (tag, text2 = "", cls = "") => {
@@ -12831,7 +12851,7 @@ function pluginVersions(repo2, name, current2, blocked, install) {
   return Object.assign(box, { loadVersions: () => s.data ? Promise.resolve() : read4() });
 }
 
-// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/plugin-origin.ts
+// core/src/web/client/plugin-origin.ts
 function githubRepository(value) {
   return /^https:\/\/github\.com\/([\w.-]+\/[\w.-]+?)(?:\.git)?(?:\/|$)/.exec(value)?.[1] || "";
 }
@@ -12842,7 +12862,7 @@ function pluginOrigin(plugin, repository = "") {
 }
 var pluginOriginOrder = (group) => ({ "Core": 0, "GitHub": 1, "本地导入": 2, "来源待确认": 3 })[group];
 
-// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/plugin-operation.ts
+// core/src/web/client/plugin-operation.ts
 var state2;
 var continuation;
 var pluginOperation = () => state2;
@@ -13011,10 +13031,10 @@ async function runPluginOperation(name, action, expectedVersion) {
   }
 }
 
-// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/plugin-guide-version.ts
+// core/src/web/client/plugin-guide-version.ts
 var PLUGIN_GUIDE_VERSION = true ? "v1.19" : "";
 
-// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/plugin-catalog.ts
+// core/src/web/client/plugin-catalog.ts
 var pluginCategories = [
   ["all", "全部"],
   ["communication", "通讯接入"],
@@ -13043,7 +13063,7 @@ function pluginRequirement(one) {
   return (one.full || "").toLowerCase() === "ar15mod3/infinity-comfyui" ? "需启用 QQ 连接" : "";
 }
 
-// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/plugin-platforms.ts
+// core/src/web/client/plugin-platforms.ts
 var platformNames = { windows: "Windows", linux: "Linux", macos: "macOS" };
 function pluginPlatforms(one) {
   const platforms2 = Object.keys(platformNames);
@@ -13072,7 +13092,7 @@ function platformSummary(info) {
   return values.length ? values.join(" / ") : "平台未声明";
 }
 
-// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/plugin-workspace.ts
+// core/src/web/client/plugin-workspace.ts
 var node5 = (tag, cls = "", text2 = "") => {
   const n = document.createElement(tag);
   n.className = cls;
@@ -13836,12 +13856,12 @@ function pluginWorkspace(shell2, view2 = "local") {
   } };
 }
 
-// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/plugin-market-page.ts
+// core/src/web/client/plugin-market-page.ts
 function pluginMarketPage(shell2) {
   return pluginWorkspace(shell2, "discover");
 }
 
-// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/infinity-plugin-page.ts
+// core/src/web/client/infinity-plugin-page.ts
 function infinityPluginPage(shell2) {
   const route2 = location.hash.replace(/^#\/?infinity\//, "");
   let name = "";
@@ -13853,7 +13873,7 @@ function infinityPluginPage(shell2) {
   return pluginPage(shell2, name);
 }
 
-// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/knowledge-page.ts
+// core/src/web/client/knowledge-page.ts
 var READ_FAILED2 = "知识库加载失败，请重试。";
 var NOT_WIRED2 = "当前服务暂不支持查看知识库。";
 var NOTHING_YET = "暂无知识库内容。";
@@ -14029,7 +14049,7 @@ function knowledgePage(shell2) {
   };
 }
 
-// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/portrait-display.ts
+// core/src/web/client/portrait-display.ts
 function portraitAccount(raw) {
   const group = /^group:qq:\d+\|sender=(qq:\d+)$/.exec(raw);
   if (group) return group[1];
@@ -14087,7 +14107,7 @@ function portraitGroups(people) {
   return [...groups.values()].sort((a, b) => Number(b.key === "console") - Number(a.key === "console")).map((group) => ({ ...group, people: group.people.sort((a, b) => Number(portraitLinkedToConsole(b)) - Number(portraitLinkedToConsole(a))) }));
 }
 
-// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/people-page.ts
+// core/src/web/client/people-page.ts
 var READ_FAILED3 = "画像加载失败，请重试。";
 var NOT_WIRED3 = "当前服务暂不支持查看画像。";
 var NOBODY_YET = "暂无画像记录。";
@@ -14657,7 +14677,7 @@ function peoplePage(shell2) {
   };
 }
 
-// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/record-labels.ts
+// core/src/web/client/record-labels.ts
 function experienceSourceName(path) {
   const name = path.split(/[\\/]/).filter(Boolean).at(-1)?.replace(/\.[^.]+$/, "") || "";
   if (/^对话(?:记录)?$/.test(name)) return "对话";
@@ -14667,7 +14687,7 @@ function experienceSourceName(path) {
   return labels[name] || name;
 }
 
-// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/experience-page.ts
+// core/src/web/client/experience-page.ts
 var READ_FAILED4 = "经历加载失败，请重试。";
 var NOT_WIRED4 = "当前服务暂不支持查看经历。";
 var NOTHING_YET2 = "暂无经历。保存的对话和记录会显示在这里。";
@@ -15058,7 +15078,7 @@ function experiencePage(shell2) {
   };
 }
 
-// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/plugin-storage-settings.ts
+// core/src/web/client/plugin-storage-settings.ts
 var element2 = (tag, cls, label) => {
   const el6 = document.createElement(tag);
   el6.className = cls;
@@ -15274,7 +15294,7 @@ function snowlumaSessionSettings() {
   return root;
 }
 
-// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/model-proxy-settings.ts
+// core/src/web/client/model-proxy-settings.ts
 var PROVIDERS = [["openai", "OpenAI / ChatGPT"], ["google", "Google Gemini"], ["anthropic", "Anthropic Claude"], ["xai", "xAI Grok"]];
 var el5 = (tag, cls = "", text2 = "") => {
   const n = document.createElement(tag);
@@ -15492,7 +15512,7 @@ function modelProxySettings() {
   return root;
 }
 
-// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/settings-page.ts
+// core/src/web/client/settings-page.ts
 var GROUPS = [
   ["背景层级", [
     ["--color-canvas", "页面背景"],
@@ -16047,7 +16067,7 @@ function settingsPage(shell2) {
   };
 }
 
-// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/pages.ts
+// core/src/web/client/pages.ts
 function page(row2, build) {
   return { ...row2, build };
 }
@@ -16211,7 +16231,7 @@ function route(shell2, pages = PAGES) {
   return live;
 }
 
-// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/state.ts
+// core/src/web/client/state.ts
 var COUNTER_KEYS = ["tokens", "messages", "batches", "paused"];
 var ENGINE_KEYS = ["endpoint", "model", "profile", "model_available"];
 function count2(value) {
@@ -16236,7 +16256,7 @@ function counterChips(m) {
   ];
 }
 
-// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/main.ts
+// core/src/web/client/main.ts
 var READ_NAMES = [
   ...COUNTER_KEYS,
   ...ENGINE_KEYS,

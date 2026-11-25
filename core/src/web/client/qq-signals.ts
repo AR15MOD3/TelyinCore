@@ -74,6 +74,13 @@ export function snowSignal(snow: QQHealthSnapshot['snowluma']): HealthSignal {
 }
 
 /** Shared ordering and semantics for the rail and the page header. */
+export function waitingQQSignals(loaded?: boolean, enabled?: boolean): HealthSignal[] {
+  const first: HealthSignal = loaded ? {state:'on', label:'QQ 插件 · 已加载'}
+    : enabled === false ? {state:'off', label:'QQ 插件 · 已停用'}
+    : {state:'warn', label: enabled ? 'QQ 插件 · 已启用，等待加载' : 'QQ 插件 · 状态待确认'};
+  return [first, ...['SnowLuma', 'TTS', 'ASR'].map((name): HealthSignal =>
+    ({state:'warn', label:name + ' · 状态待确认'}))];
+}
 export function qqSignals(value: QQHealthSnapshot | null, loaded = false): HealthSignal[] {
   const marker = serviceSignal;
   return [

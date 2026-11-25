@@ -14,14 +14,14 @@ import type { Chrome, Panel } from './shell';
 
 import type { InstalledPlugin, PluginsAnswer } from './plugins-page';
 
-import { qqSignals, freshSnowSample, freshProtocolSample } from './qq-signals';
+import { qqSignals, waitingQQSignals, freshSnowSample, freshProtocolSample } from './qq-signals';
 
 import type { QQHealthSnapshot } from './qq-signals';
 
 
 import { chooseASRSource } from './download-dialog';
 
-import { getStatusJson, invalidateStatus, invalidateStatuses } from './status-json';
+import { pageFetch, getStatusJson, invalidateStatus, invalidateStatuses } from './status-json';
 
 import { infinityField as choice, infinityToggle as toggle,
 
@@ -885,6 +885,8 @@ export function infinityPage(shell: Chrome, pluginName = ''): Panel {
   let qqLoaded = false;
 
   let qqFailed = false;
+  let qqReadReason = '';
+  let qqEnabled: boolean | undefined;
   let formFilled = false;
   let checkPending = false;
   let importPending = false;
@@ -908,19 +910,17 @@ export function infinityPage(shell: Chrome, pluginName = ''): Panel {
 
   };
 
-  const renderWaitingHealth = (failed: boolean): void => {
+  const renderWaitingHealth = (): void => {
 
-    if (currentQQ !== null) return;
+    if (currentQQ !== null && !qqFailed) return;
 
     health.replaceChildren();
 
-    const badge = node('span', 'infinity-health-item',
-
-      failed ? 'QQ 状态 · 读取失败 · 自动重试' : 'QQ 状态 · 读取中…');
-
-    badge.dataset.state = 'warn';
-
-    health.append(badge);
+    for (const signal of waitingQQSignals(pluginLoaded, qqEnabled)) {
+      const badge = node('span', 'infinity-health-item', signal.label);
+      badge.dataset.state = signal.state;
+      health.append(badge);
+    }
 
   };
 
@@ -929,6 +929,8 @@ export function infinityPage(shell: Chrome, pluginName = ''): Panel {
     liveNotice.hidden = false;
 
     if (mutationPending) { coreSetUIText(liveNotice, 'textContent', corePhrase("正在处理…")); return; }
+
+    if (qqFailed && qqReadReason) { liveNotice.textContent = qqReadReason; return; }
 
     if (qqLoaded && qqFailed) {
 
@@ -972,7 +974,7 @@ export function infinityPage(shell: Chrome, pluginName = ''): Panel {
 
     lockCommands();
 
-    renderWaitingHealth(false);
+    renderWaitingHealth();
 
     showFeedback(corePhrase("正在读取 QQ 配置；数据就绪前不能保存、试听或启停进程。"));
 
@@ -1423,6 +1425,8 @@ snowProcess.hidden = false;
     pluginMissing = !hasPlugin;
 
     pluginLoaded = selected?.loaded === true;
+    qqEnabled = selected?.enabled;
+    if (knownConfig && !currentQQ) renderWaitingHealth();
 
     if (pluginName) {
 
@@ -1574,7 +1578,15 @@ snowProcess.hidden = false;
 
     try {
 
-      const state = await getStatusJson<QQState>('/infinity/qq', 8000);
+      const response = await pageFetch('/infinity/qq', {}, 8000);
+      if (!response.ok) {
+        const detail = await response.json().catch(() => null);
+        const message = detail?.said;
+        if (typeof message === 'string' && /lifecycle request unavailable|lifecycle channel closed|QQ 控制通道已关闭/.test(message))
+          throw new Error('QQ 控制通道已关闭，请在启动器正常休止并重新唤醒当前 Bot。');
+        throw new Error('QQ 状态接口返回 HTTP ' + response.status + '，正在自动重试。');
+      }
+      const state: QQState = await response.json();
 
       if (mine !== requestId || root.hidden || mutationPending) return;
 
@@ -1585,6 +1597,7 @@ snowProcess.hidden = false;
       qqLoaded = true;
 
       qqFailed = false;
+      qqReadReason = '';
 
       if (knownConfig) qqPanel.hidden = pluginMissing;
 
@@ -1597,7 +1610,7 @@ snowProcess.hidden = false;
 
         if (uiSource(feedback).startsWith('正在读取 QQ 配置')
 
-          || uiSource(feedback).startsWith('QQ 状态读取失败')) feedback.textContent = '';
+          || /^(QQ 状态读取失败|QQ 控制通道已关闭|QQ 状态接口返回 HTTP )/.test(uiSource(feedback))) feedback.textContent = '';
 
       }
 
@@ -1612,17 +1625,18 @@ snowProcess.hidden = false;
       if (mine !== requestId || root.hidden) return;
 
       qqFailed = true;
+      qqReadReason = error instanceof Error && /^(QQ 控制通道已关闭|QQ 状态接口返回 HTTP )/.test(error.message)
+        ? error.message : '';
       terminalView.unavailable();
       environmentView.unavailable();
 
+      renderWaitingHealth();
       if (currentQQ === null) {
-
-        renderWaitingHealth(true);
 
         if (!formFilled) {
           configPresentation(voiceGrid, 'error');
 
-          showFeedback(corePhrase("QQ 状态读取失败，正在自动重试；数据就绪前不能保存。"));
+          showFeedback(qqReadReason || corePhrase("QQ 状态读取失败，正在自动重试；数据就绪前不能保存。"));
 
         }
 
@@ -1647,7 +1661,7 @@ snowProcess.hidden = false;
 
       lockCommands();
 
-      renderWaitingHealth(false);
+      renderWaitingHealth();
 
       syncNotice();
 

@@ -12,6 +12,7 @@ import { icon, type Chrome, type Panel } from './shell';
 
 /* 服务端返回的已安装插件信息。 */
 export interface InstalledPlugin {
+  readonly navigationParent?: string;
   readonly package_id?: string;
   readonly can_remove?: boolean;
   readonly reload_mode?: 'hot'|'restart'|'invalid';

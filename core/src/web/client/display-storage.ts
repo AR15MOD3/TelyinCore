@@ -2,7 +2,7 @@
 import { getStatusJson } from './status-json';
 
 const localKeys = new Set(['ui-language', 'telyincore-look-mode', 'telyincore-look-preset',
-  'telyincore-look-resolved-v1', 'telyincore.rail-width', 'plugin-nav-order']);
+  'telyincore-look-resolved-v1', 'telyincore.rail-width', 'plugin-nav-order', 'plugin-update-muted']);
 const sessionKeys = new Set(['plugin-nav', 'engine-drafts']);
 const localEdits = new Map<string, string>();
 const sessionEdits = new Map<string, string>();

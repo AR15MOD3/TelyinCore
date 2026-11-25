@@ -25,6 +25,7 @@ from qq_poke import poke_notice, poke_only_addressed
 
 import httpx
 from websockets.asyncio.client import connect
+from websockets.exceptions import ConnectionClosedOK
 
 
 # Match the WebUI composer: at most eight image parts from one message.
@@ -605,6 +606,8 @@ def create(ctx):
             self._sticker_vision = ContextVar("qq_sticker_vision", default=None)
             self._account_conflict = Event()  # sticky even after clean stop/start
             self._run_lock = Lock()
+            self._unbind_waves_transport = None
+            self._pending_waves = OrderedDict()
             self._started = False
             self.client = None
             self.tts_client = None
@@ -723,6 +726,14 @@ def create(ctx):
             self._stopping.clear()
             self._voice_executor = ThreadPoolExecutor(
                 max_workers=2, thread_name_prefix="qq-media")
+            if self.ws_url and ctx.get("bot_id"):
+                try:
+                    from telyincore.qq_group_route import bind_qq
+                except ModuleNotFoundError as exc:
+                    if exc.name != "telyincore.qq_group_route":
+                        raise
+                else:
+                    self._unbind_waves_transport = bind_qq(ctx["bot_id"], self._deliver_waves)
             if self.ws_url:
                 self._thread = Thread(target=self._thread_main, name="qq-onebot-ws", daemon=True)
                 start_thread=ctx.get('start_background_thread')
@@ -754,6 +765,9 @@ def create(ctx):
 
         def _stop(self):
             self._stopping.set()
+            if self._unbind_waves_transport is not None:
+                self._unbind_waves_transport()
+                self._unbind_waves_transport = None
             if self.sharing is not None:
                 self.sharing.close()
                 self.sharing = None
@@ -797,6 +811,7 @@ def create(ctx):
                 if not isinstance(receipt, Future):
                     raise RuntimeError('QQ native receipt identity unavailable')
                 receipt.result(timeout=max(0, deadline - time.monotonic()))
+            self._pending_waves.clear()
             self._thread = None
             self._voice_executor = None
             self._loop = self._task = None
@@ -955,6 +970,27 @@ def create(ctx):
                 return True
             if not self.event_is_current(draft):
                 return True
+            if (self._unbind_waves_transport is not None and event.get("message_type") == "group"
+                    and command.startswith("ww")):
+                from telyincore.qq_group_route import waves_receiver
+                receive = waves_receiver(ctx["bot_id"])
+                if receive is not None:
+                    if from_history:
+                        return True
+                    gate = ctx.get("waves_commands_allowed")
+                    if not callable(gate):
+                        self._log("鸣潮群命令未受理：Core 未提供静候状态")
+                        return False
+                    if self._pending_waves or not gate():
+                        key = (draft["meta"]["conversation"], draft["meta"]["message_id"])
+                        if key not in self._pending_waves:
+                            if len(self._pending_waves) >= 64:
+                                self._log("鸣潮静候队列已满，本条未接收")
+                                return False
+                            self._pending_waves[key] = (event, receive)
+                    else:
+                        self._dispatch_waves(event, receive)
+                    return True
             ticket = self._ingress_order.reserve(draft["meta"]["conversation"])
             if ticket is None:
                 self._log("QQ 入站等待队列已满或已停止；本条未接收")
@@ -977,6 +1013,57 @@ def create(ctx):
             self._publish_current(draft, ticket)
             self._notify_sharing("sharing_ingress", event)
             return True
+
+        def _dispatch_waves(self, event, receive):
+            parts = event.get("message", event.get("raw_message"))
+            if isinstance(parts, str):
+                parts = [{"type": "text", "data": {"text": parts}}]
+            try:
+                receive(event, parts, _trusted_image_url)
+            except (ValueError, RuntimeError) as exc:
+                self._log("鸣潮群命令未受理：" + str(exc))
+
+        def _resume_waves(self):
+            from telyincore.qq_group_route import waves_receiver
+            while (self._pending_waves and self.connected and not self._stopping.is_set()
+                   and not self._account_conflict.is_set() and ctx["waves_commands_allowed"]()):
+                (room, mid), (event, receive) = self._pending_waves.popitem(last=False)
+                if (str(event["self_id"]) == self._observed_account
+                        and str(event["group_id"]) in self.groups
+                        and receive is waves_receiver(ctx["bot_id"])
+                        and self.event_is_current({"source": "qq", "meta": {
+                            "conversation": room, "message_id": mid}})):
+                    self._dispatch_waves(event, receive)
+
+        def _deliver_waves(self, account, group, segments, original_id=""):
+            # The native service may send unsolicited group notices. Use only the
+            # current transport account and configured group, even across reloads.
+            if not self._run_lock.acquire(timeout=0.5):
+                raise RuntimeError("QQ 连接正在切换")
+            try:
+                if (self._stopping.is_set() or self._account_conflict.is_set() or not self._started
+                        or not self.connected or group not in self.groups):
+                    raise RuntimeError("鸣潮目标群不可用")
+                if not original_id:
+                    gate = ctx.get("waves_commands_allowed")
+                    if not callable(gate) or not gate():
+                        raise RuntimeError("Core 静候期间暂停新的鸣潮群通知")
+                observed = self._observed_account
+                if not observed:
+                    info = self._post("get_login_info", {}).get("data") or {}
+                    if not self._observe_account(info.get("user_id")):
+                        raise RuntimeError("QQ 账号未确认")
+                    observed = self._observed_account
+                if account != observed:
+                    raise RuntimeError("鸣潮回执不属于本 QQ 账号")
+                if original_id and not self.event_is_current(
+                        {"source": "qq", "meta": {"conversation": f"group:{group}", "message_id": original_id}}):
+                    raise RuntimeError("原群消息已撤回")
+                result = self._post("send_group_msg", {"group_id": int(group), "message": segments})
+                self._receipt(result, "group", group)
+                return str(result["data"]["message_id"])
+            finally:
+                self._run_lock.release()
 
         def _accept_recall(self, event: dict) -> bool:
             kind = event.get("notice_type")
@@ -1531,12 +1618,23 @@ def create(ctx):
                                 self._log(f"QQ 历史补读暂不可用：{type(exc).__name__}")
                         if self._account_conflict.is_set():
                             break  # backfill may have fenced before any WS frame
-                        async for raw in websocket:
+                        while not self._stopping.is_set():
+                            if self._pending_waves:
+                                self._resume_waves()
+                            if self._pending_waves:
+                                try:
+                                    raw = await asyncio.wait_for(websocket.recv(), timeout=0.25)
+                                except TimeoutError:
+                                    continue
+                            else:
+                                raw = await websocket.recv()
                             if self._stopping.is_set():
                                 break
                             self.accept(raw)
                             if self._account_conflict.is_set():
                                 break  # leave owned WS context; no automatic reconnect
+                except ConnectionClosedOK:
+                    pass
                 except Exception as exc:
                     if not self._stopping.is_set():
                         self._log(f"QQ WebSocket 断开：{type(exc).__name__}")

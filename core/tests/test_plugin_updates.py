@@ -138,3 +138,32 @@ def test_busy_service_waits_for_explicit_refresh(tmp_path):
     try:assert hit.wait(2)
     finally:stopped.set();c._thread.join(2)
     assert not c._thread.is_alive()
+
+
+def test_queued_manual_check_completes_and_returns_exact_release_tag(tmp_path):
+    install(tmp_path)
+    entered, release, stopped = Event(), Event(), Event()
+
+    def fetch(repo):
+        entered.set()
+        assert release.wait(3)
+        return {'name': 'demo', 'version': '0.3.0', 'tag': '0.3.0'}
+
+    checker = PluginUpdates(tmp_path, fetch)
+    assert checker.read(refresh=True)['checking']
+    checker.warm(stopped, idle=lambda: False)
+    try:
+        assert entered.wait(2)
+        assert checker.read()['checking']
+        release.set()
+        for _ in range(100):
+            result = checker.read()
+            if not result['checking']:
+                break
+            stopped.wait(0.01)
+        assert not result['checking']
+        assert result['rows'][0]['tag'] == '0.3.0'
+    finally:
+        release.set()
+        stopped.set()
+        checker._thread.join(2)

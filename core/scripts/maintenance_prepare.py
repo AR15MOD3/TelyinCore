@@ -14,7 +14,7 @@ BUSY = ('仍有启动窗口正在唤醒或收尾，档案尚未改名。'
         '请在原窗口完成休止并退出运行流程后重试；网页暂停不等于服务退出。')
 
 
-def running_services(core):
+def running_services(core, *, except_instance=None):
     core = Path(core).resolve()
     folder = safe_path(core, core / 'data/instances')
     if not folder.exists():
@@ -29,6 +29,8 @@ def running_services(core):
         if (set(row) != {'pid', 'port'} or type(row['pid']) is not int or row['pid'] <= 0
                 or type(row['port']) is not int or not 1 <= row['port'] <= 65535):
             raise ValueError('实例登记无效，未发送休止请求')
+        if (row['pid'], row['port']) == except_instance:
+            continue
         state = probe_process(row['pid']).get('state')
         if state == 'alive':
             names.append(path.stem)

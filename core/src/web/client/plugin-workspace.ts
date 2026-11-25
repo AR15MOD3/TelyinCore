@@ -1,4 +1,4 @@
-import {pluginVersions, type VersionChoice} from './plugin-versions';
+import {pluginVersions, tagForVersion} from './plugin-versions';
 import {openCoreUpdateDialog} from './package-updates';
 import {pluginOrigin, pluginOriginOrder} from './plugin-origin';
 import { runPluginOperation, continuePluginOperation, pluginOperation } from './plugin-operation';
@@ -10,7 +10,7 @@ import { assetUrl } from './asset-url';
 import { PLUGIN_GUIDE_VERSION } from './plugin-guide-version';
 import { pluginCategories, pluginCategory, pluginCategoryLabel, pluginRequirement } from './plugin-catalog';
 import { platformNames, pluginPlatforms, platformSummary } from './plugin-platforms';
-import { updateFor, updateText, checkPluginUpdates, takePluginUpdateRequest, pluginUpdateSnapshot } from './plugin-updates';
+import { updateFor, updateText, updateMuted, setUpdateMuted, checkPluginUpdates, takePluginUpdateRequest, pluginUpdateSnapshot } from './plugin-updates';
 import type { InstalledPlugin, PluginsAnswer, MarketPackage, MarketAnswer } from './plugins-page';
 
 type View='local'|'discover';
@@ -35,7 +35,7 @@ const repo=(entry:Entry)=>{
 };
 const originGroup=(entry:Entry)=>pluginOrigin(entry.local||{},repo(entry));
 const originOrder=(entry:Entry)=>pluginOriginOrder(originGroup(entry));
-const platforms=(entry:Entry)=>pluginPlatforms({repository:repo(entry),version:entry.local?.version||entry.market?.version,keywords:entry.local?.keywords||entry.market?.keywords});
+const platforms=(entry:Entry)=>pluginPlatforms({repository:repo(entry),version:entry.local?.version||entry.market?.version,keywords:entry.local?entry.local.keywords:entry.market?.keywords});
 
 /** Separate overview and marketplace routes share the same Core list/detail language. */
 export function pluginWorkspace(shell:Chrome,view:View='local'):Panel {
@@ -66,6 +66,7 @@ export function pluginWorkspace(shell:Chrome,view:View='local'):Panel {
   let lastDetail='',lastList='';
   let filterValue='all';
   let checkingUpdates=false;
+  let historyName='';
   let requestedName:string|undefined;
   const filterButtons=new Map<string,HTMLButtonElement>();
   function setFilters(){
@@ -122,7 +123,7 @@ export function pluginWorkspace(shell:Chrome,view:View='local'):Panel {
     if(requestedName){const index=rows.findIndex(e=>e.name===requestedName);if(index>=0){selected=requestedName;page=Math.floor(index/30)+1;requestedName=undefined;requestAnimationFrame(()=>{if(alive)detail.querySelector('.pw-update-note')?.scrollIntoView({block:'nearest'});});}else if(localLoaded)requestedName=undefined;}
     page=Math.min(page,pages);const shown=rows.slice((page-1)*30,page*30);
     if(!shown.some(e=>e.name===selected)){selected=shown[0]?.name||'';lastDetail='';}
-    const listKey=JSON.stringify([view,shown,selected,busy,pluginOperation(),localLoaded,marketLoaded,localError,marketError,search.value,filterValue,shown.map(e=>updateFor(e.name))]);
+    const listKey=JSON.stringify([view,shown,selected,busy,pluginOperation(),localLoaded,marketLoaded,localError,marketError,search.value,filterValue,shown.map(e=>[updateFor(e.name),updateMuted(e.name)])]);
     if(listKey!==lastList){lastList=listKey;list.replaceChildren();let group='';
       if(!shown.length){
         const waiting=!localLoaded||view==='discover'&&!marketLoaded;
@@ -136,14 +137,14 @@ export function pluginWorkspace(shell:Chrome,view:View='local'):Panel {
         const copy=node('span','pw-entry-copy');copy.append(node('strong','',e.local?.displayName||e.name));
         const text=filterValue==='available'&&updateFor(e.name)?updateText(updateFor(e.name)!):e.local?.description||e.market?.description||e.name;const summary=node('span','pw-entry-summary',text);summary.title=text;copy.append(summary);
         const state=node('span','pw-entry-state');const update=updateFor(e.name);
-        if(update?.status==='available'&&installed(e.local)&&!e.local?.builtin){state.textContent=`${runtime(e.local!)} · 可更新`;state.dataset.tone='update';}
+        if(update?.status==='available'&&(filterValue==='available'||!updateMuted(e.name))&&installed(e.local)&&!e.local?.builtin){state.textContent=`${runtime(e.local!)} · 可更新`;state.dataset.tone='update';}
         else if(e.local){state.textContent=(e.local.builtin?'内置 · ':'')+runtime(e.local);state.dataset.tone=e.local.loaded?'on':'off';}
         else state.textContent=e.market?pluginCategoryLabel(e.market):'';
         const meta=node('span','pw-entry-meta');meta.append(state);if(view==='discover')meta.append(node('span','pw-entry-platform',platformSummary(platforms(e))));copy.append(meta);item.append(mark,copy);list.append(item);
       }
     }
     footer.replaceChildren(node('span','page-footer-label',view==='local'?'内置与已安装':'社区插件'));const footerInfo=node('div','page-footer-summary');footerInfo.append(node('span','',!localLoaded||view==='discover'&&!marketLoaded?'正在读取…':view==='local'?`共 ${counts.local} 个 · 运行中 ${locals.filter(p=>installed(p)&&p.loaded).length} 个 · 可更新 ${counts.updates} 个${rows.length!==counts.local?' · 筛选结果 '+rows.length+' 个':''}`:`搜索到 ${rows.length} 个插件`));footer.append(footerInfo);if(pages>1){const back=button('上一页',()=>{page--;lastList='';render();});back.disabled=page===1;const next=button('下一页',()=>{page++;lastList='';render();});next.disabled=page===pages;footerInfo.append(back,node('span','',`${page}/${pages}`),next);}
-    const entry=shown.find(e=>e.name===selected);const detailKey=JSON.stringify([entry,view,entry&&updateFor(entry.name),operationError,busy,pluginOperation(),checkingUpdates,status.checking]);
+    const entry=shown.find(e=>e.name===selected);const detailKey=JSON.stringify([entry,view,entry&&updateFor(entry.name),operationError,busy,pluginOperation(),checkingUpdates,status.checking,historyName,entry&&updateMuted(entry.name)]);
     if(detailKey!==lastDetail){lastDetail=detailKey;drawDetail(entry);}
   }
   function drawDetail(e?:Entry){
@@ -172,21 +173,51 @@ export function pluginWorkspace(shell:Chrome,view:View='local'):Panel {
     if(exists){const remove=button('卸载插件',()=>{void mutate(e,'remove');},'pw-remove');remove.disabled=busy||!!pluginOperation()?.busy||p?.can_remove===false;actions.append(remove);}
     if(exists&&p?.restart_required){const apply=button('重启并应用',()=>{void mutate(e,'apply');});apply.disabled=busy||!!pluginOperation()?.busy;actions.append(apply);}
     const versionRepo=!p?.builtin&&source.startsWith('https://github.com/')?source.slice('https://github.com/'.length):'';
-    const versions=versionRepo?pluginVersions(versionRepo,e.name,exists?(p?.version||''):'',busy||!!pluginOperation()?.busy,row=>{void changeVersion(e,versionRepo,row);}):undefined;
-    if(versions){const choose=button(u?.status==='available'?'选择更新版本':'选择版本',()=>{void versions.loadVersions();versions.scrollIntoView({block:'nearest'});});choose.disabled=busy||!!pluginOperation()?.busy;actions.insertBefore(choose,actions.querySelector('.pw-remove'));}
     detail.append(actions);
-    if(versions)detail.append(versions);
+    const blocked=busy||!!pluginOperation()?.busy;
+    const history=()=>pluginVersions(versionRepo,e.name,exists?(p?.version||''):'',blocked,
+      row=>{void changeVersion(e,versionRepo,row.tag);});
+    if(exists&&!p?.builtin){
+      const update=node('section','pw-update-note');
+      update.append(node('h3','',u?.status==='available'?'有新版本可用':'版本检查'));
+      const row=node('div','pw-version-controls');
+      row.append(node('span','pw-update-version',u?updateText(u):'等待读取版本信息'));
+      if(versionRepo&&u?.status==='available'&&u.latest){
+        const apply=button('停用并更新',()=>{void changeVersion(e,versionRepo,u.tag,u.latest);},'pw-primary');
+        apply.disabled=blocked||u.current!==p?.version;
+        row.append(apply);
+      }
+      if(versionRepo){
+        const expanded=historyName===e.name;
+        const toggle=button('查看历史版本',()=>{
+          historyName=expanded?'':e.name;
+          render();
+          detail.querySelector<HTMLButtonElement>('[aria-controls="pw-version-history"]')?.focus({preventScroll:true});
+        });
+        toggle.disabled=blocked;
+        toggle.setAttribute('aria-expanded',String(expanded));
+        toggle.setAttribute('aria-controls','pw-version-history');
+        row.append(toggle);
+      }
+      update.append(row);
+      if(u?.checkedAt)update.append(node('small','',`上次成功检查 ${new Date(u.checkedAt*1000).toLocaleString()}`));
+      if(u?.error)update.append(node('p','',u.error));
+      if(versionRepo){
+        const mute=node('input');mute.type='checkbox';mute.checked=updateMuted(e.name);
+        mute.onchange=()=>setUpdateMuted(e.name,mute.checked);
+        const label=node('label','pw-update-mute');label.title='适用于此浏览器中的当前 Bot';
+        label.append(mute,document.createTextNode('该插件不推送更新提示'));update.append(label);
+        if(historyName===e.name){
+          const panel=history();panel.id='pw-version-history';update.append(panel);
+          void panel.loadVersions();
+        }
+      }
+      detail.append(update);
+    }else if(versionRepo)detail.append(history());
     const result=node('p','pw-operation',operationError);result.setAttribute('role','status');detail.append(result);
     if(p?.restart_required){const note=node('section','pw-restart-note');note.append(node('h3','','重启后生效'),node('p','',p.restart_reason||'设置已保存，重启当前 Bot 的 Core 服务后生效。'),node('p','',p.loaded?'插件当前仍在运行，任务结束后再重启服务。刷新网页不会使此更改生效。':'点击“重启并应用”后，页面将显示重启进度并核对生效结果。'));detail.append(note);}
     if(p?.lifecycle_error)detail.append(node('p','pw-operation',p.lifecycle_error));
     if(compatibilityBox)detail.append(compatibilityBox);
-    if(u&&exists&&!p?.builtin){
-      const update=node('section','pw-update-note');update.append(node('h3','',u.status==='available'?'有新版本可用':'版本检查'),node('p','',updateText(u)));
-      if(u.checkedAt)update.append(node('small','',`上次成功检查 ${new Date(u.checkedAt*1000).toLocaleString()}`));
-      if(u.error)update.append(node('p','',u.error));
-      if(u.status==='available'){const instructions=node('section');instructions.append(node('h3','','查看升级步骤'),node('p','','停用插件后，点击“选择更新版本”，核对发布说明再安装。旧包会备份，配置和缓存保留，安装后按需启用。多个 Bot 共用安装包时，需要各 Bot 均已停用该插件。'));update.append(instructions);}
-      detail.append(update);
-    }
     const descriptions=node('div','pw-detail-sections');
     const about=node('section','pw-about');about.append(node('h3','','关于插件'),node('p','',p?.description||m?.description||'作者尚未提供简介。'));const requirement=m&&pluginRequirement(m);if(requirement)about.append(node('p','pw-requirement',requirement));if(p?.contract)about.append(node('p','pw-operation',p.contract));descriptions.append(about);
     if (p?.builtin && e.name === 'core-infinity-qq') {
@@ -203,6 +234,8 @@ export function pluginWorkspace(shell:Chrome,view:View='local'):Panel {
     const field=(label:string,value:string)=>{fields.append(node('dt','',label),node('dd','',value||'未声明'));};
     field('来源',p?.builtin?'Core 内置':p?.origin?.source==='github'?'GitHub':p?'本地导入':m?.source||'GitHub');
     field('安装状态',exists?'已安装':p?.builtin?'可从 Core 恢复':'尚未安装');
+    const parent=p?.navigationParent;
+    if(parent)field('所属主插件',locals.find(one=>one.name===parent)?.displayName||parent);
     if(p?.where)field('安装位置',p.where);
     if(p?.api!==undefined)field('兼容接口',`Infinity API ${p.api??'未声明'}`);
     if(m?.date)field('仓库更新',m.date);
@@ -214,18 +247,40 @@ export function pluginWorkspace(shell:Chrome,view:View='local'):Panel {
     scroll.append(...children.slice(children.indexOf(actions)+1));
     detail.append(scroll);
   }
-  async function changeVersion(e:Entry,repository:string,row:VersionChoice){
+  async function changeVersion(e:Entry,repository:string,tag?:string,latest?:string){
     if(busy||pluginOperation()?.busy||!alive)return;
-    if(e.local&&(e.local.enabled||e.local.loaded||e.local.restart_required)){operationError='请先停用插件；如提示需要重启，请完成重启后再切换版本。';render();return;}
-    const accepted=await confirmAction('安装所选版本',`将安装 ${row.tag}${row.prerelease?'（预发布）':''}。原安装包会备份，配置和缓存保留，安装后保持停用。旧版可能不兼容新版配置，请先阅读发布说明。`,'安装',false,{className:'pw-confirm',detail:e.local?.displayName||e.name});
-    if(!accepted||!alive||busy)return;
-    busy=true;operationError='正在下载、核对并安装所选版本…';render();
+    const wasInstalled=installed(e.local);
+    const mustStop=!!(e.local?.enabled||e.local?.loaded||e.local?.tracked||e.local?.restart_required);
+    const label=latest?'停用并更新':wasInstalled?'替换安装':'安装此版本';
+    const description=[`将安装 ${latest||tag}。`,mustStop?'将先停用当前 Bot 的插件。':'',
+      mustStop&&(e.local?.reload_mode==='restart'||e.local?.restart_required)?'此操作可能重启当前 Bot 服务。':'',
+      wasInstalled?'原安装包会备份，配置和缓存保留。':'','安装后插件保持停用。'].join('');
+    const accepted=await confirmAction(label,description,label,false,{className:'pw-confirm',detail:e.local?.displayName||e.name});
+    if(!accepted||!alive||busy||selected!==e.name||pluginOperation()?.busy)return;
+    busy=true;operationError='正在核对所选版本…';render();
     try{
-      const r=await fetch('/market/install',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({version:{repository,tag:row.tag,name:e.name,current:installed(e.local)?e.local?.version||'':''}})});
-      if(!r.ok)throw Error((await r.text()).trim()||'版本安装失败');const result=await r.json();if(!result.ok)throw Error(result.said||'版本安装失败');operationError=result.said;
-      const token=++epoch;await readLocal(token);if(view==='discover')await readMarket(token);await checkPluginUpdates();window.dispatchEvent(new Event('plugins-changed'));
+      const releaseTag=tag||(latest&&await tagForVersion(repository,latest));
+      if(!releaseTag)throw Error('缺少正式版本标签，请重新检查更新。');
+      if(mustStop){
+        await runPluginOperation(e.name,'disable',e.local?.version);
+        const stop=pluginOperation();
+        if(stop?.phase!=='complete')throw Error(stop?.text||'尚未确认插件已停用。');
+      }
+      operationError='正在下载并安装 '+releaseTag+'…';render();
+      const response=await fetch('/market/install',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({version:{repository,tag:releaseTag,name:e.name,current:wasInstalled?e.local?.version||'':''}})});
+      if(!response.ok)throw Error((await response.text()).trim()||'版本安装失败');
+      const result=await response.json();
+      if(!result.ok)throw Error(result.said||result.error||'版本安装失败');
+      operationError=result.said||'安装完成。';
     }catch(error){operationError=error instanceof Error?error.message:'版本安装失败';}
-    finally{busy=false;lastList=lastDetail='';render();}
+    finally{
+      const token=++epoch;
+      await readLocal(token);
+      if(view==='discover')await readMarket(token);
+      window.dispatchEvent(new Event('plugins-changed'));
+      busy=false;lastList=lastDetail='';render();
+    }
   }
   async function checkUpdates(){if(checkingUpdates||busy)return;checkingUpdates=true;render();try{await checkPluginUpdates(true);}finally{checkingUpdates=false;render();}}
   async function mutate(e:Entry,action:'switch'|'install'|'remove'|'apply'){
@@ -262,18 +317,16 @@ export function pluginWorkspace(shell:Chrome,view:View='local'):Panel {
     if(toggle?.offsetWidth && toggle.getAttribute('aria-expanded')==='false') toggle.click();
     railButton('.plugin-nav-edit')?.click();
   },'pw-quiet');
-  const cancelOrder = button('取消',()=>railButton('.plugin-nav-action:not(.is-primary)')?.click(),'pw-quiet');
-  const saveOrder = button('完成',()=>railButton('.plugin-nav-action.is-primary')?.click());
-  orderActions.append(editOrder,cancelOrder,saveOrder);
+  orderActions.append(editOrder);
   if(view==='local'){header.append(orderActions);header.after(navOrder);}
   function reflectNavigation() {
     if(view!=='local')return;
     const tree=shell.railNav.querySelector('.rail-sublist.is-sorting');
     const sorting=!!tree;
     root.classList.toggle('pw-ordering',sorting);
-    orderActions.hidden=!railButton('.plugin-nav-edit');
+    orderActions.hidden=sorting||!railButton('.plugin-nav-edit');
     editOrder.hidden=sorting;
-    cancelOrder.hidden=saveOrder.hidden=navOrder.hidden=!sorting;
+    navOrder.hidden=!sorting;
     heading.querySelector('h1')!.textContent=sorting?'调整顺序':'插件总览 · PLUGIN OVERVIEW';
     orderRows.replaceChildren();
     if(tree) for(const unit of tree.querySelectorAll<HTMLElement>('[data-nav-id]')){

@@ -82,11 +82,12 @@ export async function continuePluginOperation(){
   if(state?.busy||!continuation)return;
   try{await continuation();}catch(e){update('failed',e instanceof Error?e.message:String(e),false);}
 }
-export async function runPluginOperation(name:string,action:PluginAction){
+export async function runPluginOperation(name:string,action:PluginAction,expectedVersion?:string){
   if(state?.busy)throw Error('请等待当前插件操作完成。');
   continuation=undefined;state={name,action,phase:'changing',text:'正在读取并核对插件状态…',busy:true};update('changing',state.text);
   try{
     const before=await read();const p=find(before,name);if(!p)throw Error('插件未安装，请刷新列表。');
+    if(expectedVersion!==undefined&&p.version!==expectedVersion)throw Error('当前插件版本已变化，请重新核对。');
     let next=before;
     const predictableRestart=(action==='apply'&&p.restart_required)||(p.reload_mode==='restart'&&(action==='enable'?!p.loaded:action==='disable'||action==='remove'?(p.loaded||p.tracked||p.restart_action==='disable'):false));
     if(predictableRestart&&!before.runtime?.restart_supported)throw Error(before.runtime?.restart_reason||'当前启动器不支持页面内重启，请先更新并重启启动器。');

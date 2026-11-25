@@ -5047,6 +5047,12 @@ def _main_impl(argv: list[str] | None = None, *, sharing_bridge_factory=None, pr
         return sticker_reference_hint(running._active_batch, shared_events.get_by_dedup_key,
                                       lambda: dict(plugins._active_items()).get("core-infinity-qq"))
 
+    def current_waves_context(running):
+        plugin = dict(plugins._active_items()).get("core-infinity-wavesuid")
+        bridge = getattr(plugin, "native", None)
+        context = getattr(bridge, "followup_context", None)
+        return context(running._active_batch) if callable(context) else ""
+
     def group_owner_hint(running):
         sender = qq_group_owner(running)
         return (f"〔当前群发言者〕{sender} 是你认识的 owner，可以自然地和本人接话；"
@@ -5459,7 +5465,7 @@ def _main_impl(argv: list[str] | None = None, *, sharing_bridge_factory=None, pr
                 act_identity=lambda body: _identity_action(identity_book, see_everyone(), body),
                 linked_accounts=lambda account: _linked_accounts(
                     _request_identity_book(identity_book, console), account),
-                identity_hint=lambda: current_sticker_hint(console) + group_owner_hint(console) + encounters.hint(console._active_batch) + _qq_voice_turn_hint(console._active_batch) + (_identity_hint_for_batch(
+                identity_hint=lambda: current_sticker_hint(console) + current_waves_context(console) + group_owner_hint(console) + encounters.hint(console._active_batch) + _qq_voice_turn_hint(console._active_batch) + (_identity_hint_for_batch(
                     _request_identity_book(identity_book, console), console._active_batch)
                     or _her_own_pens_hint(**_her_pens_counts(see_pending))),
                 group_policy=qq_group_policy,
@@ -5517,6 +5523,13 @@ def _main_impl(argv: list[str] | None = None, *, sharing_bridge_factory=None, pr
         return (running is not None and not getattr(loop,'sealed',False)
             and not (running.signal is not None and running.signal.is_set())
             and not (callable(getattr(loop,'gated',None)) and loop.gated()))
+    def waves_commands_allowed():
+        running = attached_console[0]
+        loop = getattr(getattr(running, "app", None), "loop", None)
+        return callable(getattr(loop, "gated", None)) and _notice_current()
+
+    qq_context["waves_commands_allowed"] = waves_commands_allowed
+
     async def _compose_login_notice(facts):
         from dataclasses import replace
         from telyincore.console import _the_prefix_head
@@ -5564,6 +5577,9 @@ def _main_impl(argv: list[str] | None = None, *, sharing_bridge_factory=None, pr
 
     if qq_bot_scope is not None:
         qq_context["qq_config_path"] = str(qq_bot_scope / "qq" / "config.json")
+    from qq_request_author import verified_request
+    plugin_host["verified_qq_request"] = lambda: verified_request(
+        attached_console[0], channel_context_host, plugins.event_is_current)
     plugin_host["active_events"] = lambda: tuple(
         getattr(attached_console[0], "_active_batch", ()) or ())
     from infinity_vision import inspect as inspect_with_profile
@@ -5911,9 +5927,11 @@ def _main_impl(argv: list[str] | None = None, *, sharing_bridge_factory=None, pr
         if route.startswith(plugin_config_route):
             from urllib.parse import unquote
             return plugin_config.read(unquote(route[len(plugin_config_route):]))
-        if route == infinity_path + "/tools":
+        if route == infinity_path + "/tools" or route.startswith("/infinity/plugin-tools/"):
             from qq_tool_catalog import snapshot
-            return snapshot(core_root, plugin_scope, _the_current_declarations)
+            provider = ("core-infinity-qq" if route == infinity_path + "/tools"
+                        else route.removeprefix("/infinity/plugin-tools/"))
+            return snapshot(core_root, plugin_scope, _the_current_declarations, provider)
         if route == "/infinity/waves/accounts":
             with plugins.lifecycle_transaction():
                 return waves_accounts.snapshot()
@@ -6494,7 +6512,7 @@ def _main_impl(argv: list[str] | None = None, *, sharing_bridge_factory=None, pr
                                retrieval_at_tail=args.retrieval_at_tail, channel_at_tail=True,
                                linked_accounts=lambda account: _linked_accounts(
                                    _request_identity_book(identity_book, console), account),
-                               identity_hint=lambda: current_sticker_hint(console) + group_owner_hint(console) + encounters.hint(console._active_batch) + _qq_voice_turn_hint(console._active_batch) + (
+                               identity_hint=lambda: current_sticker_hint(console) + current_waves_context(console) + group_owner_hint(console) + encounters.hint(console._active_batch) + _qq_voice_turn_hint(console._active_batch) + (
                                    _identity_hint_for_batch(_request_identity_book(identity_book, console), console._active_batch, compact=True)
                                    or _group_turn_hint(console._active_batch,
                                                        console.session.records(),

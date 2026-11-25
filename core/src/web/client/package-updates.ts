@@ -23,6 +23,7 @@ interface PackageStatus {
 let last: PackageStatus | undefined;
 let pending: Promise<void> | undefined;
 let installing = false;
+let preflightError = '';
 
 function paint(card: HTMLElement, state: PackageStatus) {
   if (installing) return;
@@ -92,6 +93,10 @@ function paint(card: HTMLElement, state: PackageStatus) {
     notice.textContent = state.status === 'unavailable'
       ? '暂时无法确认新版本，请稍后重试。'
       : state.message || '暂时无法检查更新。';
+  }
+  if (preflightError) {
+    card.querySelector<HTMLElement>('h3')!.textContent = '更新已暂停';
+    notice.textContent = preflightError;
   }
   const details = card.querySelector<HTMLElement>('[data-update-details]')!;
   const detailText = state.status === 'unavailable' ? state.message : state.checkRoute;
@@ -217,6 +222,7 @@ export function packageUpdateCard() {
   button.className = 'settings-language-button';
   button.textContent = '检查更新';
   button.addEventListener('click', async () => {
+    preflightError = '';
     offline.hidden = true;
     button.disabled = true;
     notice.textContent = '正在检查…';
@@ -240,6 +246,7 @@ export function packageUpdateCard() {
       if (baseVersion) current.textContent = baseVersion.replace(/^beta\./, '') + ' → ' + actual.replace(/^beta\./, '');
     };
     if (!targetVersion) return;
+    preflightError = '';
     installing = true;
     install.disabled = true;
     offline.hidden = true;
@@ -264,6 +271,10 @@ export function packageUpdateCard() {
       });
       if (!response.ok) {
         const detail = await response.json().catch(() => ({}));
+        if (detail.code === 'update_preflight_blocked') {
+          preflightError = detail.error;
+          title.textContent = '更新已暂停';
+        }
         if (typeof detail.cachedVersion === 'string') {
           offline.textContent = '安装已下载的 ' + detail.cachedVersion.replace(/^beta\./, '');
           offline.onclick = () => { void applyUpdate(detail.cachedVersion); };

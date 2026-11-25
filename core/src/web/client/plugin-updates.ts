@@ -1,7 +1,8 @@
+import { onDisplayScopeReady, readDisplayLocal, writeDisplayLocal } from './display-storage';
 /** Shared read-only update state. Installation remains an explicit operator action. */
 import { pageFetch as fetch } from './status-json';
 export interface PluginUpdate {
-  name: string; displayName: string; current: string; latest?: string; repository: string;
+  name: string; displayName: string; current: string; latest?: string; tag?: string; repository: string;
   status: 'pending'|'available'|'current'|'ahead'|'prerelease'|'managed'|'unsupported'|'unavailable'|'unreleased';
   stale?: boolean; error?: string; message?: string; checkedAt?: number;
 }
@@ -13,7 +14,21 @@ let started = false;
 let loaded = false;
 export const updateFor = (name: string) => state.rows.find(row => row.name === name);
 export const pluginUpdateSnapshot = () => ({...state,error:failure});
-const available = () => state.rows.filter(row => row.status === 'available');
+const muteKey = 'plugin-update-muted';
+function mutedNames(): string[] {
+  try {
+    const names: unknown = JSON.parse(readDisplayLocal(muteKey) || '[]');
+    return Array.isArray(names) ? names.filter((n): n is string => typeof n === 'string') : [];
+  } catch { return []; }
+}
+export const updateMuted = (name: string) => mutedNames().includes(name);
+export function setUpdateMuted(name: string, mute: boolean) {
+  const names = new Set(mutedNames());
+  if (mute) names.add(name); else names.delete(name);
+  writeDisplayLocal(muteKey, JSON.stringify([...names]));
+  paint();
+}
+const available = () => state.rows.filter(row => row.status === 'available' && !updateMuted(row.name));
 const el = <K extends keyof HTMLElementTagNameMap>(tag: K, text = '', cls = '') => {
   const node = document.createElement(tag); node.textContent = text; node.className = cls; return node;
 };
@@ -34,13 +49,13 @@ function summary(): string {
   const unsupported=state.rows.filter(row=>row.status==='unsupported').length;
   const checked=state.rows.filter(row=>['current','ahead','prerelease','unreleased'].includes(row.status)&&!row.stale).length;
   return count ? `${count} 个插件发现新版本${unknown ? `，${unknown} 项待复查` : ''}`
-    : unknown ? `${unknown} 个插件尚未确认版本` : checked ? `已检查 ${checked} 个插件，暂无更新` : unsupported ? `${unsupported} 个插件无法自动检查，请查看来源` : state.rows.length ? '内置插件随 Core 更新' : loaded ? '暂无已安装插件' : '等待读取插件更新状态';
+    : unknown ? `${unknown} 个插件尚未确认版本` : checked ? `已检查 ${checked} 个插件，暂无更新` : state.rows.some(row=>row.status==='available') ? '暂无需要提示的插件更新' : unsupported ? `${unsupported} 个插件无法自动检查，请查看来源` : state.rows.length ? '内置插件随 Core 更新' : loaded ? '暂无已安装插件' : '等待读取插件更新状态';
 }
 function paint() {
   document.querySelectorAll<HTMLElement>('[data-plugin-update-summary]').forEach(node => node.textContent = summary());
   document.querySelectorAll<HTMLElement>('[data-plugin-update-name]').forEach(node => {
     const row = updateFor(node.dataset.pluginUpdateName!);
-    node.hidden = !row || row.status !== 'available';
+    node.hidden = !row || row.status !== 'available' || updateMuted(row.name);
     const text = node.querySelector<HTMLElement>('[data-plugin-update-text]');
     if (text && row) text.textContent = updateText(row);
     node.classList.toggle('has-update', row?.status === 'available');
@@ -49,19 +64,44 @@ function paint() {
   if (top) {top.textContent = available().length ? `插件更新 ${available().length}` : '插件更新'; top.hidden = available().length === 0; top.title = summary(); top.classList.toggle('has-update', available().length > 0);}
   window.dispatchEvent(new Event('plugin-updates-changed'));
 }
-export async function checkPluginUpdates(refresh = false): Promise<void> {
-  if (pending) {await pending; if (refresh) return checkPluginUpdates(true); return;}
-  pending = (async () => {
-    try {
-      const response = await fetch('/plugin-updates' + (refresh ? '?refresh=1' : ''), {cache:'no-store'});
-      if (!response.ok) throw new Error(response.status === 503 || response.status === 404 ? '此 Core 尚未启用插件更新检查' : '暂时无法读取插件更新');
-      const next = await response.json();
-      if (!Array.isArray(next.rows)) throw new Error('更新状态格式异常');
-      state = next; loaded = true; failure = '';
-    } catch (error) {state.rows=state.rows.map(row=>({...row,stale:true}));failure = error instanceof Error ? error.message : '暂时无法读取插件更新';}
+let manual: Promise<void> | undefined;
+async function readUpdates(force: boolean) {
+  const response = await fetch('/plugin-updates' + (force ? '?refresh=1' : ''), {cache:'no-store'});
+  if (!response.ok) throw Error(response.status === 503 || response.status === 404
+    ? '此 Core 尚未启用插件更新检查' : '暂时无法读取插件更新');
+  const next = await response.json();
+  if (!Array.isArray(next.rows) || typeof next.checking !== 'boolean') throw Error('更新状态格式异常');
+  state = next;
+  loaded = true;
+  failure = '';
+  paint();
+}
+async function observeUpdates(refresh: boolean) {
+  try {
+    const deadline = Date.now() + 90000;
+    await readUpdates(refresh);
+    // Older services acknowledge a forced scan before their worker picks it up.
+    let verifyQueued = refresh;
+    while (verifyQueued || state.checking) {
+      verifyQueued = false;
+      if (Date.now() >= deadline) throw Error('检查耗时较长，可稍后再查。');
+      await new Promise(resolve => setTimeout(resolve, 1250));
+      await readUpdates(false);
+    }
+  } catch (error) {
+    state = {...state, checking:false, rows:state.rows.map(row=>({...row,stale:true}))};
+    failure = error instanceof Error && error.name !== 'StatusTimeoutError'
+      ? error.message : '读取更新状态超时，可重新检查。';
     paint();
-  })().finally(() => {pending = undefined;});
-  return pending;
+  }
+}
+export function checkPluginUpdates(refresh = false): Promise<void> {
+  if (manual) return manual;
+  if (refresh) {
+    manual = Promise.resolve(pending).then(() => observeUpdates(true)).finally(() => { manual = undefined; });
+    return manual;
+  }
+  return pending ??= observeUpdates(false).finally(() => { pending = undefined; });
 }
 export function pluginUpdateNotice(name?: string): HTMLElement {
   const box = el('section', '', 'plugin-update-strip');
@@ -71,7 +111,7 @@ export function pluginUpdateNotice(name?: string): HTMLElement {
   const button = el('button', name ? '查看更新 →' : '查看更新 →', 'infinity-action');
   button.type = 'button';button.addEventListener('click', () => openPluginUpdates(name, button));
   box.append(text, button);
-  if (name) {const row = updateFor(name);if (row && row.status === 'available') {box.hidden = false;text.textContent = updateText(row);}}
+  if (name) {const row = updateFor(name);if (row && row.status === 'available' && !updateMuted(row.name)) {box.hidden = false;text.textContent = updateText(row);}}
   return box;
 }
 let requested: {name?: string}|null = null;
@@ -130,6 +170,12 @@ export function pluginUpdatesPanel() {
 }
 export function startPluginUpdates() {
   if (started) return;started=true;
+  onDisplayScopeReady(prefix => {
+    paint();
+    window.addEventListener('storage', event => {
+      if (event.key === prefix + muteKey || event.key === null) paint();
+    });
+  });
   const row=document.querySelector('.topbar-status');
   if(row){const button=el('button','插件更新','topbar-update topbar-plugin-updates');button.type='button';button.hidden=true;button.onclick=()=>openPluginUpdates(undefined,button);row.append(button);}
   void checkPluginUpdates();

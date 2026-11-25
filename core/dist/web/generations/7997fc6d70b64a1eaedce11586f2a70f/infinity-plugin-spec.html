@@ -1,0 +1,628 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'">
+<title>TelyinCore Infinity 插件开发手册 v1.19</title><style>
+:root{--color-dim:#535f70;--color-mint-text:#3e6089;--radius-pill:999px}
+/* Shared by the Core application and the standalone plugin manual. */
+@layer base {
+  :root {
+    --ui-scroll-thumb: color-mix(in srgb, var(--color-dim) 30%, transparent);
+    --ui-scroll-hover: color-mix(in srgb, var(--color-dim) 50%, transparent);
+  }
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--ui-scroll-thumb) transparent;
+  }
+  @supports selector(::-webkit-scrollbar) {
+    /* Chromium uses the rounded custom track; Firefox uses the standard above. */
+    * { scrollbar-width: auto; scrollbar-color: auto; }
+    ::-webkit-scrollbar { width: 8px; height: 8px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb {
+      min-height: 32px;
+      border: 2px solid transparent;
+      border-radius: var(--radius-pill);
+      background: var(--ui-scroll-thumb);
+      background-clip: padding-box;
+    }
+    ::-webkit-scrollbar-thumb:hover { background-color: var(--ui-scroll-hover); }
+    ::-webkit-scrollbar-thumb:active { background-color: var(--color-mint-text); }
+    ::-webkit-scrollbar-button { display: none; width: 0; height: 0; }
+    ::-webkit-scrollbar-corner { background: transparent; }
+  }
+
+  @media (forced-colors: active) {
+    * { scrollbar-color: auto; }
+  }
+}
+
+:root{color-scheme:light;--ink:#22354a;--muted:#718095;--line:#dfe6ee;--blue:#2669b4}
+*{box-sizing:border-box}html{scroll-behavior:smooth;scroll-padding-top:32px}
+body{margin:0;background:#f5f7fa;color:var(--ink);font:15px/1.95 system-ui,sans-serif}
+a{color:var(--blue);text-decoration:none}a:hover{text-decoration:underline}
+a:focus-visible{outline:2px solid var(--blue);outline-offset:4px;border-radius:3px}
+.shell{max-width:1300px;margin:auto;padding:36px 40px 72px}
+.top{display:flex;justify-content:space-between;gap:16px;align-items:center;
+font-size:12px;letter-spacing:.04em;color:var(--muted);padding-bottom:30px}
+.brand{font-weight:750;color:var(--ink);font-size:15px;letter-spacing:.02em}
+.layout{display:grid;grid-template-columns:230px minmax(0,1fr);gap:48px}
+aside{position:sticky;top:30px;align-self:start;max-height:calc(100vh - 60px);overflow:auto}
+.eyebrow{font-size:11px;font-weight:650;letter-spacing:.16em;color:var(--muted)}
+nav{display:grid;gap:5px;margin-top:18px}nav a{color:#607187;font-size:12px;line-height:1.7;
+padding:7px 10px;border-radius:7px;border-left:2px solid transparent}
+nav a:hover{background:#eaf0f8;color:var(--blue);text-decoration:none;border-color:#87acd6}
+main{min-width:0;background:#fff;border:1px solid var(--line);border-radius:16px;
+padding:48px 54px;box-shadow:0 8px 28px #20364a04}
+.hero{padding-bottom:28px;border-bottom:1px solid var(--line);margin-bottom:26px}
+.badge{display:inline-block;background:#edf3fb;border:1px solid #dbe7f5;color:var(--blue);
+border-radius:20px;padding:2px 10px;font-size:11px;margin-left:10px;letter-spacing:0}
+h1{font-size:32px;line-height:1.4;letter-spacing:-.025em;margin:16px 0 12px;font-weight:730}
+.subtitle{font-size:13px;color:var(--muted);margin:0}
+h2{font-size:20px;line-height:1.55;margin:42px 0 18px;font-weight:700;
+padding-top:24px;border-top:1px solid var(--line);letter-spacing:-.015em}
+h3{font-size:17px;margin:28px 0 14px}p{margin:14px 0;color:#43546a}
+ul,ol{padding-left:22px;color:#43546a}li{padding-left:4px;margin:8px 0}
+.table-wrap{overflow-x:auto;margin:22px 0;border:1px solid var(--line);border-radius:10px}
+table{border-collapse:collapse;width:100%;font-size:14px}th,td{text-align:left;vertical-align:top;padding:12px 16px;border-bottom:1px solid var(--line)}
+th{background:#edf3fb;font-weight:650}tr:last-child td{border-bottom:0}
+code{font:12px/1.7 ui-monospace,Consolas,monospace;background:#eef3f8;color:#285779;
+border-radius:4px;padding:2px 5px;overflow-wrap:anywhere}
+.code{margin:22px 0;border:1px solid #dce5ee;border-radius:10px;overflow:hidden;background:#f7f9fc}
+.code-label{font:10px/1.4 system-ui;letter-spacing:.13em;color:#6d8095;
+padding:10px 18px;border-bottom:1px solid #e5ebf2;text-transform:uppercase}
+pre{margin:0;padding:20px;overflow:auto;tab-size:4}pre code{padding:0;background:none;
+color:#344c65;white-space:pre;overflow-wrap:normal;font-size:12px}
+footer{margin-top:40px;border-top:1px solid var(--line);padding-top:20px;
+font-size:12px;color:var(--muted);display:flex;justify-content:space-between;gap:16px}
+@media(max-width:900px){.shell{padding:22px 20px}.layout{grid-template-columns:1fr;gap:20px}
+aside{position:static;max-height:none}nav{grid-template-columns:repeat(2,minmax(0,1fr));gap:2px}
+main{padding:30px 24px}h1{font-size:27px}.top{padding-bottom:22px}}
+@media(max-width:480px){nav{grid-template-columns:1fr}main{padding:24px 18px}}
+@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+@media print{body{background:white}.shell{padding:0}.top,aside{display:none}
+.layout{display:block}main{border:0;box-shadow:none;padding:0}pre{white-space:pre-wrap}
+h2,h3{break-after:avoid}.code{break-inside:avoid}a{color:inherit}}
+</style></head><body><div class="shell" id="top">
+<header class="top"><span class="brand">TelyinCore <span class="badge">INFINITY</span></span>
+<a href="/#/plugin">← 返回插件市场</a></header><div class="layout">
+<aside><div class="eyebrow">DEVELOPER REFERENCE · v1.19</div><nav aria-label="章节目录">
+<a href="#section-1">1. 范围与信任边界</a>
+<a href="#section-2">2. 目录与清单</a>
+<a href="#section-6">3. 生命周期</a>
+<a href="#section-7">4. 宿主上下文</a>
+<a href="#section-8">5. 事件、工具与重复执行</a>
+<a href="#section-9">6. 消息标记与平台词表</a>
+<a href="#section-10">7. 通用配置页</a>
+<a href="#section-12">8. 自定义 HTML 桥接</a>
+<a href="#section-14">9. Bot、通道与进程隔离</a>
+<a href="#section-15">10. 分发、升级与热生效</a>
+<a href="#section-16">11. GitHub 开源仓库与市场发布指南</a>
+<a href="#section-24">12. 作者交付检查单</a>
+<a href="#section-25">13. 不保证的能力</a>
+<a href="#section-26">14. 后台工作与安全停用</a>
+<a href="#section-28">15. 工具结果与消息投递</a>
+<a href="#section-30">16. 配置、身份和数据隔离</a>
+<a href="#section-32">17. 安装、启用、停用与卸载</a>
+<a href="#section-33">18. 市场与下载问题排查</a>
+<a href="#section-38">19. 可选运行诊断</a>
+<a href="#section-39">20. 发布前测试清单</a>
+<a href="#section-40">21. 固定前缀、工具声明与追加式上下文</a>
+<a href="#section-46">22. 记忆写入、检索与交接后的接续</a>
+<a href="#section-50">23. 依赖、模型和旧版升级</a>
+<a href="#section-54">24. Windows、Linux 与档案名称</a>
+<a href="#section-57">25. 配置页、预览与状态提示</a>
+<a href="#section-62">26. 将页面显示缓存接入设置</a>
+<a href="#section-69">27. 热加载与重启后生效</a>
+</nav></aside><main><header class="hero"><div class="eyebrow">插件开发参考</div>
+<h1>Infinity 插件开发规范</h1><p class="subtitle">v1.19 · Python Infinity API 1
+ · 本地与 GitHub 统一接入</p></header><p>适用于 Python Infinity API 1。本次按 Windows Core beta.0.5.6.4 核对，更新于 2026-11-26。</p>
+<p>本手册面向插件开发者，介绍插件目录、工具接口、配置页面、发布方法和常见问题。第一次开发建议先阅读第 2～5 节，完成一个本地插件，再阅读第 11 节发布到插件市场。涉及模型调用、长期记忆或独立模型依赖时，再阅读第 21～23 节；跨平台发布和配置页开发参见第 24～25 节；页面显示缓存接入参见第 26 节。向模型提供工具前，请先按第 21 节检查固定前缀和逐轮追加的内容。</p>
+<p>文中的代码和命令是示例，请按自己的插件名称、路径和配置调整。可选接口应先检查宿主是否提供；文档版本与插件 API 版本分别管理。</p>
+<h2 id="section-1">1. 范围与信任边界</h2>
+<p>Infinity 承载可选世界适配器、工具实现和外部服务连接；事件库、总线、主循环、人格与记忆属于核心。 本地插件与 GitHub 插件使用相同清单、生命周期和配置页。GitHub 是发现/分发来源，不是运行权限门槛。 Python 插件在 TelyinCore 进程内运行，不是安全沙箱：启用前须信任源码。 配置页 iframe 的隔离不代表 Python 插件也被隔离。</p>
+<h2 id="section-2">2. 目录与清单</h2>
+<div class="code"><div class="code-label">text</div><pre><code>core/extensions/my-infinity-demo/
+  package.json
+  index.py
+  config.example.json        # 可选，JSON 对象
+  config.schema.json         # 可选，轻量字段声明
+  config.html                # 可选，单文件配置页面
+  README.md                  # 建议</code></pre></div>
+<p>本地使用可直接放置合规目录，不必上传 GitHub；之后刷新插件列表，手动启用。 不要复制私人 config.json、账号令牌、Bot 人设或运行日志给其他用户。</p>
+<div class="code"><div class="code-label">json</div><pre><code>{
+  &quot;name&quot;: &quot;my-infinity-demo&quot;,
+  &quot;version&quot;: &quot;0.1.0&quot;,
+  &quot;author&quot;: &quot;你的名字&quot;,
+  &quot;main&quot;: &quot;index.py&quot;,
+  &quot;description&quot;: &quot;插件用途&quot;,
+  &quot;keywords&quot;: [&quot;core-infinity&quot;],
+  &quot;license&quot;: &quot;MIT&quot;,
+  &quot;telyincore&quot;: {
+    &quot;kind&quot;: &quot;infinity&quot;,
+    &quot;api&quot;: 1,
+    &quot;displayName&quot;: &quot;演示插件&quot;,
+    &quot;configSchema&quot;: &quot;config.schema.json&quot;,
+    &quot;configPage&quot;: &quot;config.html&quot;
+  }
+}</code></pre></div>
+<p><code>author</code> 是清单中的作者字段，使用非空字符串，写实际作者或维护者名称，不得用匿名占位。 随 TelyinCore 提供、位于 <code>builtin/</code> 的官方内置插件，<code>author</code> 必须精确为 <code>Telyin</code>； 第三方插件保持其实际作者，不因包名以 <code>core-infinity-</code> 开头而被改写。 前端和宿主只读取清单中的 <code>author</code>，不要在页面、适配器或按包名前缀硬编码作者。</p>
+<p>name 应稳定且唯一，并作为安装最终目录的一部分校验，不能只验证下载 URL 的文件名。 采用单路径段名称，拒绝 <code>@scope/name</code>、斜杠、反斜杠、冒号、控制字符、<code>.</code>、<code>..</code>、尾点、尾空格以及 Windows 设备名（包括带扩展名的设备名）。不靠截断、去点或替换字符“修复”不合规名称。 这与 npm scoped package 命名不同；不要把本地旧目录可加载当作安装器承诺兼容。 main、configSchema、configPage 必须指向插件目录内文件，禁止越界；实际解析路径、链接及最终发布目录也必须核对。 configSchema/configPage 可省略；schema 也可内联对象。api 当前为整数 1，不是任意版本区间。 插件版本建议使用语义化版本。依赖环境须在 README 列明，不应在 import/start 中静默 pip 安装。</p>
+<h3 id="section-3">2.1 列表简介、详情与来源显示</h3>
+<p>所有核心、第三方本地和 GitHub 插件的列表卡片简介统一最多显示两行，超出部分由 CSS 收起。 <code>description</code> 的存储、接口返回、检索与筛选必须保留完整字符串，不得按两行或字符数截断； 前端也不得用 JavaScript 截断字符串伪装两行。两行限制只作用于卡片显示层。 详情面板保留完整正文和原有换行，长单词允许在必要时断行，不沿用卡片的行数限制。 插件来源按真实清单标记显示：随 TelyinCore 提供的内置插件（无论当前是否安装）显示“核心”， 第三方本地或 GitHub 插件保留真实来源，不按包名前缀推断或改写。</p>
+<h3 id="section-4">2.2 许可证边界</h3>
+<p><code>license</code> 必须基于项目真实授权填写，不得把模板示例当作授权依据。当前 <code>builtin/</code> 官方内置 插件清单写 <code>LicenseRef-TelyinCore-NonCommercial-1.0</code>，对应根目录 《TelyinCore 非商业使用与受限分发许可》1.0（安装目录中的 LICENSE 文件）。这是<strong>源码可见的受限许可</strong>， 不是 MIT、GPL 等 OSI 标准开源许可，也不是 <code>Unlicense</code>。它只适用于 TelyinCore 主程序和 明确采用本许可的官方内置插件，不覆盖第三方插件、模型、依赖或运行时。历史移除组件的许可不因移除而改变。</p>
+<p>未来授权变更时，应同步更新清单中的 <code>license</code>、实际许可文本和本规范，不能只改显示字段。 上方模板里的 <code>license: &quot;MIT&quot;</code> 只是第三方插件可以选择的一种示例，不会自动为内置插件或 任何未明确授权的项目授予 MIT 许可。独立原创的附属插件可以选择自己的许可；修改别人的插件 先取得原许可授权并注明原作者与具体改动。</p>
+<h3 id="section-5">2.3 独立附属插件的开发与发布</h3>
+<p>附属插件应使用公开扩展接口，不得通过覆盖、补丁或运行时替换官方实现的方式规避禁止直接修改的约定；文档明确允许的扩展点除外。 开发者必须对其实际编写的代码享有相应权利；复制、改名或简单包装官方代码，不构成独立原创。 引用第三方代码须遵守其原许可，标注来源不能代替授权。不得冒充官方或声称未经确认的官方背书。</p>
+<p>插件可以仅在本地使用，无须上传 GitHub；也可以公开发布或单独商业销售。 公开或商业发布时，应随包提供以下说明（不要求向平台上传用户配置）：</p>
+<div class="table-wrap"><table><thead><tr><th scope="col">项目</th><th scope="col">要求</th></tr></thead><tbody><tr><td>作者</td><td>实际开发者或发布主体</td></tr><tr><td>来源</td><td>原创声明，或原项目、原作者与来源链接</td></tr><tr><td>许可证</td><td>实际适用的许可及必要正文、第三方声明</td></tr><tr><td>修改说明</td><td>基于他人插件时，列明获得的授权和主要修改内容</td></tr><tr><td>依赖关系</td><td>所需 TelyinCore 版本、其他插件及运行时</td></tr><tr><td>独立运行</td><td>明确能否脱离 TelyinCore 或原插件运行</td></tr><tr><td>支持渠道</td><td>问题反馈方式和维护主体</td></tr><tr><td>商业条件</td><td>收费对象及授权范围（如适用）</td></tr></tbody></table></div>
+<p>第三方作者自行选择其有权采用的许可证，不强制统一为非商业许可，也不自动转让著作权。 销售独立附属插件不自动授予 TelyinCore 的商业运行或再分发权；未经授权不得捆绑提供 TelyinCore 或官方插件。 利用 TelyinCore 经营收费机器人、商业托管等服务，仍须另行取得商业授权。 第三方插件由其作者或服务提供者依承诺维护；兼容或被市场发现不构成官方支持保证，也不将全部损失一概归责于某方。</p>
+<h2 id="section-6">3. 生命周期</h2>
+<p>入口必须提供 create(ctx)，返回实例。start()、stop()、tools() 为可选方法；未实现 stop 只适用于没有待释放资源的实例。 import/create 阶段不启动后台工作、不安装依赖、不发外部请求。连接初始化放在获准的 start 路径，部分初始化失败也要留存已获得资源并收尾。 当前同步宿主停止路径不会等待 <code>async def stop()</code> 返回的 coroutine/Future；返回 awaitable 会被判为停止未完成。不要用 <code>create_task()</code> 后立即返回来冒充同步 stop 已结束，也不要在已有事件循环中嵌套运行循环来绕过接口约定。 stop 必须关闭并确认线程、连接、定时器和自己启动的子进程已终止，防止重载后双监听、重复发送。<code>Timer.cancel()</code>、发出停止信号或有超时的 join 返回，都不单独证明回调/线程已结束。 宿主对线程属性的检查只是补充，不能覆盖插件隐藏的线程池、回调、进程后代或外部服务。作者仍须逐项承担资源归属和完成证明责任。 不得终止其他 Bot 或用户手动启动且未经归属确认的进程。 保存配置时，已启用插件由宿主重载；停用插件只保存，不自动启用。 重载可能断线，也可能因旧实例未排空而拒绝，不是无损热替换。关闭失败必须保留旧实例、通道和运行根的责任；不得清掉引用后让新实例抢占。 配置重载失败可能尝试还原配置或恢复原实例；这不是原子事务，也不能撤销已发出的外部动作。分别报告保存、关闭、回滚及恢复的结果，保留最初异常和附加清理失败，不自动重试产生副作用的动作。 停止顺序见第 14 节。插件只能使用公开的宿主接口。</p>
+<h2 id="section-7">4. 宿主上下文</h2>
+<p>基础字段：name、packageDir、root、botDir、dataDir；后三者在基础装配中指运行数据根， 不能把 botDir 直接当作 persona 所在 Bot 文件夹。宿主可扩充字段，不得依赖 其他插件的私有字段作为通用 API。 可选能力包括 log、push_event、read_events、latest_cursor、model_facts；使用前检查 callable。 不要假设任意部署都提供所有能力，未提供时应明确不可用，而不是伪造成功。</p>
+<div class="code"><div class="code-label">python</div><pre><code>def create(ctx):
+    from telyincore.tools import ToolDef, ToolTag
+
+    def read_status(**kwargs):
+        return &quot;演示插件可用&quot;
+
+    class Demo:
+        def start(self):
+            log = ctx.get(&quot;log&quot;)
+            if callable(log):
+                log(&quot;演示插件已启动&quot;)
+
+        def stop(self):
+            pass  # 真实插件在此释放资源
+
+        def tools(self):
+            return [ToolDef(
+                name=&quot;demo_read_status&quot;, description=&quot;读取演示插件状态&quot;,
+                parameters={&quot;type&quot;: &quot;object&quot;, &quot;properties&quot;: {}},
+                tags=(ToolTag.READ,), handler=read_status)]
+    return Demo()</code></pre></div>
+<p>可复制 templates/plugin 骨架；模板不作为内置插件自动安装，不包含用户数据。</p>
+<h2 id="section-8">5. 事件、工具与重复执行</h2>
+<p>外部输入通过 ctx 的 push_event 报告，不直接绕过主循环请求模型。 事件声明 type、source、text、origin；ts 可由宿主补充。平台消息建议提供稳定 senderKey、 conversation、message_id、自身账号标识和 dedupKey，防止回连补读与实时事件重复入站。 以当前宿主 EventStore 字段验证为准，不能把建议字段当作任意可执行指令。 工具返回 ToolDef，必须有独立前缀、description、显式 parameters 和 handler。 工具标签使用 <code>ToolTag</code> 枚举，不是权限授权。常用分类如下：</p>
+<div class="table-wrap"><table><thead><tr><th scope="col">标签</th><th scope="col">用途</th><th scope="col">示例</th></tr></thead><tbody><tr><td>READ</td><td>读取或查询信息</td><td>查询天气、读取插件状态</td></tr><tr><td>WRITE</td><td>写入或修改数据</td><td>更新记录、修改配置</td></tr><tr><td>SPEAK</td><td>向对话或外部平台发言</td><td>发送消息、回复会话</td></tr><tr><td>ACT</td><td>改变外部状态的动作</td><td>控制设备、执行外部操作</td></tr><tr><td>FLOW</td><td>控制执行流程</td><td>宿主定义的流程操作</td></tr><tr><td>SNAPSHOT</td><td>提供状态快照</td><td>宿主定义的快照操作</td></tr></tbody></table></div>
+<p>没有 ACT 类工具是正常情况，不需要为了凑齐分类而给工具加标签。选择标签时应如实描述行为；它不会绕过确认、身份或副作用检查。 发送回执应区分“请求提交”“协议接受”“对方收到”；异常不得伪装成成功。 消息重投和服务重连须有稳定身份与去重策略；幂等键不是自动重试授权。工具可能已经执行而回执尚未提交，未知结果必须保留为 pending/incomplete，不补执行、不自动重派、不重复扣费或 ack。 批次中一项失败不抹掉已定案的成功前缀；保存每条定案回执后再 ack。取消应原样传播，不包装成可重试网络错误。回执和重复执行的处理见第 15 节。</p>
+<h2 id="section-9">6. 消息标记与平台词表</h2>
+<p>经历页要说明每一条“哪一路来的”。正文开头的平台标记由插件写入，识别规则与显示词也由插件声明； 核心不认识任何平台名。声明放在清单的 telyincore.channels。</p>
+<div class="code"><div class="code-label">json</div><pre><code>{
+  &quot;telyincore&quot;: {
+    &quot;kind&quot;: &quot;infinity&quot;,
+    &quot;api&quot;: 1,
+    &quot;channels&quot;: [
+      {
+        &quot;label&quot;: &quot;示&quot;,
+        &quot;markers&quot;: [
+          {&quot;scope&quot;: &quot;群&quot;, &quot;filter&quot;: &quot;answered&quot;,
+           &quot;pattern&quot;: &quot;\\[示例群(?&lt;room&gt;-?\\d+)·消息#(?&lt;id&gt;-?\\d+)\\]\\s*(?&lt;who&gt;[^：]+)：&quot;},
+          {&quot;scope&quot;: &quot;私&quot;,
+           &quot;pattern&quot;: &quot;\\[示例私聊(?::(?&lt;room&gt;\\d+))?·消息#(?&lt;id&gt;-?\\d+)\\]\\s*(?&lt;who&gt;[^：]+)：&quot;}
+        ],
+        &quot;speech&quot;: {&quot;tools&quot;: [&quot;demo_send_text&quot;, &quot;demo_send_reply&quot;, &quot;demo_send_voice&quot;], &quot;text&quot;: &quot;text&quot;,
+                   &quot;destination&quot;: &quot;{scope}:demo:{target}&quot;},
+        &quot;routes&quot;: [
+          {&quot;scope&quot;: &quot;私&quot;, &quot;pattern&quot;: &quot;^(?:private:)?demo:(?&lt;room&gt;\\d+)$&quot;},
+          {&quot;scope&quot;: &quot;群&quot;, &quot;pattern&quot;: &quot;^group:demo:(?&lt;room&gt;\\d+)$&quot;}
+        ]
+      }
+    ]
+  }
+}</code></pre></div>
+<p>label 为平台显示简称，scope 为会话类型（群、私、直等）；同一平台可有多个 markers。 markers.pattern 必须从正文开头匹配；命名组 who 提供发送者，room 可选，有 room 才允许点开。 pattern 使用浏览器写法（(?&lt;name&gt;…)）；服务端使用的规则还须兼容命名组转换后的 Python 正则。 示例：正文 <code>[示例群123456789·消息#123] 某某：早</code> 显示为 <code>[示·群]某某说：早</code>， 点开后为 <code>[示·群·123456789]某某说：早</code>。私聊相应显示 <code>[示·私]</code>，点开为 <code>[示·私·对方账号]</code>。 正文标记本身不改写。整个前缀同色、无下划线；可点击部分支持键盘操作，并公开 aria-expanded 状态。 私聊的 room 应由插件写入标记；旧标记没有账号时，仅可用该条记录确切的 scope 补全。 两者都缺账号时不显示链接，不做推断。</p>
+<p>filter 只认 answered。声明后该类来话仅在她参与对话时进入经历：她发言的工具调用以 trigger_message_id 指明接住的来话；某一轮她发言但未带锚点，则该轮来话全部计入。 未声明 filter 的来话保持全收。speech 声明哪些工具算她发言、正文位于哪个字段； 仅存在于工具调用、没有对应 assistant 消息的发言（如主动私聊）据此补入经历轴。</p>
+<p>routes 将记录中可信的会话标识映射为前缀，room 用于点开会话号；不从上一条消息或昵称猜来源。 来话按标记和可信 scope 显示来源；assistant 发言按记录的 scope 或可验证的工具发送目标显示来源。 宿主终端来源由核心提供，外部平台的显示简称、标记和目标格式均由各自插件声明。</p>
+<p>speech.destination 是可选的发送目标模板，仅替换 <code>{参数名}</code>；参数名以英文字母或下划线开头， 值只能是字符串或整数，不接受布尔值、浮点数、数组或对象。模板最长 512 字符。 例如上例将 scope=group、target=123 替换为 group:demo:123。 结果必须完整匹配该通道的 routes 才接受。发送目标与请求来源不同时，以明确的发送目标为准； 声明了模板却缺字段或结果无效时，不冒用请求来源。未声明模板的旧插件仍可使用记录已保存的 scope。</p>
+<p>新经历投影透传可选 scope；旧投影仅按角色、原文、原始时间戳精确回连，不丢掉毫秒，也不按相近时间猜测。 既无可信 scope、也无可验证发送目标的旧记录，会如实显示“来源未记录”。 整理账本显示为“记下”，不冒充外部发言；工具独有发言只补入主对话，不重复加入每份账本。 来源标记不是发送成功或对方已读的证明，实际投递状态仍以对应工具回执为准。</p>
+<p>以上仅影响经历页显示，正文转录与模型可见内容不变。 新增平台由该平台插件增加 channels，核心与前端无需改动。</p>
+<h2 id="section-10">7. 通用配置页</h2>
+<p>config.example.json 定义默认字段，宿主可生成通用表单，无需修改 app.js。 轻量 schema 支持 properties、type、title、description、default、enum、minimum、maximum、 readOnly、writeOnly、format=password。不是完整 JSON Schema，不依赖 required 等未实现关键字。 密钥不回显；通用表单中的留空保留原值，清除需显式操作。其他专用 API 不得自行沿用这套空值含义。 revision 只有在权威写入边界完成比较后才防止旧页面覆盖新配置，前端检查或写入前单独读取不能替代原子比较。 保存前备份原字节至插件 .config-backups；不要将备份纳入分发。 当前通用配置机制以已安装插件目录为范围，不保证所有第三方插件天然拥有每 Bot 独立配置。</p>
+<h3 id="section-11">7.1 统一导航、图标与原生页面接入</h3>
+<p>侧边栏和页面路由统一使用 src/web/client/plugin-ui-registry.ts。 未注册原生适配器的插件自动使用本节通用配置页，状态直接取 enabled / loaded； 无需在 main.ts 或 infinity-plugin-page.ts 添加包名分支。</p>
+<p>清单可添加 <code>telyincore.icon</code>，值为 shell.ts 的 ICONS 键名，例如 chat、eye、book、 contacts、chip、history、grid、store、puzzle。未知键回退适配器图标或 puzzle； 不接受 SVG 字符串、URL 或任意 HTML。所有图标保持 20×20 画布和同一线宽。</p>
+<p>需要宿主原生交互的内置插件只在注册表中注册一次：</p>
+<div class="code"><div class="code-label">typescript</div><pre><code>registerPluginUI('core-infinity-demo', {
+  icon: 'book',
+  createPage: demoPage, // (shell, name) =&gt; {root, show(), stop()}
+  health: { // 可选；只读状态，不在轮询中启动进程或下载
+    endpoint: '/infinity/demo',
+    signals: (snapshot, plugin) =&gt; [{state: 'on', label: '服务就绪'}],
+  },
+});</code></pre></div>
+<p>show 启动页面观察，stop 停止定时器并释放临时资源。原生适配器仍需随宿主构建， 不代表第三方 Python 插件可动态执行宿主 JavaScript；第三方定制页使用第 8 节隔离桥接。 状态统一为 on / off / warn 和可读 label；失败时退回真实生命周期状态，不保留旧的就绪快照。 展开侧栏保留多状态点；折叠侧栏显示一个角标（warn 优先），详情在可访问名称与悬停提示中。 不要让插件自行拼接侧栏 DOM 或依赖固定侧栏宽度。</p>
+<p>原生模型设置页复用宿主的字段、开关、模型选择器和卡片组件。 原生配置页应检查窄窗口下的字段、按钮和错误提示是否完整可用。</p>
+<h2 id="section-12">8. 自定义 HTML 桥接</h2>
+<p>configPage 为插件内部不超过 256KB 的单文件 HTML；脚本和样式自行内联。 iframe 仅 allow-scripts，无同源权限；默认不允许外部网络、表单导航或读取框架页面。 旧插件自建 WebUI 不会自动兼容，需按以下消息契约适配。</p>
+<div class="code"><div class="code-label">javascript</div><pre><code>parent.postMessage({type: 'telyincore:config:get'}, '*');
+// 收到 type=telyincore:config:state 后，从 message.config 取得 fields 与 revision。
+// fields 中 path 为字符串数组，私密字段 value 不回显。
+parent.postMessage({
+  type: 'telyincore:config:save', revision,
+  changes: [{path: ['greeting'], value: '你好'}]
+}, '*');
+// 收到 telyincore:config:saved，检查 ok；成功后重新 get 获取新 revision。</code></pre></div>
+<p>页面接收消息必须检查 event.source === parent；宿主只接受当前 iframe 的消息。 不要在 HTML、日志或描述里硬编码密钥。详细契约见 docs/design/24-第三方插件配置页.md。</p>
+<h3 id="section-13">8.1 可选配置页排版预设</h3>
+<p>插件作者可参考 源码文档《插件配置页可选排版预设》，用于新插件或既有页面改版，不限于鸣潮查询。 该预设是设计辅助，不是强制布局、指定配色或安装审核条件；可以只用其中一部分，或完全采用自己的布局。 普通设置优先使用宿主根据 configSchema 生成的表单；需要自定义交互时，再声明随插件包分发的 configPage。 业务逻辑、字段、名单和反馈应由各插件自己的数据决定，不复制其他插件的账号结构或专用端点。</p>
+<p>排版建议不会放宽本节的 iframe、来源校验、私密字段及配置 revision 校验要求。 需要额外管理操作的页面，还须核对 源码文档《插件操作者页面》中的 pageBackend v1 接口 的实际宿主支持；不因采用预设而自动具备该能力。</p>
+<h2 id="section-14">9. Bot、通道与进程隔离</h2>
+<p>运行中 Bot 固定，切换通过重新启动选择完成；多 Bot 可多开端口。 不得把平台昵称等同于跨平台身份；账号归并须通过核心已确认身份关系处理。 建议用平台、账号、会话三元组标记消息，长期记忆共享与近期会话路由不能混为一谈。 插件应按当前运行数据根隔离缓存/游标/事件消费；不要硬编码某位用户目录或读取其他 Bot 凭据。 插件自行维护私有配置的迁移逻辑，并在升级时校验所属 Bot。 共享外部服务应校验账号、端口及进程归属，不因 TelyinCore 启动而静默启动软件、扫码或接受条款。</p>
+<h2 id="section-15">10. 分发、升级与热生效</h2>
+<p>GitHub 市场发现使用仓库 topic: core-infinity-plugin；包内 keywords: core-infinity 用于插件声明。 公开市场需相应仓库与可安装发布版本；本地目录使用不需要 GitHub。 安装入口支持范围以当前市场 UI 为准，不承诺 npm、任意 ZIP URL 或自动依赖安装。 升级前备份配置和数据；卸载程序与删除个人数据必须分开说明，不默认销毁记忆或账号绑定。 宿主前端修改后需要重新构建、发布并刷新页面；插件配置保存可能触发重载，Python 插件代码需重新装载才生效。 已导入代码或服务模型的更新可能需要所属进程重新加载；本规范不授权自动重启。先确认所有者、停止屏障和影响范围，再由操作者安排，不能为清除旧警告重启其他 Bot 或外部服务。</p>
+<h2 id="section-16">11. GitHub 开源仓库与市场发布指南</h2>
+<p>本节用于公开分发的第三方插件。仅在本机使用仍按本地插件机制，不要求开源或上传。 市场不是文件托管站，也不是审核背书：它通过 GitHub 话题发现仓库，再读取源码归档。</p>
+<h3 id="section-17">发布方式</h3>
+<p>市场按仓库话题搜索 GitHub，再下载源码归档。下文介绍 Core 的接入约定；GitHub 的仓库操作可参考 <a href="https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/classifying-your-repository-with-topics" rel="noreferrer">仓库话题说明</a> 和 <a href="https://docs.github.com/en/repositories/releasing-projects-on-github/about-releases" rel="noreferrer">发布版本说明</a>。</p>
+<h3 id="section-18">11.1 建立公开仓库</h3>
+<p>建议一个插件一个仓库，仓库名使用稳定的小写英文和连字符，例如 core-infinity-demo。 GitHub 新建仓库时选择 Public；如已有本地代码，建议创建空仓库后推送，避免初次合并冲突。 Description 写用途，选择自己有权使用的开源 LICENSE，README 说明作者与维护方式。 公开仓库不等于自动授予开源许可；没有 LICENSE 的代码不要擅自当作可自由再分发。 不得上传未获授权的第三方程序、模型、素材或私有音色；列明独立下载方式与许可。</p>
+<h3 id="section-19">11.2 仓库根目录与忽略规则</h3>
+<p>package.json 与 main 指定的入口必须在下载归档内可直接定位，推荐根目录直接放置， 不要再嵌一层与仓库同名的目录；不要只提交打包产物、截图或指向本机的路径。 必需配置页资源应一起提交；config.example.json 只放可公开的占位配置。 清单中的 name、version、keywords、telyincore.kind/api 与本规范第 2 节一致。 建议同时提交 README.md、LICENSE、CHANGELOG.md 和 tests/。</p>
+<div class="code"><div class="code-label">gitignore</div><pre><code># Private configuration and backups
+config.json
+.config-backups/
+.env
+.env.*
+!.env.example
+# Local runtime and user data
+.venv/
+node_modules/
+__pycache__/
+*.pyc
+*.log
+data/
+cache/</code></pre></div>
+<p>.gitignore 不会清除已被 Git 跟踪的秘密。发布前检查 git ls-files 与提交历史； 若凭据曾泄漏，先撤销或轮换凭据，再按仓库流程处理历史，不能只删当前文件。 不要在仓库中放 TelyinCore 本体、Bot 文件夹、聊天记录、账户绑定或服务日志。 当前安装器下载包和解包后的普通文件总量上限均为 64 MiB；模型权重和大型运行环境不应塞进插件源码归档。</p>
+<h3 id="section-20">11.3 首次提交与版本标签</h3>
+<p>以下 owner 与仓库地址是示例，替换为自己的实际仓库。不要把密码或令牌写入 URL。 如仓库已初始化或已配置 origin，先检查现状，不要重复初始化或强制覆盖。</p>
+<div class="code"><div class="code-label">bash</div><pre><code>git init
+git add package.json index.py config.example.json README.md LICENSE .gitignore
+git status
+git diff --cached
+git commit -m &quot;Initial plugin release&quot;
+git branch -M main
+git remote add origin https://github.com/OWNER/core-infinity-demo.git
+git push -u origin main
+# 确认 package.json.version 为 0.1.0 后发布对应标签
+git tag -a v0.1.0 -m &quot;Release 0.1.0&quot;
+git push origin v0.1.0</code></pre></div>
+<p>按实际文件补充 config.schema.json、config.html 等，不存在的可选文件不要填写到清单中。 每次发布先更新 version 与变更记录，再提交并创建新标签；不要移动已公开版本标签。 推送标签后，在 GitHub Releases 中为该标签发布正式 Release。标签使用 v0.1.0 或 0.1.0 这样的稳定版本号，与 package.json.version 一致。Core 0.5.4.9 起，市场下载、版本列表和更新提示均使用正式 Release。仅创建标签的仓库可以被发现，发布正式 Release 后即可安装。</p>
+<h3 id="section-21">11.4 添加市场发现话题</h3>
+<p>在仓库 About 的 Topics 添加 core-infinity-plugin，并保存。 这与 package.json 的 keywords 是两件事，两者都应设置：</p>
+<ul>
+<li>GitHub topic 为 core-infinity-plugin：让市场搜索发现仓库。</li>
+<li>包内 keywords 包含 core-infinity：让下载后的插件通过包声明检查。</li>
+</ul>
+<p>不需要 npm 发布，也不需要把插件配置页上传成独立网站。 GitHub 索引、网络、API 限流与市场缓存可能延迟可见；没出现时先核对公开性、话题拼写， 再刷新市场。搜索当前最多取 30 个近期更新仓库，不是无限目录或人工上架审核系统。</p>
+<h3 id="section-22">11.5 在干净环境中测试安装</h3>
+<ul>
+<li>在没有私人配置的目录下载对应 tag 源码，确认根部清单、入口及配置页资源齐全。</li>
+<li>打开插件市场，刷新后查找仓库，核对来源、版本与说明，再安装。</li>
+<li>安装完成不等于已启用；先配置再手动启用，检查真实运行和停止、重载行为。</li>
+<li>验证通用表单或自定义配置页保存、刷新保留，密钥不会出现在页面或日志。</li>
+<li>验证缺依赖、网络断开、升级配置迁移、停用后释放资源与重复消息防护。</li>
+<li>README 提供最低 TelyinCore API、Python/外部依赖要求、数据位置与已知限制。</li>
+</ul>
+<p>遇到市场搜不到但本地能运行，先排查分发条件，不要修改插件业务代码绕过包校验。 不要为“方便安装”关闭鉴权、公开服务端口或要求用户交出平台账号密码。</p>
+<h3 id="section-23">11.6 更新归属与历史版本</h3>
+<p>Core 内置插件由 Core 发布包统一维护，不计入社区插件更新数量，也不检查同名独立仓库的新版本。 作者使用插件清单中的实际作者，不能以 GitHub 仓库账号替代。QQ 连接的作者为 Telyin。 Core 启动时会同步随包提供的更高版本内置插件；保留各 Bot 的启停选择、配置和缓存，并备份原安装包。 已卸载的内置插件不自动恢复；仍被其他 Bot 占用时等待释放后再同步，不覆盖运行中的代码。</p>
+<p>插件总览在同一处显示当前版本、可更新版本及上次检查时间。“停用并更新”在确认后停用当前 Bot 的插件并安装目标正式版；其他 Bot 仍占用时须先释放。“查看历史版本”列出正式 Release、版本说明和替换安装入口。勾选“该插件不推送更新提示”后，当前浏览器中此 Bot 的主动提示关闭，手动检查仍可使用。</p>
+<p>建议为每次发布创建稳定标签，保持 package.json 的 name 不变，填写准确的 version 与兼容平台说明。 安装时先将标签解析为确定的提交，再下载并校验插件清单；镜像包仍须通过官方文件清单核验。 切换已安装版本前须在所有使用该插件的 Bot 中停用插件。安装器保留原包备份、配置和缓存， 成功后保持停用，不自动迁移或回退用户数据。旧代码未必兼容新版配置格式，作者应在版本说明中列明限制。 历史版本由作者在 GitHub 保留的正式 Release提供；Core 不承诺恢复已被作者删除的版本。</p>
+<h2 id="section-24">12. 作者交付检查单</h2>
+<ul>
+<li>清单、API 版本、入口和工具前缀符合要求；无路径越界。</li>
+<li><code>builtin/</code> 官方内置插件的 <code>author</code> 精确为 <code>Telyin</code>；第三方保留实际作者，前端不硬编码作者。</li>
+<li>列表卡简介最多两行且只由 CSS 收起；<code>description</code> 的存储、检索和接口返回未被截断。</li>
+<li>详情保留完整简介与换行，长单词可断行；核心来源显示“核心”，第三方来源按清单保留。</li>
+<li><code>license</code> 与真实授权一致；当前官方内置为 <code>LicenseRef-TelyinCore-NonCommercial-1.0</code>，对应根目录 LICENSE 文件；第三方保留自己的许可。</li>
+<li>未启用时不产生业务动作；停用后线程、连接、子进程可收回。</li>
+<li>重载多次不双监听、不重复入站、不误投另一个会话。</li>
+<li>无默认账号/密钥、私人音色、人设、记忆、缓存或运行日志泄漏。</li>
+<li>配置默认值、密钥保留/清除、revision 冲突及失败恢复有测试。</li>
+<li>channels 的 label、scope、pattern 与正文一致；群/私聊前缀能展开和收起，缺 room 时如实不链接。</li>
+<li>assistant 发言来源可确认；跨入口发送按明确目标展示，目标模板缺参或无效时不得冒用请求来源。</li>
+<li>旧记录缺来源、未安装对应平台显示规则、整理账本等退路不会误标为终端或外部发言。</li>
+<li>自定义页面可读取、保存、刷新保留，且无需上传 GitHub。</li>
+<li>多 Bot 隔离、断网恢复、无权限/缺依赖错误与用户操作提示可验证。</li>
+<li>README 说明安装、依赖、配置、停用、升级、数据位置与已知限制。</li>
+</ul>
+<h2 id="section-25">13. 不保证的能力</h2>
+<p>不提供 Python 权限沙箱、插件签名信任体系、任意依赖自动安装、完整 JSON Schema、 通用每 Bot 配置迁移、跨插件事务、零停机热更新或外部交互终端。 作者应在 README 说明支持的宿主版本、依赖和已知限制。</p>
+<h2 id="section-26">14. 后台工作与安全停用</h2>
+<p>停用必须阻止新任务进入，并等待已经接受的任务结束。关闭连接、停止线程和释放子进程都应由创建它们的插件实例负责。</p>
+<p>建议按以下顺序实现：</p>
+<ol>
+<li>关闭新任务入口，停止接收新事件。</li>
+<li>发出停止信号，撤销不再需要的定时器。</li>
+<li>等待已经开始的工作及回执保存完成。</li>
+<li>关闭客户端，等待线程和自有子进程退出。</li>
+<li>确认资源已释放后，从同步 <code>stop()</code> 返回 <code>None</code>。</li>
+</ol>
+<p>超时只说明等待时间耗尽，不代表任务已结束。<code>Timer.cancel()</code>、<code>Task.cancel()</code> 和取消 HTTP 等待者也不等于底层工作已经停止。停止失败时保留原实例和错误，不启动新实例占用同一连接、端口或文件。</p>
+<p><code>asyncio.to_thread()</code> 的等待被取消后，线程仍可能继续读写文件或发送请求。保留实际工作句柄，观察最终结果；不要因为调用方停止等待就重试有副作用的业务。</p>
+<h3 id="section-27">可选后台登记接口</h3>
+<p>如果宿主上下文提供以下能力，使用前先检查它是否可调用：</p>
+<ul>
+<li><code>start_background_work(factory)</code>：在登记工作后调用 factory。factory 返回实际的 <code>asyncio.Task</code> 或 <code>concurrent.futures.Future</code>。</li>
+<li><code>start_background_thread(thread, *, stop)</code>：接收尚未启动的 Thread 或 Timer。stop 是幂等、非阻塞的停止信号；不要在其中同步等待线程退出。</li>
+</ul>
+<p>返回值用于观察完成状态，不是取消或重放业务的权限。登记接口不能代替插件自己的资源管理；插件仍须保存连接、停止信号和线程句柄。宿主未提供接口时，应明确使用自己的生命周期管理，不假定后台工作已被宿主完整记录。</p>
+<h2 id="section-28">15. 工具结果与消息投递</h2>
+<p>工具调用表示执行意图，工具回执表示执行结果。请明确区分请求提交、协议端接受、对方收到和对方已读，不要统一写成“发送成功”。</p>
+<p>同名工具可能并发执行。调用与回执应使用宿主提供的关联标识，不按工具名称、正文或先后顺序猜测对应关系。不要自行制造或复用其他请求的关联标识。</p>
+<p>发生异常时：</p>
+<ul>
+<li>尚未执行：返回明确失败原因。</li>
+<li>已执行且结果已确认：保存真实结果，避免重试造成重复发送或重复扣费。</li>
+<li>执行结果不确定：保留待确认状态，提供排查信息，不自动重放。</li>
+<li>多项操作部分成功：保留每一项真实结果，不能因后续失败把前面的成功抹掉。</li>
+</ul>
+<p>若插件声明 <code>channels.speech.receipt</code>，模板、目标和回执标识必须与原调用匹配。排队、拒绝、取消、缺少有效回执标识或无法配对的旧记录，都不能推断为已送达。协议端已接受也不表示接收者已读。</p>
+<h3 id="section-29">未确定事件的人工处理</h3>
+<p>事件可能已经写入，但尚未确认是否进入主循环。此时不要删除待处理记录或直接重发。让操作者通过宿主提供的诊断与恢复入口检查，插件不要直接修改内部账本。</p>
+<p>宿主的人工处理工具为 <code>tools/ingress_review.py</code>。先用 show 查看，再按同一次查看得到的条目和 revision 处理；目标 Bot 必须完整退出。具体参数以工具帮助为准。</p>
+<div class="code"><div class="code-label">powershell</div><pre><code>&amp; 'C:/TelyinCore/core/.venv/Scripts/python.exe' -I -B 'C:/TelyinCore/core/tools/ingress_review.py' --help</code></pre></div>
+<p>将示例路径替换为实际安装路径。人工确认已处理和明确放弃重投是不同决定，均需保留原记录；不能把人工决定当作程序已验证外部业务成功。</p>
+<h2 id="section-30">16. 配置、身份和数据隔离</h2>
+<p>一次操作应始终使用同一份配置快照、Bot 身份和目标。不能在操作中途重新读取“当前 Bot”，把原任务转移到另一份档案。</p>
+<p>保存表单时保留最初读取的 revision，在真正写入时比较版本。若配置已被其他页面修改，应报告冲突并让操作者重新核对，不自动刷新 revision 后覆盖。</p>
+<p>配置和密钥分两步保存时，第一步成功、第二步失败应显示部分成功。保留用户草稿，不偷偷还原旧设置，也不自动重复外部动作。</p>
+<p>缓存、游标和临时文件按当前插件实例及 Bot 的数据根隔离。不要把昵称当作跨平台身份，不读取其他 Bot 的凭据，不直接改写核心记忆、知识索引或人物绑定文件。</p>
+<h3 id="section-31">页面加载与交互</h3>
+<ul>
+<li>数据读取前显示加载状态，不能把尚未读取当作空列表或默认配置。</li>
+<li>配置读回前禁用保存；失败时保留已显示内容并提供重试。</li>
+<li>后台刷新不得覆盖未保存的表单。</li>
+<li>离开页面后取消页面自己的观察，并拒绝迟到响应重绘。</li>
+<li>写操作不自动重试；浏览器取消请求不代表服务器已经回滚。</li>
+<li>自定义 HTML 页面应转义不可信内容，隐藏的属性中也不能残留密钥或私人账号。</li>
+</ul>
+<h2 id="section-32">17. 安装、启用、停用与卸载</h2>
+<p>这四个动作含义不同：</p>
+<div class="table-wrap"><table><thead><tr><th scope="col">动作</th><th scope="col">结果</th><th scope="col">开发者需要注意</th></tr></thead><tbody><tr><td>安装</td><td>将插件程序放入插件目录，默认不启用</td><td>入口和依赖说明必须齐全</td></tr><tr><td>启用</td><td>创建实例并启动插件</td><td>缺配置、缺依赖应给出明确错误</td></tr><tr><td>停用</td><td>停止运行并释放该实例的资源</td><td>不得用后台线程仍在运行的状态冒充完成</td></tr><tr><td>卸载</td><td>经确认后全局停用并移除共享安装副本</td><td>各档案配置与缓存保留；停用失败或仍被使用时不移除</td></tr></tbody></table></div>
+<p>当前安装器接受合规本地目录或 HTTP(S) 的 tar.gz 源码包，不支持仅凭包名推测下载地址，也不保证任意 ZIP 文件可安装。安装到同名目录时会拒绝覆盖；升级前先备份，按插件的迁移说明操作。</p>
+<p>远端归档会校验最终目录名称、路径、大小和入口文件。不要使用目录穿越、符号链接或 Windows 保留名称。下载成功不代表安装成功，安装成功不代表已经启用。</p>
+<p>宿主更新后，旧进程可能仍在使用旧代码。按启动器要求完整退出后再更新，重新启动并刷新浏览器。不要为替换文件而强行终止不属于插件的 Bot 或外部服务。</p>
+<h2 id="section-33">18. 市场与下载问题排查</h2>
+<h3 id="section-34">市场没有显示新插件</h3>
+<p>先检查仓库是否公开、Topics 是否包含 <code>core-infinity-plugin</code>，再检查包内 keywords 是否包含 <code>core-infinity</code>。仓库话题决定是否被发现，包内关键字决定能否通过安装检查。</p>
+<p>市场会缓存列表。页面显示“上次缓存”时，说明这不是新查询的结果；后台刷新完成后再次点击刷新查看。网络故障、GitHub 限流和索引延迟都可能影响列表更新。当前查询最多展示 30 个近期更新仓库。</p>
+<h3 id="section-35">插件市场网络代理</h3>
+<p>在「设置 → 通用 → 网络代理 → 适用范围」分别选择「插件市场」和「下载」。例如，用户只打开了下载代理，此时插件市场的 GitHub 官方回退仍走直连。</p>
+<div class="table-wrap"><table><thead><tr><th scope="col">用户操作</th><th scope="col">首选连接</th><th scope="col">回退与校验</th></tr></thead><tbody><tr><td>打开市场、刷新仓库或标签</td><td>GitHub API 镜像直连</td><td>镜像不可用时访问 GitHub 官方 API，使用「插件市场」的代理设置</td></tr><tr><td>安装正式 Release 对应提交的源码归档</td><td>镜像直连下载归档</td><td>另外向 GitHub 官方读取该引用的完整文件树，核对解包后的每个文件。核对不通过或镜像失败时，改从官方源下载</td></tr><tr><td>在 Core 顶栏检查版本、下载 Core 增量包</td><td>版本列表和更新 ZIP 均优先镜像直连</td><td>官方回退使用「下载」的代理设置。安装前另向 GitHub 官方核验附件摘要，并校验本机程序文件</td></tr></tbody></table></div>
+<p>GitHub 镜像请求显式直连。对应代理开关关闭时，上表中的 GitHub 官方请求也显式直连。自行填写的其他 HTTP(S) 归档地址使用原地址，不能据此推断也有镜像或同样的代理行为。排障时先确认失败发生在搜索、下载归档、官方核验，还是本地安装。例如，镜像返回 403 后又出现代理端口拒绝连接，应分别记录两次请求的结果。</p>
+<h3 id="section-36">证书校验失败</h3>
+<p>HTTPS 下载会保留系统信任并使用随运行环境安装的 CA 证书，并按上述代理设置连接。请检查系统时间、可信根证书，以及代理是否需要正确安装受信任的机构证书。不要通过关闭证书校验或下载来历不明的证书绕过错误。</p>
+<p>GitHub 源码地址可能跳转到 <code>codeload.github.com</code>，代理和网络规则需要允许整个下载链路。浏览器能打开网页，不代表 Python 下载环境的证书或代理配置相同。</p>
+<h3 id="section-37">下载失败或安装被拒绝</h3>
+<ul>
+<li>HTTP 404：核对仓库、标签和归档地址是否仍存在。</li>
+<li>HTTP 403 或限流：检查网络与服务端响应，稍后重试。</li>
+<li>网络超时：检查设置中的插件市场代理、网络连通性和下载域名。</li>
+<li>缺少入口文件：核对 package.json 的 main 与归档目录结构。</li>
+<li>缺少关键字：在 package.json 的 keywords 中加入 <code>core-infinity</code>。</li>
+<li>同名目录已存在：先检查已安装项，备份配置后按升级说明处理，不直接删目录。</li>
+<li>启用失败：检查依赖、配置和错误日志；不要反复重装掩盖启动异常。</li>
+</ul>
+<p>报告问题时提供 Core 版本、系统、插件名称和版本、操作步骤、错误提示及脱敏日志。删除链接中的密钥、账号令牌和私人消息。</p>
+<h2 id="section-38">19. 可选运行诊断</h2>
+<p>部分宿主入口提供运行观察能力，需按实际部署检查。<code>--runtime-evidence</code> 默认关闭；<code>GET /runtime-evidence</code> 提供元数据状态，不返回业务正文。</p>
+<p>观察记录只能说明实际覆盖的工作，不能赋予调用权限，也不能代替业务回执。未登记的线程、插件自建队列或外部服务内部任务不会自动获得完整观察。</p>
+<p>记录容量耗尽后，支持继续运行策略的入口可能继续业务并报告 UNCOVERED。这表示记录不完整，不是业务全部失败，也不能解释成完整成功。已有记录不得为了消除提示而自动删除。</p>
+<p>停止期间仍需等待真实任务退出。日志中出现完成标签、PID 消失或观察者取消，都不能单独证明连接、线程和全部子进程已经正常释放。</p>
+<h2 id="section-39">20. 发布前测试清单</h2>
+<p>在独立测试档案中使用合成内容，至少覆盖以下场景：</p>
+<ol>
+<li>从干净目录安装，首次缺配置或缺依赖时有清楚提示。</li>
+<li>安装后不自动启用，启用后工具可见且能执行。</li>
+<li>停用后工具撤下，线程、连接、定时器和自有子进程退出。</li>
+<li>连续启停和保存配置不产生双监听或重复消息。</li>
+<li>断网、超时、取消和部分执行失败能保留真实状态。</li>
+<li>两个 Bot 同时运行时，配置、身份、缓存和回执不会混用。</li>
+<li>配置页能保存和刷新，版本冲突不会覆盖其他修改。</li>
+<li>窄窗口、键盘操作、长文本和错误提示可用。</li>
+<li>卸载、重装和升级前后，数据位置及备份要求与说明一致。</li>
+<li>压缩包、页面、日志和仓库历史不包含私人配置或凭据。</li>
+<li>从仍在支持范围内的旧版安装升级，缺少依赖或模型时能正确检查和补齐。</li>
+<li>Windows 与 Linux 的路径、大小写、中文名称和包含空格的目录均按声明的支持范围验证。</li>
+<li>涉及模型和记忆时，验证正常聊天、交接后话题接续，以及普通更正不会变成错误的长期结论。</li>
+<li>缓存、费用、上下文和工具状态的显示均说明数据来源，未知值不冒充零值或成功。</li>
+</ol>
+<p>说明实际测试的平台、插件版本和结果。单元测试通过不等于已连接真实服务；真实服务连接成功也不等于所有异常路径都通过。缺少环境或未测试的功能应如实列出。</p>
+<p>README 应包含用途、依赖、安装、配置、启停、升级、数据位置、故障排查、作者和反馈渠道，便于使用者独立完成部署。</p>
+<h2 id="section-40">21. 固定前缀、工具声明与追加式上下文</h2>
+<p>本节适用于会向主对话提供工具、检索结果或背景信息的插件，以及自行调用模型的插件。不调用模型的插件无需为了满足本节而新增模型调用。</p>
+<h3 id="section-41">固定前缀与每轮追加</h3>
+<p>Core 组装系统提示和会话历史。对于同一个 Bot，在人设、启用的能力和可见权限均相同的连续两轮里，插件应保持自己贡献的静态文本和工具声明一致。模型可以从开头复用相同的输入；在开头插入时间或计数，即使后面的内容完全相同，也会缩短可复用的前缀。</p>
+<div class="table-wrap"><table><thead><tr><th scope="col">插件提供的内容</th><th scope="col">放在哪里</th><th scope="col">何时变化</th></tr></thead><tbody><tr><td>工具用途、参数名、类型和必填项</td><td><code>tools()</code> 返回的工具声明</td><td>工具契约、启用状态或授权范围改变时</td></tr><tr><td>长期有效的环境说明</td><td>宿主支持的静态环境声明</td><td>环境定义实际修订时</td></tr><tr><td>新消息、时间、进度、错误和查询结果</td><td>本轮新事件或对应调用的工具结果</td><td>有新事实时追加，已交付的历史保留原文</td></tr></tbody></table></div>
+<p>例如，插件可以始终声明 <code>demo_read_job(job_id)</code>，说明固定为“读取指定任务的状态”。任务从“运行中，进度 30%”变为“已完成”时，第二次查询返回新状态。不要用任务编号生成新工具名、把进度写进说明，或回头把第一次结果改成“已完成”。</p>
+<h3 id="section-42">作者怎样验收</h3>
+<ol>
+<li>固定 Bot、模型、配置和权限，用同一个已启用插件查询两次，中间只改变一项业务状态。</li>
+<li>对比两次发送给模型的请求。逐项核对插件静态说明、工具排列、名称、描述和参数 schema（含字段顺序）。首次请求已有的消息和回执应保持内容及顺序，新结果应能追溯到对应调用。动态列表采用明确顺序，避免随集合或扫描目录的返回顺序变化。</li>
+<li>停用插件后再构造一次新请求。该插件的工具应从可用声明中撤下，旧调用的回执仍可保留在既有历史中。重新启用或权限发生变化时，按当前授权重新生成工具表。核对声明时只比较同一能力范围内的请求。</li>
+</ol>
+<h3 id="section-43">控制输出大小，保留可核对的来源</h3>
+<p>检索工具先返回与问题相关的结果、记录标识和必要来源，再提供分页或按标识读取详情的方式。截断时明确标注还有多少内容或如何继续读取，不把截断后的文本说成完整原文。</p>
+<p>重复查询可以复用已处理结果，但缓存键必须包含影响结果的条件，例如 Bot、权限范围、数据修订、查询条件和模型版本。数据或权限变化后应失效，不能借用其他 Bot 的结果。</p>
+<p>不要由插件重新拼装主对话历史，也不要把已经进入历史的旧回执改成占位文本。上下文管理和交接由核心负责；插件应提供稳定、可追溯且大小合理的输入。</p>
+<h3 id="section-44">正确报告缓存、用量和费用</h3>
+<ul>
+<li>上游实际缓存命中率：依据提供商返回的缓存输入用量和总输入用量计算。合并多次调用时先累加数量，再计算比例，不能简单平均各次百分比。</li>
+<li>本地前缀复用估算：只反映本机观察到的请求前缀相似程度，不能证明上游缓存实际命中，也不能据此推算已结算费用。</li>
+<li>未返回缓存数据：显示未知或未提供；实际返回零命中时才显示 0%，不能把零值当成缺失数据。</li>
+<li>总调用成本：若声称是全链路统计，必须说明是否包含主对话、后台整理、辅助评估和重试。未纳入统计的插件独立调用要单列，不能悄悄漏算。</li>
+<li>费用估算：说明价格来源、适用模型、用量口径与缺失项。最终账单以提供商为准，不将本地估算标成实收金额。</li>
+</ul>
+<p>声明稳定只提高前缀复用的机会；提供商策略、模型路由、缓存有效期和请求内容都会影响实际命中。不要承诺固定命中率，也不要为了提高比例而减少必要记忆、遗漏工具结果或重复发送无用长文本。</p>
+<p>上下文占用以当前生效的模型窗口为分母。区分输入估算、上游已报告输入、输出额度和模型总窗口；模型的最大输出设置不等于上下文窗口。模型或窗口配置切换后应更新显示，不能继续使用旧常量。</p>
+<h3 id="section-45">用日常场景比较优化效果</h3>
+<p>对会影响主对话的优化，使用正常短消息、真实需要的工具调用和自然增长的上下文进行比较。在配置的窗口附近触发正常自动交接；可以使用 128k 等明确标注的测试窗口，不必默认消耗最大窗口。</p>
+<p>缩小窗口、反复手动交接、完全重复请求和连续塞入长资料可用于专项测试，但不能代替日常聊天结果。记录输入、输出、后台与辅助调用、重试、费用和功能结果；不要只公布最高的一次缓存比例。</p>
+<h2 id="section-46">22. 记忆写入、检索与交接后的接续</h2>
+<h3 id="section-47">让反馈对应真实写入结果</h3>
+<p>找到相关原话、生成一段记忆草稿和持久化写入成功，是三个不同阶段。只有写入接口明确成功后，才能向用户表示已经保存。被拒绝、超时或结果未知时应说明原因或状态，不能用模型生成的“记住了”代替写入回执。</p>
+<p>涉及跨消息的事实时，保留来源标识、发言者、时间和适用范围。历史原话应来自当前身份有权读取的记录；不能把模型补全、插件猜测或其他 Bot 的内容当作用户原话。</p>
+<p>普通更正、澄清、重复说明不自动等于关系变好或变差。如果插件提供关系事件，应给出实际事件及来源，由负责评估的接口按规则判断；不要因为用户补充资料就直接改动关系分数。</p>
+<h3 id="section-48">正确处理新增和修改后的检索</h3>
+<p>正文写入成功与检索索引更新成功应分别确认。索引更新失败时保留待处理状态并允许后续补建，不能丢掉原文，也不能把索引未就绪显示成“没有这条记忆”。</p>
+<p>插件若维护自己的索引，应按内容指纹和修订增量更新；修改和删除也要同步处理。正在运行的旧任务不得把新内容的索引覆盖回旧版本。</p>
+<p>如果使用核心记忆功能，应调用已提供的入口，不直接修改核心文件、调用私有补建函数或自行启动另一份模型。宿主没有公开所需写入或检索能力时，应明确不支持并提出接口需求。</p>
+<p>语义检索测试应包含换种说法仍能找到同一事实、无关问题不会误命中、修改后的旧说法不再被当作当前事实。关键词相同的一次命中不足以证明语义检索正常。</p>
+<h3 id="section-49">跨交接保留必要状态</h3>
+<p>交接后可能需要继续较早的承诺、未完成任务或待确认结果。插件自己的长期任务应持久保存任务标识、所属 Bot、来源、完成状态和下一步所需信息，不仅保存在最近几条消息或进程内变量中。</p>
+<p>不要为了压缩上下文简单删除旧回复。仍有效的承诺和未完成事项应能够通过稳定标识重新读取；已经完成或被用户取消的事项也应更新状态，防止交接后重复执行。</p>
+<p>恢复状态不等于重新执行。任务可能已在外部完成但尚未保存回执，此时先核对，不自动再次发送、扣费或创建同一任务。</p>
+<h2 id="section-50">23. 依赖、模型和旧版升级</h2>
+<h3 id="section-51">同时覆盖首次安装与升级</h3>
+<p>README 应列明 Python 版本、系统支持、依赖包、模型名称和版本、预计下载量、磁盘需求、数据位置，以及哪些功能可以在依赖缺失时继续使用。</p>
+<p>首次安装流程不能假定运行环境已经齐全，升级流程也不能只检查插件版本号。支持旧包升级时，应检查新增依赖和模型是否存在、能否加载；必要时引导用户运行准备步骤。</p>
+<p>安装器应能重复运行：已校验且可用的文件直接复用，中断下载可恢复，缺失项单独补齐。不要在 import/create/start 阶段静默改动宿主 Python 环境或下载大模型。</p>
+<p>需要安装依赖时，使用明确的目标解释器和插件说明中的准备入口。不要调用系统里碰巧找到的 pip，也不要擅自升级共享依赖，导致其他插件失效。独立环境的生命周期和退出责任也要写清楚。</p>
+<h3 id="section-52">下载与完整性检查</h3>
+<p>面向中国大陆使用者时，可提供可配置的国内镜像及官方源选择。镜像和官方源必须对应同一模型版本，并校验大小及内容摘要；不能只看目录存在或下载返回成功。</p>
+<p>HTTPS 证书校验保持开启。失败时说明下载来源、失败类别和重试方法，日志中删除凭据。备用源应明确告知用户，不能把不同版本的文件混在同一模型目录。</p>
+<p>未完成文件放在单独暂存位置，完整校验后再发布。已有可用模型、用户配置和并发修改应保留；失败后不要自动清空整个模型目录。</p>
+<h3 id="section-53">自检要验证实际能力</h3>
+<p>依赖包元数据存在不等于模块可导入，模型目录存在不等于权重可加载。自检应分开检查安装、加载和最小功能运行，并给出具体失败步骤。</p>
+<p>例如插件自带语义检索模型时，应使用真实模型验证同义表达检索，而非只检查文件名。使用核心已有的 BGE-M3 检索能力时，应复用宿主准备机制，不再为每个插件或 Bot 重复下载一份。</p>
+<p>模型下载、加载和向量索引更新是独立状态。新记忆到来后需要补的是索引，不应每次重新安装模型。检索向量缓存与提供商的对话缓存也不能混为一项指标。</p>
+<h2 id="section-54">24. Windows、Linux 与档案名称</h2>
+<p>不要把开发机上的盘符、用户名、中文目录或端口写死在程序中。使用宿主提供的路径和 Path 拼接，命令行参数以参数列表传递；不要把未转义的路径拼进 shell 命令。</p>
+<p>至少检查中文、空格、长路径、大小写差异和只读目录。Windows 的保留名称及尾点、尾空格限制也应在打包前发现。不能因为 Linux 上的两个大小写名称可并存，就假定 Windows 也可以。</p>
+<p>展示名称与稳定身份是不同概念。不要用界面显示的档案名称作为唯一存储键，也不要根据新名称猜测旧数据的位置；按宿主当前提供的身份和路径读取。改名、归档和恢复后检查配置、任务、缓存及工具范围仍属于原档案。</p>
+<p>两端版本号一致只说明标称版本一致，不能代替环境验证。涉及原生依赖、进程退出、文件锁或浏览器行为时，要分别验证声明支持的平台，并记录实际解释器和依赖版本。</p>
+<p>分发程序更新时排除用户档案、密钥、聊天日志和已安装插件的私有配置。更新运行中的 Python 代码或依赖前，按启动器要求完整退出；休止和启动窗口退出是不同状态，不绕过运行锁。</p>
+<h3 id="section-55">声明运行平台和必要条件</h3>
+<p>声明的是运行 Core 和插件的主机系统。群成员使用手机打开登录页时，手机系统与插件的宿主系统可以不同。在发布版本的 <code>package.json.keywords</code> 中选择适用的标签，并将相同标签同步到 GitHub 仓库 Topics。插件市场读取 Topics，已安装插件的总览读取本机清单。</p>
+<div class="table-wrap"><table><thead><tr><th scope="col">宿主系统</th><th scope="col">支持</th><th scope="col">有条件支持</th></tr></thead><tbody><tr><td>Windows</td><td><code>platform-windows</code></td><td><code>platform-windows-conditional</code></td></tr><tr><td>Linux</td><td><code>platform-linux</code></td><td><code>platform-linux-conditional</code></td></tr><tr><td>macOS</td><td><code>platform-macos</code></td><td><code>platform-macos-conditional</code></td></tr></tbody></table></div>
+<p>每个平台选一个状态。尚未声明的平台省略标签，总览显示“未声明”。有条件支持时在 README 的“运行环境”里说明依赖、外部服务所在系统、可用功能和验收范围。市场分类可用一个 <code>category-*</code> 话题，例如查询插件使用 <code>category-information</code>，并保留第 11 节的市场发现话题和安装关键字。</p>
+<h3 id="section-56">声明主插件和扩展插件</h3>
+<p>独立插件或主插件省略 <code>telyincore.navigationParent</code>。扩展插件填写父插件的 <code>package.json.name</code>。以下为一个依赖 QQ 连接的查询扩展示例，字段应合并到原清单。</p>
+<div class="code"><div class="code-label">json</div><pre><code>{
+  &quot;keywords&quot;: [&quot;core-infinity&quot;, &quot;category-information&quot;, &quot;platform-windows&quot;, &quot;platform-linux-conditional&quot;],
+  &quot;telyincore&quot;: {
+    &quot;kind&quot;: &quot;infinity&quot;,
+    &quot;api&quot;: 1,
+    &quot;navigationParent&quot;: &quot;core-infinity-qq&quot;
+  }
+}</code></pre></div>
+<p>该字段用于侧栏分组。拖动主插件时整组移动，扩展可在同组内排序。父插件缺失时，扩展仍有独立入口。扩展自行检查当前 Bot 的父插件或通道是否就绪，在设置页说明前置条件；需要启用其他插件时由管理员操作。父子关系本身不授予跨 Bot 或群的权限。</p>
+<h2 id="section-57">25. 配置页、预览与状态提示</h2>
+<h3 id="section-58">首次部署和群交互</h3>
+<p>首次配置按管理员实际操作排序，展示当前 Bot、环境检测、安装进度和下一步。涉及外部登录时，标明授权页面、授权完成后的返回位置以及从用户设备验证连通性的方法。将详细诊断折叠，在操作按钮旁显示失败原因。保存路径优先从宿主提供的当前 Bot 数据目录解析，迁移目录后重新核对旧路径和所属档案。</p>
+<p>群扩展沿用当前 Bot 的静候和唤醒状态。静候期间可以接收消息，群命令应遵从宿主门控；恢复时再核对消息是否撤回、群是否仍在允许范围。帮助图、排行图等确定结果直接投递。需要自然对话时交给当前 Bot 的既有人设和本群上下文，避免为了装饰回执而额外调用模型。登录链接、验证码和凭证不得写入供模型使用的回执摘要。</p>
+<h3 id="section-59">预览应使用实际组件</h3>
+<p>宿主原生页面的预览应复用正式页面的渲染函数、组件和样式，不手工复制一份近似结构。自定义 iframe 页面也应让预览与正式界面共用自身组件，不能越过隔离边界操作宿主 DOM。</p>
+<p>对“查询后回答”的示例，按用户消息、工具过程与回执、回答的顺序显示。真实记录仍按实际执行顺序呈现；不能为了预览整齐而重新排列已经发生的工具事件。</p>
+<p>工具详情中的调用参数、执行回执、复制和关闭交互都应能使用。预览只使用合成内容，不触发真实工具、外发消息或产生模型费用。</p>
+<p>主题切换后同步更新色块、RGB 值、透明度和预览。不能只改选中标记而保留旧颜色。调色过程保留正在编辑的控件与草稿，并验证浅色、深色及窄窗口布局。</p>
+<h3 id="section-60">状态必须说明正在观察什么</h3>
+<ul>
+<li>已安装、已启用、已加载和外部服务就绪分别显示，不互相替代。</li>
+<li>待机时可以展示已保存的统计；基础上下文估算要标明估算范围，不能冒充本次完整模型请求。</li>
+<li>未获取到数据、读取失败、真实零值和旧缓存是不同状态。</li>
+<li>缓存命中率注明当前调用、累计主对话或全链路范围；详情与摘要使用相同统计来源。</li>
+<li>耗时注明包含哪些阶段。主对话耗时与包括后台整理的总耗时可以不同，但不能使用同一名称让用户误以为口径相同。</li>
+<li>内部定时器、调试分类和正常空类别不占用普通启动提示；需要排查时放入调试日志。真实错误和功能不可用仍应明确显示。</li>
+</ul>
+<p>打开手册或帮助时显示排版好的标题、表格、链接和代码示例，不显示文档源文件的格式标记。公开说明只保留用户和开发者需要的版本、接口及限制，不夹带内部修复轮次或工作记录。</p>
+<h3 id="section-61">共享安装包的卸载与保留数据</h3>
+<p>卸载影响使用同一安装包的所有档案。控制台会先确认用户意图，再逐个请求运行中的档案停用插件；无法联系某个档案、停用失败或安装包仍被进程持有时，卸载停止，安装包保持可用。已完成停用的档案不会被擅自重新启用。</p>
+<p>插件的 stop() 必须等待自身工作结束并释放文件和连接，不能提前返回成功。宿主会保留未能停止的实例及安装包占用。</p>
+<p>各档案私有配置与运行数据不会随卸载删除。安装目录中的原始内容另行保留在 core/data/plugin-retained 下，供重装恢复和后续清理使用。重装使用新下载的代码，不恢复旧的可执行代码；已保留的 config.json、settings.json、.env 及不与新包文件冲突的数据可恢复。插件应优先使用宿主提供的档案私有数据目录，避免把用户数据写入代码目录。</p>
+<p>设置 → 存储中的「插件页面缓存」只管理临时显示状态。卸载保留副本由独立维护流程管理。不要向用户承诺卸载会释放全部数据空间，也不要在 stop() 中顺便删除用户配置或缓存。</p>
+<h2 id="section-62">26. 将页面显示缓存接入设置</h2>
+<p>从 Core beta.0.5.3 起，插件配置页的临时显示状态统一接入“设置 → 存储 → 插件页面缓存”。用户可以按插件显示名称、标识或缩写进行模糊搜索，筛选有缓存或无缓存的插件，并逐项清理。列表按当前档案、当前浏览器标签页隔离；不是所有档案、所有浏览器窗口或磁盘文件的全局清理器。</p>
+<h3 id="section-63">设置「存储」的清理范围</h3>
+<p>「存储」提供独立的清理操作。每项应标明数据所属的 Bot、清理对象和后续影响。</p>
+<ul>
+<li>「插件页面缓存」只清理当前档案在当前浏览器标签页的临时显示状态。</li>
+<li>后台清理接口由宿主提供。服务端核对当前 Bot，遇到正在执行的账号操作时暂缓清理，并支持重复调用。界面只显示会话是否存在。</li>
+<li>管理密码和 API 密钥由对应的配置页管理。更换密码可直接保存新值。清除凭据的入口应说明会影响哪些已登录会话。</li>
+</ul>
+<h3 id="section-64">先区分显示状态与用户数据</h3>
+<p>可登记的是丢弃后可以安全恢复默认值的界面状态，例如页签序号、列表页码和详情是否展开。它不应包含配置字段、表单草稿、搜索文本、账号、密码、访问令牌、聊天内容或记忆。列表数据、服务返回内容、工具回执、模型缓存、插件运行文件及卸载备份也不属于此入口。</p>
+<p>需要持久保存的插件设置仍使用原有配置接口；未保存输入留在当前表单中，不能先存入显示缓存再依赖“不要清理”的提示保护。清理操作只删除明确登记的显示状态，不重载页面、不重新填写表单、不发送配置保存请求，也不调用插件业务接口。</p>
+<h3 id="section-65">自定义配置页的接入接口</h3>
+<p>配置页收到 <code>telyincore:config:state</code> 时，先检查消息顶层的 <code>displayCache.version</code> 是否为 1，以及 <code>displayCache.slots</code> 是否包含需要的状态名称。旧版 Core 不提供此能力时，只在页面内存中保留显示状态，不自行写入宿主的浏览器存储，也不绕过隔离访问文件。</p>
+<p>当前提供三个状态名称：</p>
+<ul>
+<li><code>view-tab</code>：插件自定义页面内部的页签序号，整数 0～31。</li>
+<li><code>list-page</code>：列表页码，整数 0～100000；插件自行约定从 0 或 1 开始。</li>
+<li><code>details-open</code>：详情区域是否展开，布尔值。</li>
+</ul>
+<p>宿主自己的“常规配置 / 插件页面”选择另行管理，插件不能覆盖它。暂不接受任意键、字符串、对象或文件路径；确实需要新类型时，先扩展宿主的白名单、校验和清理测试，不把业务数据塞进现有数字字段。</p>
+<p>消息示例：</p>
+<div class="code"><div class="code-label">javascript</div><pre><code>// 先从 config:state 确认 displayCache.version === 1。
+parent.postMessage({
+  type: 'telyincore:display:request',
+  id: '1', action: 'write', slot: 'view-tab', value: 2
+}, '*');
+
+parent.postMessage({
+  type: 'telyincore:display:request',
+  id: '2', action: 'read', slot: 'view-tab'
+}, '*');</code></pre></div>
+<p>每次请求使用独立的数字字符串 id，长度为 1～12 位。回复类型为 <code>telyincore:display:result</code>，包含同一 id、ok 和 value。读取成功但尚无记录时 value 为 null，页面使用默认显示；写入失败或宿主不支持时继续使用当前页面内存状态，不重试配置保存或任何业务动作。</p>
+<p>页面应检查 <code>event.source === parent</code>、消息类型及请求 id，超时后移除等待中的回调。页面隐藏、切换或宿主状态更新时，迟到的回复可能被忽略，这是正常的失效保护。初始化恢复显示状态时，若用户已手动切换页签或编辑表单，不再用迟到结果覆盖当前交互。</p>
+<p>宿主从发送消息的配置页确定插件标识和当前档案。请求不需要也不能指定 Bot、插件名、存储键、目录或删除范围。只接受当前活动配置页发出的消息。</p>
+<h3 id="section-66">让缓存管理页自动发现</h3>
+<p>通过上述接口成功写入后，宿主会自动登记显示缓存，并按插件清单中的稳定 name 归属。在设置页显示插件的 displayName；没有展示名称时显示 name。无需单独维护一份清理列表，也不要根据昵称自行生成存储键。</p>
+<p>配置页内的显示状态汇总为该插件的一行。没有登记状态时显示“无缓存”，不编造占用数字；缓存已存在而插件已卸载时，仍可按原插件标识找到并清理。当前统计为已登记键和值的 UTF-8 字节数，不代表浏览器内存占用、插件磁盘体积或服务端缓存大小。</p>
+<p>清理后再次进入页面应回到合理默认值，并允许用户重新选择。清理不会向已打开的表单推送重置通知。宿主会阻止清理正在编辑或保存的活动通用配置页；对无法确认草稿状态的活动自定义页面采取保守保护。不同浏览器标签页的草稿和缓存互不清理。</p>
+<p>旧插件自行维护的浏览器存储、运行目录或服务器缓存不会自动纳入。作者应把符合上述范围的显示状态改用统一接口；不要扫描旧目录后统一删除，也不要把旧配置文件迁入这个命名空间。</p>
+<h3 id="section-67">发布前检查</h3>
+<ol>
+<li>打开插件配置页并改变显示状态，确认设置页可以搜索到插件，显示真实用量。</li>
+<li>清理后重新进入配置页，确认默认页签、页码及展开状态可正常使用。</li>
+<li>输入但不保存配置，确认清理不会改变输入、保存状态或配置修订号；自定义页面内部草稿同样保留。</li>
+<li>在两个档案和两个浏览器标签页分别操作，确认清理不会串到其他范围。</li>
+<li>浏览器禁止存储、宿主不支持接口、非法状态值或回复超时时，页面仍可使用，不冒充写入成功。</li>
+<li>核对清理没有触发配置保存、聊天删除、记忆修改、业务请求或插件文件删除。</li>
+<li>卸载后的显示缓存仍可被发现；聊天记录、记忆、私有配置和卸载保留数据保持不变。</li>
+</ol>
+<h3 id="section-68">首次启用与等待配置</h3>
+<p>需要账号、凭据或会话范围的插件必须考虑用户先点启用、再进配置页的流程。缺少必填配置时，保留当前 Bot 的启用意图，并明确提示下一步在哪里配置。配置就绪后，通过宿主正常的重载入口激活。</p>
+<p>插件可在 <code>create(ctx)</code> 启动任何后台任务、网络连接或注册运行能力前抛出 <code>telyincore.plugins.PluginSetupRequired</code>，并提供面向用户的说明。宿主返回 <code>ok=true</code> 和 <code>setup_required=true</code>，此时插件 <code>loaded=false</code>。首次唤醒时这类插件进入 <code>waiting</code> 列表。真实装载、启动或清理错误仍按失败返回。</p>
+<p>有前置配置的插件都应验收首次启用、配置完成后重载、配置损坏及不同 Bot 档案隔离。未配置时不可默认放开会话范围，也不可启动消息处理。独立桥接进程的就绪状态需单独显示。</p>
+<h2 id="section-69">27. 热加载与重启后生效</h2>
+<p>本节为 v1.18 新增宿主能力（Windows Core beta.0.5.4.7 修订版）。插件 API 仍为 1。作者必须核对目标 Core 是否支持该能力；旧宿主可能忽略新增声明。若插件不能安全热加载，README 必须明确要求使用支持 <code>reload_mode</code> / <code>restart_required</code> 状态的 Core，不能只依赖旧宿主忽略的字段。</p>
+<h3 id="section-70">清单声明</h3>
+<p>在 <code>package.json</code> 的 <code>telyincore</code> 对象中声明 <code>&quot;reload&quot;: &quot;hot&quot;</code> 或 <code>&quot;reload&quot;: &quot;restart&quot;</code>。省略时保持现有插件的热加载行为；其他值属于无效声明，不得静默当作 hot。</p>
+<div class="code"><div class="code-label">json</div><pre><code>{
+  &quot;telyincore&quot;: {
+    &quot;kind&quot;: &quot;infinity&quot;,
+    &quot;api&quot;: 1,
+    &quot;reload&quot;: &quot;restart&quot;
+  }
+}</code></pre></div>
+<p>能完整撤销线程、监听器、路由和全局状态的插件使用 hot。加载原生库、修改进程级状态或不能安全反复导入的插件应使用 restart。此字段只声明生命周期需求，不授予额外权限，不替代 Bot 范围、依赖关系、清理和宿主关闭检查。</p>
+<h3 id="section-71">生效规则与界面回执</h3>
+<p>安装仍只写入插件包，不自动启用。restart 插件启用时保存当前 Bot 的启用意图，下一次新 Core 进程启动时加载；停用时先保存停用意图，现有实例继续运行到正常关闭。关闭时仍必须执行 stop 清理，不允许以需要重启为由跳过清理或强制终止其他进程。</p>
+<p>插件列表保留 <code>enabled</code>（持久设置）、<code>loaded</code>（运行状态）、<code>tracked</code>（清理责任），另提供 <code>reload_mode</code>、<code>restart_required</code>、<code>restart_action</code>（enable / disable / config）和 <code>restart_reason</code>。有待生效更改时页面应说明现有运行状态，不能把保存成功画成加载或停止成功。</p>
+<p>切换接口的 <code>ok=true, applied=false, restart_required=true</code> 仅表示设置已保存。调用方不可把这个回执当作实例已停止。重启前可以撤销启用或停用；配置保存导致的待重启状态不会因撤销开关而消失。失败原因应保留，不把所有错误泛化成“重启即可解决”。</p>
+<p>通用配置保存通过宿主重载回调处理 restart 插件：保存配置，记录待重启，保留当前实例，不执行 stop/create。自定义配置页不得自行假报重载成功，应使用宿主提供的保存与回执路径。刷新浏览器不等于重启 Core。</p>
+<h3 id="section-72">卸载和更新</h3>
+<p>共享包卸载必须确认所有相关 Bot 的实例已退出；需要重启或 applied=false 时，保留安装包、配置和缓存，当前 Bot 的页面内操作可在完成停用、重启并验证新实例后继续卸载。其他 Bot 尚占用时保留文件并提示具体档案。不会静默升级。</p>
+<p>restart 插件只要尝试导入，其包就被当前进程持续持有，即使启动失败或 stop 返回成功也不在该进程内替换代码。只有相关进程全部退出后才能释放，防止原生模块和进程级残留引用旧文件。卸载后安装新版仍保持停用，启用后按同一规则在新进程加载。</p>
+<h3 id="section-73">必须验收</h3>
+<ol>
+<li>默认 hot 插件可以原样热启停，失败清理仍保留实例责任。</li>
+<li>restart 启用不会提前 import，停用不把运行中实例伪报为已停止，撤销操作恢复原意图。</li>
+<li>新进程按持久启用设置加载；再次在同进程调用启动恢复不等于重启。</li>
+<li>保存配置明确提示待重启，旧实例保持不变；配置错误和失败不得报重载成功。</li>
+<li>单 Bot 和共享包卸载均拒绝在待停用、导入失败残留或其他进程持有时删除文件。</li>
+<li>列表刷新失败保留最后状态并说明未确认，不能清除待生效提醒冒充操作成功。</li>
+</ol>
+<h3 id="section-74">页面内完成启用、停用和卸载</h3>
+<p>用户看到的稳定状态为已启用、已停用、已卸载；首次安装为已停用。切换过程中的“正在启用、正在停用、服务重启中、正在验证、正在卸载”是操作进度，不得冒充稳定结果。</p>
+<p><code>GET /plugins</code> 同时返回 runtime：instance 是本次服务实例标识；bot 是宿主确认的当前档案；restart_supported 表示当前父启动器是否接入页面内重启。作者不可通过插件清单自行授予重启能力。</p>
+<p>页面提交启用或停用后，以宿主回执判断是否需要重启。需要时，<code>POST /plugins/restart</code> 携带 name、action（enable / disable / remove / config）及 <code>X-Telyin-Shutdown-Instance</code>。该接口要求同源、当前服务实例、匹配的待生效状态和支持重启的原父启动器。普通启动脚本、旧启动器和未接入的平台应明确报告不支持，不假报自动重启。</p>
+<p>受支持的 Windows 父启动器在原子进程、输出、端点和已有退出责任完成后，使用同一个 Bot 与端口启动新服务，不打开新网页，不顺便安装待更新的 Core 包。端口被其他服务占用、异常退出或清理失败时，不另起重复实例。</p>
+<p>页面保持 DOM、路由、列表选择和当前操作，通过只读轮询等待新服务实例。HTTP 202 仅表示接受退出请求；原实例仍可访问、单纯连接中断或超时都不代表重启成功。必须验证新的 instance、相同 Bot、相同插件包及最终 enabled/loaded/tracked 状态。超时保留未确认提示，允许继续检查，不自动重复发送重启请求。</p>
+<p>卸载需要重启时，页面先确认插件已停止，再继续原先明确确认的卸载；包在等待期间发生变化则停止后续删除。任何阶段失败均保留可核对的错误。共享安装包若仍被其他 Bot 使用，必须保留文件并说明占用档案，不自动终止其他 Bot。</p>
+<footer><span>TelyinCore · 以实际实现为准</span><a href="#top">返回顶部 ↑</a></footer>
+</main></div></div></body></html>

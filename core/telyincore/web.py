@@ -1757,11 +1757,17 @@ class _Handler(BaseHTTPRequestHandler):
                 self._send_json(409, {"error": "更新正在进行中"})
                 return
             from .online_install import LatestUnavailable, verified_pending
+            from .update_preflight import check_before_exit, UpdateBlocked
+
+            def preflight():
+                checker.install_progress = "正在检查服务能否安全退出并更新"
+                check_before_exit(checker.root, checker.platform, self.server.server_address[1])
             try:
                 if checker._restart_requested:
                     raise ValueError("更新正在重启，请等待服务恢复。")
+                preflight()
                 if route.endswith("/stage"):
-                    row = checker.prepare_install()
+                    row = checker.prepare_install(before_pending=preflight)
                     self._send_json(200, {"pendingVersion": row["version"]})
                     return
                 if getattr(self._service, "_shutdown_callback", None) is None:
@@ -1774,8 +1780,13 @@ class _Handler(BaseHTTPRequestHandler):
                 else:
                     offline_version = None
                 row = (verified_pending(checker.root, checker.platform, offline_version)
-                       if offline_version else checker.prepare_install())
+                       if offline_version else checker.prepare_install(before_pending=preflight))
+                if offline_version:
+                    preflight()
                 checker.restart_for_update(self.server.server_address[1])
+            except UpdateBlocked as exc:
+                self._send_json(409, {"code": "update_preflight_blocked", "error": str(exc)})
+                return
             except LatestUnavailable as exc:
                 self._send_json(409, {"error": str(exc), "cachedVersion": checker.installation().get("pendingVersion")})
                 return

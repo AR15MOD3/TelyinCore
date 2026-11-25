@@ -1,4 +1,4 @@
-// core/src/web/client/status-json.ts
+// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/status-json.ts
 var StatusHttpError = class extends Error {
   constructor(url, status) {
     super(`${url} returned ${status}`);
@@ -93,14 +93,15 @@ async function getStatusJson(url, timeoutMs = 8e3) {
   return await response.json();
 }
 
-// core/src/web/client/display-storage.ts
+// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/display-storage.ts
 var localKeys = /* @__PURE__ */ new Set([
   "ui-language",
   "telyincore-look-mode",
   "telyincore-look-preset",
   "telyincore-look-resolved-v1",
   "telyincore.rail-width",
-  "plugin-nav-order"
+  "plugin-nav-order",
+  "plugin-update-muted"
 ]);
 var sessionKeys = /* @__PURE__ */ new Set(["plugin-nav", "engine-drafts"]);
 var localEdits = /* @__PURE__ */ new Map();
@@ -173,7 +174,7 @@ function initializeDisplayScope() {
   return loading;
 }
 
-// core/src/web/client/plugin-navigation-order.ts
+// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/plugin-navigation-order.ts
 var orderKey = "plugin-nav-order";
 var units = (list) => Array.from(list.children);
 function readOrder() {
@@ -217,6 +218,7 @@ function pluginNavigationOrder(rail, refresh2) {
       changed();
       return;
     }
+    tree.classList.add("plugin-nav-tree");
     const order = readOrder();
     const rank = new Map(order.map((id, i) => [id, i]));
     const parents = new Map(entries.map((item) => [item.id, item.navigationParent]));
@@ -267,7 +269,12 @@ function pluginNavigationOrder(rail, refresh2) {
     if (rememberNew && ids.some((id) => !rank.has(id))) {
       writeDisplayLocal(orderKey, JSON.stringify([...order, ...ids.filter((id) => !rank.has(id))]));
     }
-    if (nodes.size < 2) {
+    const handles = [...nodes.values()].map((unit) => {
+      const handle = unit.querySelector(":scope > .plugin-nav-row > .plugin-nav-grip");
+      handle.hidden = unit.parentElement.children.length < 2;
+      return handle;
+    });
+    if (handles.every((handle) => handle.hidden)) {
       changed();
       return;
     }
@@ -281,10 +288,20 @@ function pluginNavigationOrder(rail, refresh2) {
     const controls = document.createElement("div");
     controls.className = "plugin-nav-actions";
     controls.hidden = true;
-    const cancel = button("取消排序", "plugin-nav-action", "取消");
+    const cancel = button("取消排序", "plugin-nav-action", "放弃更改");
     const done = button("保存插件顺序", "plugin-nav-action is-primary", "完成");
-    controls.append(cancel, done);
-    toolbar.after(controls);
+    const sortedIds = () => Array.from(tree.querySelectorAll("[data-nav-id]"), (el6) => el6.dataset.navId);
+    const initial = sortedIds();
+    function reflectDraft() {
+      cancel.hidden = sortedIds().every((id, index) => id === initial[index]);
+    }
+    const check2 = document.createElement("span");
+    check2.className = "plugin-nav-check";
+    check2.setAttribute("aria-hidden", "true");
+    done.prepend(check2);
+    cancel.title = "放弃本次调整，恢复进入排序前的顺序";
+    controls.append(done, cancel);
+    toolbar.append(controls);
     const live2 = document.createElement("span");
     live2.className = "plugin-nav-live";
     live2.setAttribute("role", "status");
@@ -306,12 +323,20 @@ function pluginNavigationOrder(rail, refresh2) {
       rail.querySelector(".plugin-nav-edit")?.focus();
     }
     edit.onclick = () => {
+      toolbar.classList.add("is-editing");
+      reflectDraft();
       editing = true;
       tree.classList.add("is-sorting");
       controls.hidden = false;
       edit.hidden = true;
       changed();
-      tree.querySelector(".plugin-nav-grip")?.focus({ preventScroll: true });
+      tree.querySelector(".plugin-nav-grip:not([hidden])")?.focus({ preventScroll: true });
+    };
+    controls.onkeydown = (e) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        close2(false);
+      }
     };
     cancel.onclick = () => close2(false);
     done.onclick = () => close2(true);
@@ -336,6 +361,7 @@ function pluginNavigationOrder(rail, refresh2) {
         );
       if (tree.hasPointerCapture(d.pointer)) tree.releasePointerCapture(d.pointer);
       d.handle.focus({ preventScroll: true });
+      reflectDraft();
       changed();
     }
     function withinList(d) {
@@ -372,6 +398,7 @@ function pluginNavigationOrder(rail, refresh2) {
             ),
             d.unit
           );
+          reflectDraft();
           changed();
         }
       }
@@ -457,6 +484,7 @@ function pluginNavigationOrder(rail, refresh2) {
       if (sibling) {
         glide(list, () => list.insertBefore(unit, up ? sibling : sibling.nextSibling));
         handle.focus();
+        reflectDraft();
         changed();
         live2.textContent = "当前位置 " + (units(list).indexOf(unit) + 1) + " / " + list.children.length;
       }
@@ -471,7 +499,7 @@ function pluginNavigationOrder(rail, refresh2) {
   };
 }
 
-// core/src/web/client/plugin-restart.ts
+// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/plugin-restart.ts
 var pending = [];
 var request;
 var requested;
@@ -537,7 +565,7 @@ function startPluginRestart() {
   });
 }
 
-// core/src/web/client/plugin-updates.ts
+// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/plugin-updates.ts
 var state = { rows: [], checking: false };
 var pending2;
 var failure = "";
@@ -545,7 +573,24 @@ var started = false;
 var loaded = false;
 var updateFor = (name) => state.rows.find((row2) => row2.name === name);
 var pluginUpdateSnapshot = () => ({ ...state, error: failure });
-var available = () => state.rows.filter((row2) => row2.status === "available");
+var muteKey = "plugin-update-muted";
+function mutedNames() {
+  try {
+    const names = JSON.parse(readDisplayLocal(muteKey) || "[]");
+    return Array.isArray(names) ? names.filter((n) => typeof n === "string") : [];
+  } catch {
+    return [];
+  }
+}
+var updateMuted = (name) => mutedNames().includes(name);
+function setUpdateMuted(name, mute) {
+  const names = new Set(mutedNames());
+  if (mute) names.add(name);
+  else names.delete(name);
+  writeDisplayLocal(muteKey, JSON.stringify([...names]));
+  paint2();
+}
+var available = () => state.rows.filter((row2) => row2.status === "available" && !updateMuted(row2.name));
 var el = (tag, text2 = "", cls = "") => {
   const node6 = document.createElement(tag);
   node6.textContent = text2;
@@ -568,13 +613,13 @@ function summary() {
   const unknown = state.rows.filter((row2) => row2.status === "pending" || row2.status === "unavailable" || row2.stale).length;
   const unsupported = state.rows.filter((row2) => row2.status === "unsupported").length;
   const checked = state.rows.filter((row2) => ["current", "ahead", "prerelease", "unreleased"].includes(row2.status) && !row2.stale).length;
-  return count4 ? `${count4} 个插件发现新版本${unknown ? `，${unknown} 项待复查` : ""}` : unknown ? `${unknown} 个插件尚未确认版本` : checked ? `已检查 ${checked} 个插件，暂无更新` : unsupported ? `${unsupported} 个插件无法自动检查，请查看来源` : state.rows.length ? "内置插件随 Core 更新" : loaded ? "暂无已安装插件" : "等待读取插件更新状态";
+  return count4 ? `${count4} 个插件发现新版本${unknown ? `，${unknown} 项待复查` : ""}` : unknown ? `${unknown} 个插件尚未确认版本` : checked ? `已检查 ${checked} 个插件，暂无更新` : state.rows.some((row2) => row2.status === "available") ? "暂无需要提示的插件更新" : unsupported ? `${unsupported} 个插件无法自动检查，请查看来源` : state.rows.length ? "内置插件随 Core 更新" : loaded ? "暂无已安装插件" : "等待读取插件更新状态";
 }
 function paint2() {
   document.querySelectorAll("[data-plugin-update-summary]").forEach((node6) => node6.textContent = summary());
   document.querySelectorAll("[data-plugin-update-name]").forEach((node6) => {
     const row2 = updateFor(node6.dataset.pluginUpdateName);
-    node6.hidden = !row2 || row2.status !== "available";
+    node6.hidden = !row2 || row2.status !== "available" || updateMuted(row2.name);
     const text2 = node6.querySelector("[data-plugin-update-text]");
     if (text2 && row2) text2.textContent = updateText(row2);
     node6.classList.toggle("has-update", row2?.status === "available");
@@ -588,30 +633,45 @@ function paint2() {
   }
   window.dispatchEvent(new Event("plugin-updates-changed"));
 }
-async function checkPluginUpdates(refresh2 = false) {
-  if (pending2) {
-    await pending2;
-    if (refresh2) return checkPluginUpdates(true);
-    return;
-  }
-  pending2 = (async () => {
-    try {
-      const response = await pageFetch("/plugin-updates" + (refresh2 ? "?refresh=1" : ""), { cache: "no-store" });
-      if (!response.ok) throw new Error(response.status === 503 || response.status === 404 ? "此 Core 尚未启用插件更新检查" : "暂时无法读取插件更新");
-      const next = await response.json();
-      if (!Array.isArray(next.rows)) throw new Error("更新状态格式异常");
-      state = next;
-      loaded = true;
-      failure = "";
-    } catch (error) {
-      state.rows = state.rows.map((row2) => ({ ...row2, stale: true }));
-      failure = error instanceof Error ? error.message : "暂时无法读取插件更新";
+var manual;
+async function readUpdates(force) {
+  const response = await pageFetch("/plugin-updates" + (force ? "?refresh=1" : ""), { cache: "no-store" });
+  if (!response.ok) throw Error(response.status === 503 || response.status === 404 ? "此 Core 尚未启用插件更新检查" : "暂时无法读取插件更新");
+  const next = await response.json();
+  if (!Array.isArray(next.rows) || typeof next.checking !== "boolean") throw Error("更新状态格式异常");
+  state = next;
+  loaded = true;
+  failure = "";
+  paint2();
+}
+async function observeUpdates(refresh2) {
+  try {
+    const deadline = Date.now() + 9e4;
+    await readUpdates(refresh2);
+    let verifyQueued = refresh2;
+    while (verifyQueued || state.checking) {
+      verifyQueued = false;
+      if (Date.now() >= deadline) throw Error("检查耗时较长，可稍后再查。");
+      await new Promise((resolve) => setTimeout(resolve, 1250));
+      await readUpdates(false);
     }
+  } catch (error) {
+    state = { ...state, checking: false, rows: state.rows.map((row2) => ({ ...row2, stale: true })) };
+    failure = error instanceof Error && error.name !== "StatusTimeoutError" ? error.message : "读取更新状态超时，可重新检查。";
     paint2();
-  })().finally(() => {
+  }
+}
+function checkPluginUpdates(refresh2 = false) {
+  if (manual) return manual;
+  if (refresh2) {
+    manual = Promise.resolve(pending2).then(() => observeUpdates(true)).finally(() => {
+      manual = void 0;
+    });
+    return manual;
+  }
+  return pending2 ??= observeUpdates(false).finally(() => {
     pending2 = void 0;
   });
-  return pending2;
 }
 function pluginUpdateNotice(name) {
   const box = el("section", "", "plugin-update-strip");
@@ -630,7 +690,7 @@ function pluginUpdateNotice(name) {
   box.append(text2, button4);
   if (name) {
     const row2 = updateFor(name);
-    if (row2 && row2.status === "available") {
+    if (row2 && row2.status === "available" && !updateMuted(row2.name)) {
       box.hidden = false;
       text2.textContent = updateText(row2);
     }
@@ -652,6 +712,12 @@ function openPluginUpdates(name, _opener) {
 function startPluginUpdates() {
   if (started) return;
   started = true;
+  onDisplayScopeReady((prefix2) => {
+    paint2();
+    window.addEventListener("storage", (event) => {
+      if (event.key === prefix2 + muteKey || event.key === null) paint2();
+    });
+  });
   const row2 = document.querySelector(".topbar-status");
   if (row2) {
     const button4 = el("button", "插件更新", "topbar-update topbar-plugin-updates");
@@ -672,7 +738,7 @@ function startPluginUpdates() {
   });
 }
 
-// core/src/web/client/ui-phrases.ts
+// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/ui-phrases.ts
 var traditional = {
   "国内镜像始终直连。切换到官方源时，按下方用途使用代理。": "國內鏡像一律直連。切換到官方來源時，依下方用途使用代理。",
   "模型 API": "模型 API",
@@ -1987,7 +2053,7 @@ var traditional = {
   "页面未连接": "頁面未連接"
 };
 
-// core/src/web/client/ui-language.ts
+// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/ui-language.ts
 var bindings = /* @__PURE__ */ new Set();
 var owned = /* @__PURE__ */ new WeakMap();
 var listeners2 = /* @__PURE__ */ new Set();
@@ -2061,7 +2127,7 @@ function onUILanguage(listener) {
 }
 onDisplayScopeReady(() => setUILanguage(readDisplayLocal("ui-language") === "zh-Hant" ? "zh-Hant" : "zh-Hans", false));
 
-// core/src/web/client/text-detail.ts
+// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/text-detail.ts
 function showTextDetail(title, text2) {
   const opener = document.activeElement;
   const dialog = document.createElement("dialog");
@@ -2089,10 +2155,11 @@ function showTextDetail(title, text2) {
   close2.focus();
 }
 
-// core/src/web/client/package-updates.ts
+// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/package-updates.ts
 var last;
 var pending3;
 var installing = false;
+var preflightError = "";
 function paint3(card, state3) {
   if (installing) return;
   const current2 = card.querySelector("[data-version]");
@@ -2150,6 +2217,10 @@ function paint3(card, state3) {
     notice.textContent = "本机版本高于当前公开版本 " + state3.latest + "。";
   } else {
     notice.textContent = state3.status === "unavailable" ? "暂时无法确认新版本，请稍后重试。" : state3.message || "暂时无法检查更新。";
+  }
+  if (preflightError) {
+    card.querySelector("h3").textContent = "更新已暂停";
+    notice.textContent = preflightError;
   }
   const details = card.querySelector("[data-update-details]");
   const detailText = state3.status === "unavailable" ? state3.message : state3.checkRoute;
@@ -2278,6 +2349,7 @@ function packageUpdateCard() {
   button4.className = "settings-language-button";
   button4.textContent = "检查更新";
   button4.addEventListener("click", async () => {
+    preflightError = "";
     offline.hidden = true;
     button4.disabled = true;
     notice.textContent = "正在检查…";
@@ -2305,6 +2377,7 @@ function packageUpdateCard() {
       if (baseVersion) current2.textContent = baseVersion.replace(/^beta\./, "") + " → " + actual.replace(/^beta\./, "");
     };
     if (!targetVersion) return;
+    preflightError = "";
     installing = true;
     install.disabled = true;
     offline.hidden = true;
@@ -2331,6 +2404,10 @@ function packageUpdateCard() {
       });
       if (!response.ok) {
         const detail = await response.json().catch(() => ({}));
+        if (detail.code === "update_preflight_blocked") {
+          preflightError = detail.error;
+          title.textContent = "更新已暂停";
+        }
         if (typeof detail.cachedVersion === "string") {
           offline.textContent = "安装已下载的 " + detail.cachedVersion.replace(/^beta\./, "");
           offline.onclick = () => {
@@ -2409,7 +2486,7 @@ function packageUpdateCard() {
   return card;
 }
 
-// core/src/web/client/quick-search.ts
+// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/quick-search.ts
 function installQuickSearch(rail) {
   const nav = rail.querySelector(".rail-nav");
   if (!nav) return;
@@ -2625,7 +2702,7 @@ function installQuickSearch(rail) {
   });
 }
 
-// core/src/web/client/rail-resize.ts
+// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/rail-resize.ts
 var WIDTH_KEY = "telyincore.rail-width";
 var DEFAULT_WIDTH = 280;
 function railWidthBounds(viewport) {
@@ -2826,7 +2903,7 @@ function installRailResize(root, rail) {
   window.requestAnimationFrame?.(() => root.classList.add("rail-motion-ready"));
 }
 
-// core/src/web/client/brand.ts
+// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/brand.ts
 var CORE_MARK_T = "M4 5H28L22 11H18V25L12 29V11H4Z";
 var CORE_MARK_CORE = "M24 17L29 22L24 27L19 22Z";
 function coreBrandMark() {
@@ -2846,7 +2923,7 @@ function coreBrandMark() {
   return svg;
 }
 
-// core/src/web/client/confirm-dialog.ts
+// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/confirm-dialog.ts
 var nextDialogId = 0;
 async function confirmAction(heading2, description, action, notice = false, options = {}) {
   const opener = document.activeElement;
@@ -2912,13 +2989,13 @@ async function notifyAction(heading2, description) {
   await confirmAction(heading2, description, "知道了", true);
 }
 
-// core/src/web/client/asset-url.ts
+// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/asset-url.ts
 function assetUrl(name) {
   if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(name)) throw new Error("Invalid asset name");
   return new URL(name, import.meta.url).href;
 }
 
-// core/src/web/client/look.ts
+// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/look.ts
 var THE_LOOK_ROWS = [
   ["--color-ink", "正文"],
   ["--color-dim", "次要文字"],
@@ -3119,7 +3196,7 @@ onDisplayScopeReady((prefix2) => {
   void loadLook();
 });
 
-// core/src/web/client/avatar-crop.ts
+// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/avatar-crop.ts
 function cropBounds(width, height, zoom, x, y) {
   const side = Math.min(width, height) / Math.max(1, zoom);
   return {
@@ -3338,7 +3415,7 @@ async function cropAvatar(file, save) {
   }
 }
 
-// core/src/web/client/speaker.ts
+// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/speaker.ts
 var NEUTRAL = "BOT";
 var NAME_LINE = /^[ \t]*-[ \t]*\*\*名字\*\*[ \t]*[：:][ \t]*([^。，,.;；!！?？\n（(]+)/m;
 function bodies_of(report) {
@@ -3446,7 +3523,7 @@ function loadUserLabel(force = false) {
   return labelRequest;
 }
 
-// core/src/web/client/bot-manager.ts
+// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/bot-manager.ts
 async function botDialog(shownName = speaker()) {
   const opener = document.activeElement;
   const response = await pageFetch("/infinity/bots", { cache: "no-store" });
@@ -3520,7 +3597,7 @@ async function botDialog(shownName = speaker()) {
   }
 }
 
-// core/src/web/client/shell.ts
+// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/shell.ts
 var STROKE = {
   fill: "none",
   stroke: "currentColor",
@@ -4082,7 +4159,7 @@ function createShell(root) {
   return { shell: shell2, topbar: shell2.bar };
 }
 
-// core/src/web/client/model-display.ts
+// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/model-display.ts
 function modelDisplayName(model) {
   const path = model.trim();
   const isFilePath = /^(?:[a-z]:[\\/]|\/|\\\\)/i.test(path);
@@ -4097,7 +4174,7 @@ function modelDisplayName(model) {
   return filename.replace(/\.gguf$/i, "");
 }
 
-// core/src/web/client/engine-events.ts
+// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/engine-events.ts
 var ENGINE_CHANGED = "engine-changed";
 function notifyEngineChanged() {
   if (typeof window !== "undefined" && typeof window.dispatchEvent === "function") {
@@ -4109,7 +4186,7 @@ function onEngineChanged(refresh2) {
   return () => window.removeEventListener(ENGINE_CHANGED, refresh2);
 }
 
-// core/src/web/client/qq-toolbox.ts
+// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/qq-toolbox.ts
 var QQ = "core-infinity-qq";
 var guide = [
   ["消息与语音", "qq_send_text", "发送文字"],
@@ -4222,7 +4299,7 @@ function qqToolbox() {
   return { root, refresh: refresh2 };
 }
 
-// core/src/web/client/qq-stickers.ts
+// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/qq-stickers.ts
 function qqStickers() {
   function element3(tag, text2 = "") {
     const e = document.createElement(tag);
@@ -4550,7 +4627,7 @@ function qqStickers() {
   } };
 }
 
-// core/src/web/client/qq-voice-setup.ts
+// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/qq-voice-setup.ts
 function voiceSetup(kind, selection) {
   const section = document.createElement("details");
   section.className = "qq-voice-setup compact-disclosure";
@@ -4696,7 +4773,7 @@ function voiceSetup(kind, selection) {
   };
 }
 
-// core/src/web/client/plugin-display-cache.ts
+// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/plugin-display-cache.ts
 var scope = null;
 onDisplayScopeReady((prefix2) => {
   scope = prefix2 + "plugin-page-display.v1:";
@@ -4836,7 +4913,7 @@ function fuzzyPluginMatch(name, id, query) {
   });
 }
 
-// core/builtin/infinity/core-infinity-qq/web/environment-editor.js
+// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/builtin/infinity/core-infinity-qq/web/environment-editor.js
 function environmentEditor({ read: read4, write: write2, botName }) {
   function element3(tag, className, text2 = "") {
     const node6 = document.createElement(tag);
@@ -4963,7 +5040,7 @@ function environmentEditor({ read: read4, write: write2, botName }) {
   };
 }
 
-// core/src/web/client/qq-diagnostics.ts
+// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/qq-diagnostics.ts
 function element(tag, cls, text2) {
   const item = document.createElement(tag);
   item.className = cls;
@@ -5129,11 +5206,11 @@ function createQQTerminal(refresh2) {
     deactivate() {
       visible = false;
     },
-    update(content, manual = false) {
+    update(content, manual2 = false) {
       snapshot2 = content;
       failed = false;
       busy = false;
-      if (visible && (manual || live2.checked && following)) render2();
+      if (visible && (manual2 || live2.checked && following)) render2();
       else sync();
     },
     unavailable() {
@@ -5168,7 +5245,7 @@ function createQQEnvironment() {
   });
 }
 
-// core/src/web/client/voice-corpus-panel.ts
+// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/voice-corpus-panel.ts
 function voiceCorpusPanel() {
   const root = document.createElement("section");
   root.className = "voice-corpus";
@@ -5375,13 +5452,13 @@ function voiceCorpusPanel() {
   });
 }
 
-// core/src/web/client/config-presentation.ts
+// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/config-presentation.ts
 function configPresentation(root, state3) {
   root.setAttribute("data-config-state", state3);
   root.setAttribute("aria-busy", String(state3 === "loading"));
 }
 
-// core/src/web/client/qq-signals.ts
+// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/qq-signals.ts
 function serviceSignal(name, configured, running) {
   return {
     state: !configured ? "warn" : running ? "on" : "off",
@@ -5428,7 +5505,7 @@ function qqSignals(value, loaded2 = false) {
   ];
 }
 
-// core/src/web/client/download-dialog.ts
+// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/download-dialog.ts
 async function chooseASRSource(kind = "ASR", preferredSource) {
   const opener = document.activeElement;
   const dialog = document.createElement("dialog");
@@ -5483,7 +5560,7 @@ async function chooseASRSource(kind = "ASR", preferredSource) {
   }
 }
 
-// core/src/web/client/infinity-controls.ts
+// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/infinity-controls.ts
 function infinityField(label, input2) {
   const box = document.createElement("label");
   box.className = "infinity-field";
@@ -5515,7 +5592,7 @@ function infinityVoiceHeading(title, download) {
   return row2;
 }
 
-// core/src/web/client/infinity-page.ts
+// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/infinity-page.ts
 function node2(tag, className, text2) {
   const element3 = document.createElement(tag);
   element3.className = className;
@@ -6493,7 +6570,7 @@ function infinityPage(shell2, pluginName = "") {
       if (mine === requestId && !root.hidden) syncNotice();
     }
   };
-  const loadQQ = async (mine, manual = false) => {
+  const loadQQ = async (mine, manual2 = false) => {
     if (!knownConfig || passwordReadPending || qqStatusPending) return;
     const statusRequest = /* @__PURE__ */ Symbol();
     qqStatusPending = statusRequest;
@@ -6512,7 +6589,7 @@ function infinityPage(shell2, pluginName = "") {
         if (uiSource(feedback).startsWith("正在读取 QQ 配置") || uiSource(feedback).startsWith("QQ 状态读取失败")) feedback.textContent = "";
       }
       drawQQ(state3);
-      if (manual) terminalView.update(state3.snowluma.log, true);
+      if (manual2) terminalView.update(state3.snowluma.log, true);
     } catch (error) {
       if (error instanceof Error && error.name === "StaleStatusError") return;
       if (mine !== requestId || root.hidden) return;
@@ -6543,11 +6620,11 @@ function infinityPage(shell2, pluginName = "") {
     void loadPlugins(mine);
     void loadQQ(mine);
   };
-  const pollLog = (manual = false) => {
-    if (mutationPending || root.hidden || !manual && document.visibilityState === "hidden") return;
+  const pollLog = (manual2 = false) => {
+    if (mutationPending || root.hidden || !manual2 && document.visibilityState === "hidden") return;
     const mine = requestId;
     void loadPlugins(mine);
-    void loadQQ(mine, manual);
+    void loadQQ(mine, manual2);
   };
   checkConnection.addEventListener("click", () => {
     if (checkConnection.disabled || checkPending || mutationPending || currentQQ === null) return;
@@ -7053,7 +7130,7 @@ function infinityPage(shell2, pluginName = "") {
   };
 }
 
-// core/src/web/client/plugin-page-bridge.ts
+// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/plugin-page-bridge.ts
 function pluginPageBridge(options) {
   let busy = false;
   return (event) => {
@@ -7111,7 +7188,7 @@ function pluginPageBridge(options) {
   };
 }
 
-// core/src/web/client/page-load.ts
+// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/page-load.ts
 function pageLoad(root, label, retry) {
   const note = document.createElement("p");
   note.className = "infinity-hint page-load-status";
@@ -7146,7 +7223,7 @@ function pageLoad(root, label, retry) {
   };
 }
 
-// core/src/web/client/plugin-config-page.ts
+// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/plugin-config-page.ts
 function text(tag, className, value = "") {
   const node6 = document.createElement(tag);
   node6.className = className;
@@ -7466,7 +7543,7 @@ function pluginConfigPage(shell2, name) {
   } };
 }
 
-// core/src/web/client/plugin-ui-registry.ts
+// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/plugin-ui-registry.ts
 var legacyParents = /* @__PURE__ */ new Map([
   ["infinity-comfyui", "core-infinity-qq"],
   ["core-infinity-wavesuid", "core-infinity-qq"]
@@ -7520,7 +7597,7 @@ function pluginSignals(plugin) {
   return provider && value ? provider.signals(value, plugin) : lifecycle(plugin);
 }
 
-// core/src/web/client/engine.ts
+// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/engine.ts
 async function ask(url, init) {
   try {
     const resp = await pageFetch(url, init);
@@ -7607,7 +7684,7 @@ async function saveEngineDraft(asked, typed) {
   return { profile, secret };
 }
 
-// core/src/web/client/engine-controls.ts
+// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/engine-controls.ts
 var selects = /* @__PURE__ */ new Map();
 var menus = /* @__PURE__ */ new Map();
 var serial = 0;
@@ -7821,7 +7898,7 @@ function selectControl(select2, label) {
   return box;
 }
 
-// core/src/web/client/chatgpt-auth.ts
+// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/chatgpt-auth.ts
 function chatgptAuth(readName, backendReady = true) {
   const root = document.createElement("div");
   root.className = "engine-chatgpt";
@@ -8001,7 +8078,7 @@ function chatgptAuth(readName, backendReady = true) {
   };
 }
 
-// core/src/web/client/engine-providers.ts
+// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/engine-providers.ts
 function isPlanProvider(preset) {
   return preset.auth === "chatgpt" || /\/api\/coding\/paas\/v4\/?$/.test(preset.base_url);
 }
@@ -8020,7 +8097,7 @@ function nextProviderName(base, names) {
   return name;
 }
 
-// core/src/web/client/engine-page.ts
+// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/engine-page.ts
 function readDrafts() {
   try {
     const stored = JSON.parse(readDisplaySession("engine-drafts") ?? "{}");
@@ -9147,7 +9224,7 @@ function handoffNote(windowTokens, outTokens) {
   return ` 输入硬阈 ${hard}；软提醒 ${Math.floor(hard * SOFT_RATIO)}，余下 15% 为后续增长预留。`;
 }
 
-// core/src/web/client/composer-popovers.ts
+// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/composer-popovers.ts
 function popoverPosition(anchor, height, view2) {
   const edge = 12;
   const gap = 10;
@@ -9296,7 +9373,7 @@ function wireComposerPopovers(entries, refresh2) {
   }
 }
 
-// core/src/web/client/cache-view.ts
+// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/cache-view.ts
 var object = (value) => typeof value === "object" && value !== null ? value : {};
 var number = (value) => typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : null;
 var count = (value) => {
@@ -9425,7 +9502,7 @@ function latestCacheRead(fetcher) {
   };
 }
 
-// core/src/web/client/console-introduction.ts
+// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/console-introduction.ts
 function mountConsoleIntroduction(root, composer2) {
   const guide2 = document.createElement("section");
   guide2.className = "console-introduction";
@@ -9524,7 +9601,7 @@ function mountConsoleIntroduction(root, composer2) {
   void load();
 }
 
-// core/src/web/client/tool-activity.ts
+// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/tool-activity.ts
 function toolReceiptFailed(name, text2) {
   return name !== "handoff_note" && /^\s*\[tool failed\]/.test(text2 || "");
 }
@@ -9578,7 +9655,7 @@ function rememberToolTitles(result, titles) {
   if (knowledge && !/^(记录时间|修订来历|第\s*\d)/.test(knowledge[2])) titles.set(knowledge[1], knowledge[2]);
 }
 
-// core/src/web/client/history-feed.ts
+// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/history-feed.ts
 function mergeHistory(history, live2) {
   const result = [];
   const known = /* @__PURE__ */ new Set();
@@ -9659,7 +9736,7 @@ var HistoryFeed = class {
   }
 };
 
-// core/src/web/client/chat.ts
+// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/chat.ts
 var ME = "user";
 var OTHER = "bot";
 var A_BATCH = "batch";
@@ -10193,7 +10270,7 @@ function mountChat(host) {
   return view2;
 }
 
-// core/src/web/client/live.ts
+// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/live.ts
 var EXPORT_LABEL = "导出诊断";
 var SEND_LABEL = "▶";
 var HANDOFF_LABEL = "交接";
@@ -10875,7 +10952,7 @@ function chatPage(shell2) {
   };
 }
 
-// core/src/web/client/persona-memory.ts
+// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/persona-memory.ts
 function personaMemoryTail() {
   const tail = document.createElement("footer");
   tail.className = "persona-memory-tail page-footer";
@@ -10883,7 +10960,7 @@ function personaMemoryTail() {
   return tail;
 }
 
-// core/src/web/client/persona-page.ts
+// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/persona-page.ts
 var BOUNDARY_LINE_SHORT = "修改会写入人设文件。仅限本机访问不等于账号鉴权。";
 var A_STAMP = /^\d{8}-\d{6}$/;
 var REPORT_ROUTE = "/persona";
@@ -11902,7 +11979,7 @@ function personaPage(shell2, options = {}) {
   };
 }
 
-// core/src/web/client/display-date.ts
+// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/display-date.ts
 function displayDate(value) {
   if (!value) return "";
   if (!/^\d{4}-\d{2}-\d{2}T/.test(value)) return value;
@@ -11910,7 +11987,7 @@ function displayDate(value) {
   return Number.isNaN(date.getTime()) ? "日期未知" : `${date.getMonth() + 1} 月 ${date.getDate()} 日`;
 }
 
-// core/src/web/client/record-refresh.ts
+// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/record-refresh.ts
 function recordRefresh(root, read4) {
   let active2 = false;
   let running = false;
@@ -11961,7 +12038,7 @@ function recordRefresh(root, read4) {
   };
 }
 
-// core/src/web/client/memory-page.ts
+// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/memory-page.ts
 function recentPeople(everyone) {
   const recordedAt = (one) => {
     if (typeof one.recent_at === "number" && Number.isFinite(one.recent_at)) {
@@ -12620,7 +12697,7 @@ function memoryPage(shell2) {
   };
 }
 
-// core/src/web/client/plugin-versions.ts
+// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/plugin-versions.ts
 var states = /* @__PURE__ */ new Map();
 var painters = /* @__PURE__ */ new Map();
 var el4 = (tag, text2 = "", cls = "") => {
@@ -12629,6 +12706,23 @@ var el4 = (tag, text2 = "", cls = "") => {
   n.className = cls;
   return n;
 };
+async function releasePage(repo2, page2) {
+  const params = new URLSearchParams({ repository: repo2, page: String(page2), kind: "releases" });
+  const response = await pageFetch("/plugin-versions?" + params, { cache: "no-store" }, 2e4);
+  if (!response.ok) throw Error("版本读取失败，请检查网络后重试。");
+  const result = await response.json();
+  if (!Array.isArray(result.rows)) throw Error("版本列表格式异常");
+  return result;
+}
+async function tagForVersion(repo2, version) {
+  for (let page2 = 1; page2 <= 5; page2++) {
+    const result = await releasePage(repo2, page2);
+    const match = result.rows.find((row2) => row2.tag.replace(/^v/, "") === version && !row2.prerelease);
+    if (match) return match.tag;
+    if (!result.more) break;
+  }
+  throw Error("发布记录中未找到对应版本，请重新检查更新。");
+}
 function pluginVersions(repo2, name, current2, blocked, install) {
   const key2 = repo2 + "/" + name;
   let state3 = states.get(key2);
@@ -12638,9 +12732,9 @@ function pluginVersions(repo2, name, current2, blocked, install) {
   }
   const s = state3;
   const box = el4("section", "", "pw-versions");
-  const summary2 = el4("h3", "版本与历史下载");
   const body = el4("div", "", "pw-version-body");
-  box.append(summary2, body);
+  if (!current2) box.append(el4("h3", "选择安装版本"));
+  box.append(body);
   const link = (label, url) => {
     const a = el4("a", label, "pw-button");
     a.href = url;
@@ -12675,6 +12769,7 @@ function pluginVersions(repo2, name, current2, blocked, install) {
     if (!s.data.rows.length) {
       body.append(el4("p", "作者尚未发布正式 Release，暂不提供下载。"));
     } else {
+      if (current2 && s.page === 1 && !s.data.more && s.data.rows.length === 1) body.append(el4("p", "该仓库目前仅有一个正式发布版本。"));
       const select2 = el4("select");
       select2.setAttribute("aria-label", "选择插件版本");
       select2.disabled = blocked || s.loading;
@@ -12688,8 +12783,8 @@ function pluginVersions(repo2, name, current2, blocked, install) {
       body.append(select2);
       const row2 = s.data.rows.find((row3) => row3.tag === s.selected);
       const actions = el4("div", "", "pw-version-controls");
-      const apply = button4(current2 ? "安装所选版本" : "安装此版本", () => install(row2));
-      apply.disabled = blocked || s.loading;
+      const apply = button4(current2 ? "替换安装" : "安装此版本", () => install(row2));
+      apply.disabled = blocked || s.loading || row2.tag.replace(/^v/, "") === current2;
       actions.append(apply, link("下载源码包 ↗", row2.download), link("发布说明 ↗", row2.source));
       body.append(actions);
       if (row2.notes) {
@@ -12697,7 +12792,7 @@ function pluginVersions(repo2, name, current2, blocked, install) {
         notes.append(el4("h3", "版本说明"), el4("p", row2.notes));
         body.append(notes);
       }
-      body.append(el4("p", current2 ? "切换前请先停用插件。原安装包会备份，配置和缓存保留；旧版是否兼容现有配置，以作者说明为准。" : "按所选正式版本安装并核对插件清单，安装后默认停用。", "pw-version-hint"));
+      body.append(el4("p", current2 ? "替换安装会备份原安装包并保留配置和缓存。旧版本的配置兼容性请查看发布说明。" : "按所选正式版本安装并核对插件清单，安装后默认停用。", "pw-version-hint"));
     }
     if (s.page > 1 || s.data.more) {
       const pages = el4("div", "", "pw-version-controls");
@@ -12723,11 +12818,7 @@ function pluginVersions(repo2, name, current2, blocked, install) {
     s.error = "";
     draw();
     try {
-      const r = await pageFetch("/plugin-versions?" + new URLSearchParams({ repository: repo2, page: String(s.page), kind: s.kind }), { cache: "no-store", signal: AbortSignal.timeout(2e4) }, 2e4);
-      if (!r.ok) throw Error("版本读取失败，请检查网络后重试。");
-      const data = await r.json();
-      if (!Array.isArray(data.rows)) throw Error("版本列表格式异常");
-      s.data = data;
+      s.data = await releasePage(repo2, s.page);
     } catch (error) {
       s.error = error instanceof Error ? error.message : "版本读取失败";
     } finally {
@@ -12737,10 +12828,10 @@ function pluginVersions(repo2, name, current2, blocked, install) {
   }
   painters.set(key2, draw);
   draw();
-  return Object.assign(box, { loadVersions: read4 });
+  return Object.assign(box, { loadVersions: () => s.data ? Promise.resolve() : read4() });
 }
 
-// core/src/web/client/plugin-origin.ts
+// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/plugin-origin.ts
 function githubRepository(value) {
   return /^https:\/\/github\.com\/([\w.-]+\/[\w.-]+?)(?:\.git)?(?:\/|$)/.exec(value)?.[1] || "";
 }
@@ -12751,7 +12842,7 @@ function pluginOrigin(plugin, repository = "") {
 }
 var pluginOriginOrder = (group) => ({ "Core": 0, "GitHub": 1, "本地导入": 2, "来源待确认": 3 })[group];
 
-// core/src/web/client/plugin-operation.ts
+// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/plugin-operation.ts
 var state2;
 var continuation;
 var pluginOperation = () => state2;
@@ -12862,7 +12953,7 @@ async function continuePluginOperation() {
     update("failed", e instanceof Error ? e.message : String(e), false);
   }
 }
-async function runPluginOperation(name, action) {
+async function runPluginOperation(name, action, expectedVersion) {
   if (state2?.busy) throw Error("请等待当前插件操作完成。");
   continuation = void 0;
   state2 = { name, action, phase: "changing", text: "正在读取并核对插件状态…", busy: true };
@@ -12871,6 +12962,7 @@ async function runPluginOperation(name, action) {
     const before = await read3();
     const p = find(before, name);
     if (!p) throw Error("插件未安装，请刷新列表。");
+    if (expectedVersion !== void 0 && p.version !== expectedVersion) throw Error("当前插件版本已变化，请重新核对。");
     let next = before;
     const predictableRestart = action === "apply" && p.restart_required || p.reload_mode === "restart" && (action === "enable" ? !p.loaded : action === "disable" || action === "remove" ? p.loaded || p.tracked || p.restart_action === "disable" : false);
     if (predictableRestart && !before.runtime?.restart_supported) throw Error(before.runtime?.restart_reason || "当前启动器不支持页面内重启，请先更新并重启启动器。");
@@ -12919,10 +13011,10 @@ async function runPluginOperation(name, action) {
   }
 }
 
-// core/src/web/client/plugin-guide-version.ts
-var PLUGIN_GUIDE_VERSION = true ? "v1.18" : "";
+// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/plugin-guide-version.ts
+var PLUGIN_GUIDE_VERSION = true ? "v1.19" : "";
 
-// core/src/web/client/plugin-catalog.ts
+// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/plugin-catalog.ts
 var pluginCategories = [
   ["all", "全部"],
   ["communication", "通讯接入"],
@@ -12951,11 +13043,22 @@ function pluginRequirement(one) {
   return (one.full || "").toLowerCase() === "ar15mod3/infinity-comfyui" ? "需启用 QQ 连接" : "";
 }
 
-// core/src/web/client/plugin-platforms.ts
+// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/plugin-platforms.ts
 var platformNames = { windows: "Windows", linux: "Linux", macos: "macOS" };
 function pluginPlatforms(one) {
-  const supported = Object.keys(platformNames).filter((id) => one.keywords?.includes(`platform-${id}`));
-  if (supported.length) return { supported, conditional: [], note: "来自作者的平台标签；未声明的平台不代表可用。" };
+  const platforms2 = Object.keys(platformNames);
+  const tags = new Set(one.keywords);
+  const conditional = platforms2.filter((id) => tags.has(`platform-${id}-conditional`));
+  const supported = platforms2.filter((id) => tags.has(`platform-${id}`) && !conditional.includes(id));
+  if (supported.length || conditional.length) {
+    const source = /^https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/?$/.test(one.repository) ? one.repository : void 0;
+    return {
+      supported,
+      conditional,
+      source,
+      note: conditional.length ? "有条件支持的平台需满足作者列出的运行环境。请查看项目说明。" : "运行平台由插件作者声明。"
+    };
+  }
   if (one.repository.toLowerCase() === "https://github.com/ar15mod3/infinity-comfyui" && one.version?.replace(/^v/, "") === "0.2.4") return {
     supported: ["windows"],
     conditional: ["linux"],
@@ -12969,7 +13072,7 @@ function platformSummary(info) {
   return values.length ? values.join(" / ") : "平台未声明";
 }
 
-// core/src/web/client/plugin-workspace.ts
+// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/plugin-workspace.ts
 var node5 = (tag, cls = "", text2 = "") => {
   const n = document.createElement(tag);
   n.className = cls;
@@ -13000,7 +13103,7 @@ var repo = (entry) => {
 };
 var originGroup = (entry) => pluginOrigin(entry.local || {}, repo(entry));
 var originOrder = (entry) => pluginOriginOrder(originGroup(entry));
-var platforms = (entry) => pluginPlatforms({ repository: repo(entry), version: entry.local?.version || entry.market?.version, keywords: entry.local?.keywords || entry.market?.keywords });
+var platforms = (entry) => pluginPlatforms({ repository: repo(entry), version: entry.local?.version || entry.market?.version, keywords: entry.local ? entry.local.keywords : entry.market?.keywords });
 function pluginWorkspace(shell2, view2 = "local") {
   const root = node5("section", "plugin-workspace page-world");
   root.dataset.pluginView = view2;
@@ -13074,6 +13177,7 @@ function pluginWorkspace(shell2, view2 = "local") {
   let lastDetail = "", lastList = "";
   let filterValue = "all";
   let checkingUpdates = false;
+  let historyName = "";
   let requestedName;
   const filterButtons = /* @__PURE__ */ new Map();
   function setFilters() {
@@ -13190,7 +13294,7 @@ function pluginWorkspace(shell2, view2 = "local") {
       selected = shown[0]?.name || "";
       lastDetail = "";
     }
-    const listKey = JSON.stringify([view2, shown, selected, busy, pluginOperation(), localLoaded, marketLoaded, localError, marketError, search.value, filterValue, shown.map((e) => updateFor(e.name))]);
+    const listKey = JSON.stringify([view2, shown, selected, busy, pluginOperation(), localLoaded, marketLoaded, localError, marketError, search.value, filterValue, shown.map((e) => [updateFor(e.name), updateMuted(e.name)])]);
     if (listKey !== lastList) {
       lastList = listKey;
       list.replaceChildren();
@@ -13226,7 +13330,7 @@ function pluginWorkspace(shell2, view2 = "local") {
         copy.append(summary2);
         const state3 = node5("span", "pw-entry-state");
         const update2 = updateFor(e.name);
-        if (update2?.status === "available" && installed(e.local) && !e.local?.builtin) {
+        if (update2?.status === "available" && (filterValue === "available" || !updateMuted(e.name)) && installed(e.local) && !e.local?.builtin) {
           state3.textContent = `${runtime(e.local)} · 可更新`;
           state3.dataset.tone = "update";
         } else if (e.local) {
@@ -13261,7 +13365,7 @@ function pluginWorkspace(shell2, view2 = "local") {
       footerInfo.append(back, node5("span", "", `${page2}/${pages}`), next);
     }
     const entry = shown.find((e) => e.name === selected);
-    const detailKey = JSON.stringify([entry, view2, entry && updateFor(entry.name), operationError, busy, pluginOperation(), checkingUpdates, status.checking]);
+    const detailKey = JSON.stringify([entry, view2, entry && updateFor(entry.name), operationError, busy, pluginOperation(), checkingUpdates, status.checking, historyName, entry && updateMuted(entry.name)]);
     if (detailKey !== lastDetail) {
       lastDetail = detailKey;
       drawDetail(entry);
@@ -13368,19 +13472,62 @@ function pluginWorkspace(shell2, view2 = "local") {
       actions.append(apply);
     }
     const versionRepo = !p?.builtin && source.startsWith("https://github.com/") ? source.slice("https://github.com/".length) : "";
-    const versions = versionRepo ? pluginVersions(versionRepo, e.name, exists ? p?.version || "" : "", busy || !!pluginOperation()?.busy, (row2) => {
-      void changeVersion(e, versionRepo, row2);
-    }) : void 0;
-    if (versions) {
-      const choose = button3(u?.status === "available" ? "选择更新版本" : "选择版本", () => {
-        void versions.loadVersions();
-        versions.scrollIntoView({ block: "nearest" });
-      });
-      choose.disabled = busy || !!pluginOperation()?.busy;
-      actions.insertBefore(choose, actions.querySelector(".pw-remove"));
-    }
     detail.append(actions);
-    if (versions) detail.append(versions);
+    const blocked = busy || !!pluginOperation()?.busy;
+    const history = () => pluginVersions(
+      versionRepo,
+      e.name,
+      exists ? p?.version || "" : "",
+      blocked,
+      (row2) => {
+        void changeVersion(e, versionRepo, row2.tag);
+      }
+    );
+    if (exists && !p?.builtin) {
+      const update2 = node5("section", "pw-update-note");
+      update2.append(node5("h3", "", u?.status === "available" ? "有新版本可用" : "版本检查"));
+      const row2 = node5("div", "pw-version-controls");
+      row2.append(node5("span", "pw-update-version", u ? updateText(u) : "等待读取版本信息"));
+      if (versionRepo && u?.status === "available" && u.latest) {
+        const apply = button3("停用并更新", () => {
+          void changeVersion(e, versionRepo, u.tag, u.latest);
+        }, "pw-primary");
+        apply.disabled = blocked || u.current !== p?.version;
+        row2.append(apply);
+      }
+      if (versionRepo) {
+        const expanded = historyName === e.name;
+        const toggle = button3("查看历史版本", () => {
+          historyName = expanded ? "" : e.name;
+          render2();
+          detail.querySelector('[aria-controls="pw-version-history"]')?.focus({ preventScroll: true });
+        });
+        toggle.disabled = blocked;
+        toggle.setAttribute("aria-expanded", String(expanded));
+        toggle.setAttribute("aria-controls", "pw-version-history");
+        row2.append(toggle);
+      }
+      update2.append(row2);
+      if (u?.checkedAt) update2.append(node5("small", "", `上次成功检查 ${new Date(u.checkedAt * 1e3).toLocaleString()}`));
+      if (u?.error) update2.append(node5("p", "", u.error));
+      if (versionRepo) {
+        const mute = node5("input");
+        mute.type = "checkbox";
+        mute.checked = updateMuted(e.name);
+        mute.onchange = () => setUpdateMuted(e.name, mute.checked);
+        const label = node5("label", "pw-update-mute");
+        label.title = "适用于此浏览器中的当前 Bot";
+        label.append(mute, document.createTextNode("该插件不推送更新提示"));
+        update2.append(label);
+        if (historyName === e.name) {
+          const panel2 = history();
+          panel2.id = "pw-version-history";
+          update2.append(panel2);
+          void panel2.loadVersions();
+        }
+      }
+      detail.append(update2);
+    } else if (versionRepo) detail.append(history());
     const result = node5("p", "pw-operation", operationError);
     result.setAttribute("role", "status");
     detail.append(result);
@@ -13391,18 +13538,6 @@ function pluginWorkspace(shell2, view2 = "local") {
     }
     if (p?.lifecycle_error) detail.append(node5("p", "pw-operation", p.lifecycle_error));
     if (compatibilityBox) detail.append(compatibilityBox);
-    if (u && exists && !p?.builtin) {
-      const update2 = node5("section", "pw-update-note");
-      update2.append(node5("h3", "", u.status === "available" ? "有新版本可用" : "版本检查"), node5("p", "", updateText(u)));
-      if (u.checkedAt) update2.append(node5("small", "", `上次成功检查 ${new Date(u.checkedAt * 1e3).toLocaleString()}`));
-      if (u.error) update2.append(node5("p", "", u.error));
-      if (u.status === "available") {
-        const instructions = node5("section");
-        instructions.append(node5("h3", "", "查看升级步骤"), node5("p", "", "停用插件后，点击“选择更新版本”，核对发布说明再安装。旧包会备份，配置和缓存保留，安装后按需启用。多个 Bot 共用安装包时，需要各 Bot 均已停用该插件。"));
-        update2.append(instructions);
-      }
-      detail.append(update2);
-    }
     const descriptions = node5("div", "pw-detail-sections");
     const about = node5("section", "pw-about");
     about.append(node5("h3", "", "关于插件"), node5("p", "", p?.description || m?.description || "作者尚未提供简介。"));
@@ -13432,6 +13567,8 @@ function pluginWorkspace(shell2, view2 = "local") {
     };
     field("来源", p?.builtin ? "Core 内置" : p?.origin?.source === "github" ? "GitHub" : p ? "本地导入" : m?.source || "GitHub");
     field("安装状态", exists ? "已安装" : p?.builtin ? "可从 Core 恢复" : "尚未安装");
+    const parent = p?.navigationParent;
+    if (parent) field("所属主插件", locals.find((one) => one.name === parent)?.displayName || parent);
     if (p?.where) field("安装位置", p.where);
     if (p?.api !== void 0) field("兼容接口", `Infinity API ${p.api ?? "未声明"}`);
     if (m?.date) field("仓库更新", m.date);
@@ -13445,32 +13582,49 @@ function pluginWorkspace(shell2, view2 = "local") {
     scroll.append(...children.slice(children.indexOf(actions) + 1));
     detail.append(scroll);
   }
-  async function changeVersion(e, repository, row2) {
+  async function changeVersion(e, repository, tag, latest) {
     if (busy || pluginOperation()?.busy || !alive) return;
-    if (e.local && (e.local.enabled || e.local.loaded || e.local.restart_required)) {
-      operationError = "请先停用插件；如提示需要重启，请完成重启后再切换版本。";
-      render2();
-      return;
-    }
-    const accepted = await confirmAction("安装所选版本", `将安装 ${row2.tag}${row2.prerelease ? "（预发布）" : ""}。原安装包会备份，配置和缓存保留，安装后保持停用。旧版可能不兼容新版配置，请先阅读发布说明。`, "安装", false, { className: "pw-confirm", detail: e.local?.displayName || e.name });
-    if (!accepted || !alive || busy) return;
+    const wasInstalled = installed(e.local);
+    const mustStop = !!(e.local?.enabled || e.local?.loaded || e.local?.tracked || e.local?.restart_required);
+    const label = latest ? "停用并更新" : wasInstalled ? "替换安装" : "安装此版本";
+    const description = [
+      `将安装 ${latest || tag}。`,
+      mustStop ? "将先停用当前 Bot 的插件。" : "",
+      mustStop && (e.local?.reload_mode === "restart" || e.local?.restart_required) ? "此操作可能重启当前 Bot 服务。" : "",
+      wasInstalled ? "原安装包会备份，配置和缓存保留。" : "",
+      "安装后插件保持停用。"
+    ].join("");
+    const accepted = await confirmAction(label, description, label, false, { className: "pw-confirm", detail: e.local?.displayName || e.name });
+    if (!accepted || !alive || busy || selected !== e.name || pluginOperation()?.busy) return;
     busy = true;
-    operationError = "正在下载、核对并安装所选版本…";
+    operationError = "正在核对所选版本…";
     render2();
     try {
-      const r = await pageFetch("/market/install", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ version: { repository, tag: row2.tag, name: e.name, current: installed(e.local) ? e.local?.version || "" : "" } }) });
-      if (!r.ok) throw Error((await r.text()).trim() || "版本安装失败");
-      const result = await r.json();
-      if (!result.ok) throw Error(result.said || "版本安装失败");
-      operationError = result.said;
-      const token = ++epoch;
-      await readLocal(token);
-      if (view2 === "discover") await readMarket(token);
-      await checkPluginUpdates();
-      window.dispatchEvent(new Event("plugins-changed"));
+      const releaseTag = tag || latest && await tagForVersion(repository, latest);
+      if (!releaseTag) throw Error("缺少正式版本标签，请重新检查更新。");
+      if (mustStop) {
+        await runPluginOperation(e.name, "disable", e.local?.version);
+        const stop = pluginOperation();
+        if (stop?.phase !== "complete") throw Error(stop?.text || "尚未确认插件已停用。");
+      }
+      operationError = "正在下载并安装 " + releaseTag + "…";
+      render2();
+      const response = await pageFetch("/market/install", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ version: { repository, tag: releaseTag, name: e.name, current: wasInstalled ? e.local?.version || "" : "" } })
+      });
+      if (!response.ok) throw Error((await response.text()).trim() || "版本安装失败");
+      const result = await response.json();
+      if (!result.ok) throw Error(result.said || result.error || "版本安装失败");
+      operationError = result.said || "安装完成。";
     } catch (error) {
       operationError = error instanceof Error ? error.message : "版本安装失败";
     } finally {
+      const token = ++epoch;
+      await readLocal(token);
+      if (view2 === "discover") await readMarket(token);
+      window.dispatchEvent(new Event("plugins-changed"));
       busy = false;
       lastList = lastDetail = "";
       render2();
@@ -13539,9 +13693,7 @@ function pluginWorkspace(shell2, view2 = "local") {
     if (toggle?.offsetWidth && toggle.getAttribute("aria-expanded") === "false") toggle.click();
     railButton(".plugin-nav-edit")?.click();
   }, "pw-quiet");
-  const cancelOrder = button3("取消", () => railButton(".plugin-nav-action:not(.is-primary)")?.click(), "pw-quiet");
-  const saveOrder = button3("完成", () => railButton(".plugin-nav-action.is-primary")?.click());
-  orderActions.append(editOrder, cancelOrder, saveOrder);
+  orderActions.append(editOrder);
   if (view2 === "local") {
     header.append(orderActions);
     header.after(navOrder);
@@ -13551,9 +13703,9 @@ function pluginWorkspace(shell2, view2 = "local") {
     const tree = shell2.railNav.querySelector(".rail-sublist.is-sorting");
     const sorting = !!tree;
     root.classList.toggle("pw-ordering", sorting);
-    orderActions.hidden = !railButton(".plugin-nav-edit");
+    orderActions.hidden = sorting || !railButton(".plugin-nav-edit");
     editOrder.hidden = sorting;
-    cancelOrder.hidden = saveOrder.hidden = navOrder.hidden = !sorting;
+    navOrder.hidden = !sorting;
     heading2.querySelector("h1").textContent = sorting ? "调整顺序" : "插件总览 · PLUGIN OVERVIEW";
     orderRows.replaceChildren();
     if (tree) for (const unit of tree.querySelectorAll("[data-nav-id]")) {
@@ -13673,12 +13825,12 @@ function pluginWorkspace(shell2, view2 = "local") {
   } };
 }
 
-// core/src/web/client/plugin-market-page.ts
+// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/plugin-market-page.ts
 function pluginMarketPage(shell2) {
   return pluginWorkspace(shell2, "discover");
 }
 
-// core/src/web/client/infinity-plugin-page.ts
+// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/infinity-plugin-page.ts
 function infinityPluginPage(shell2) {
   const route2 = location.hash.replace(/^#\/?infinity\//, "");
   let name = "";
@@ -13690,7 +13842,7 @@ function infinityPluginPage(shell2) {
   return pluginPage(shell2, name);
 }
 
-// core/src/web/client/knowledge-page.ts
+// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/knowledge-page.ts
 var READ_FAILED2 = "知识库加载失败，请重试。";
 var NOT_WIRED2 = "当前服务暂不支持查看知识库。";
 var NOTHING_YET = "暂无知识库内容。";
@@ -13866,7 +14018,7 @@ function knowledgePage(shell2) {
   };
 }
 
-// core/src/web/client/portrait-display.ts
+// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/portrait-display.ts
 function portraitAccount(raw) {
   const group = /^group:qq:\d+\|sender=(qq:\d+)$/.exec(raw);
   if (group) return group[1];
@@ -13924,7 +14076,7 @@ function portraitGroups(people) {
   return [...groups.values()].sort((a, b) => Number(b.key === "console") - Number(a.key === "console")).map((group) => ({ ...group, people: group.people.sort((a, b) => Number(portraitLinkedToConsole(b)) - Number(portraitLinkedToConsole(a))) }));
 }
 
-// core/src/web/client/people-page.ts
+// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/people-page.ts
 var READ_FAILED3 = "画像加载失败，请重试。";
 var NOT_WIRED3 = "当前服务暂不支持查看画像。";
 var NOBODY_YET = "暂无画像记录。";
@@ -14494,7 +14646,7 @@ function peoplePage(shell2) {
   };
 }
 
-// core/src/web/client/record-labels.ts
+// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/record-labels.ts
 function experienceSourceName(path) {
   const name = path.split(/[\\/]/).filter(Boolean).at(-1)?.replace(/\.[^.]+$/, "") || "";
   if (/^对话(?:记录)?$/.test(name)) return "对话";
@@ -14504,7 +14656,7 @@ function experienceSourceName(path) {
   return labels[name] || name;
 }
 
-// core/src/web/client/experience-page.ts
+// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/experience-page.ts
 var READ_FAILED4 = "经历加载失败，请重试。";
 var NOT_WIRED4 = "当前服务暂不支持查看经历。";
 var NOTHING_YET2 = "暂无经历。保存的对话和记录会显示在这里。";
@@ -14895,7 +15047,7 @@ function experiencePage(shell2) {
   };
 }
 
-// core/src/web/client/plugin-storage-settings.ts
+// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/plugin-storage-settings.ts
 var element2 = (tag, cls, label) => {
   const el6 = document.createElement(tag);
   el6.className = cls;
@@ -15111,7 +15263,7 @@ function snowlumaSessionSettings() {
   return root;
 }
 
-// core/src/web/client/model-proxy-settings.ts
+// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/model-proxy-settings.ts
 var PROVIDERS = [["openai", "OpenAI / ChatGPT"], ["google", "Google Gemini"], ["anthropic", "Anthropic Claude"], ["xai", "xAI Grok"]];
 var el5 = (tag, cls = "", text2 = "") => {
   const n = document.createElement(tag);
@@ -15329,7 +15481,7 @@ function modelProxySettings() {
   return root;
 }
 
-// core/src/web/client/settings-page.ts
+// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/settings-page.ts
 var GROUPS = [
   ["背景层级", [
     ["--color-canvas", "页面背景"],
@@ -15884,7 +16036,7 @@ function settingsPage(shell2) {
   };
 }
 
-// core/src/web/client/pages.ts
+// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/pages.ts
 function page(row2, build) {
   return { ...row2, build };
 }
@@ -16048,7 +16200,7 @@ function route(shell2, pages = PAGES) {
   return live;
 }
 
-// core/src/web/client/state.ts
+// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/state.ts
 var COUNTER_KEYS = ["tokens", "messages", "batches", "paused"];
 var ENGINE_KEYS = ["endpoint", "model", "profile", "model_available"];
 function count2(value) {
@@ -16073,7 +16225,7 @@ function counterChips(m) {
   ];
 }
 
-// core/src/web/client/main.ts
+// ../../../../../../tmp/telyin-qq-environment-release-20261126/core/src/web/client/main.ts
 var READ_NAMES = [
   ...COUNTER_KEYS,
   ...ENGINE_KEYS,

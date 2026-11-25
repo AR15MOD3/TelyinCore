@@ -1357,6 +1357,38 @@ dialog.pw-confirm {
 .plugin-workspace > :is(.pw-header,.pw-navigation,.pw-body) {
   flex-shrink: 0;
 }
+.pw-update-note .pw-version-controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.pw-update-version {
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+  margin-inline-end: 4px;
+}
+.pw-update-note > small {
+  display: block;
+  margin-top: 8px;
+}
+.pw-update-mute {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: fit-content;
+  margin-top: 10px;
+  color: var(--color-dim);
+  font-size: 12px;
+  cursor: pointer;
+}
+.pw-update-note > .pw-versions {
+  border-top: 1px solid var(--color-line);
+  padding: 12px 0 0;
+}
+.pw-update-note > h3 {
+  cursor: default;
+}
 @layer base {
   :root {
     --ui-scroll-thumb: color-mix(in srgb, #5c5c60 30%, transparent);
@@ -8627,10 +8659,45 @@ body.rail-searching #rail > :not(.rail-search-panel) {
 #rail :is(.plugin-nav-toolbar,.plugin-nav-row) > .rail-item {
   flex: 1;
 }
-#rail .plugin-nav-children {
-  margin-inline-start: 12px;
+#rail .plugin-nav-toolbar:not(.is-editing) {
+  display: grid;
+  grid-template-columns: minmax(0,1fr) auto;
+  align-items: center;
+  gap: 0;
+}
+#rail .plugin-nav-toolbar > .rail-item {
+  grid-area: 1 / 1 / 2 / -1;
+  padding-inline-end: 44px;
+}
+#rail .plugin-nav-toolbar > .plugin-nav-edit {
+  grid-area: 1 / 2;
+  z-index: 1;
+  justify-self: end;
+  margin-inline-end: 4px;
+}
+#rail .plugin-nav-tree {
+  margin-inline-start: 16px;
+  padding-inline-start: 0;
+  border: 0;
+}
+#rail :is(.plugin-nav-tree,.plugin-nav-ghost) .rail-child::before {
+  content: none;
+}
+#rail .plugin-nav-tree > .plugin-nav-unit > .plugin-nav-row > .rail-child, #rail:has(.plugin-nav-tree > .is-placeholder) .plugin-nav-ghost > .plugin-nav-row > .rail-child {
   padding-inline-start: 8px;
-  border-inline-start: 1px solid var(--workspace-nav-rule);
+  gap: 8px;
+}
+#rail .plugin-nav-tree > .plugin-nav-unit > .plugin-nav-row > .rail-child > .icon, #rail:has(.plugin-nav-tree > .is-placeholder) .plugin-nav-ghost > .plugin-nav-row > .rail-child > .icon {
+  display: block;
+  width: 15px;
+  height: 15px;
+  flex: none;
+}
+#rail .plugin-nav-children {
+  margin-inline-start: 16px;
+}
+#rail .plugin-nav-children .rail-child {
+  padding-inline-start: 22px;
 }
 #rail :is(.plugin-nav-edit,.plugin-nav-grip,.plugin-nav-action) {
   display: inline-grid;
@@ -8650,9 +8717,35 @@ body.rail-searching #rail > :not(.rail-search-panel) {
   }
   opacity: 1;
 }
+#rail .plugin-nav-toolbar.is-editing > .rail-item {
+  display: none;
+}
 #rail .plugin-nav-actions {
-  justify-content: flex-end;
-  padding: 4px 3px;
+  justify-content: flex-start;
+  padding-inline-start: 8px;
+  min-height: var(--rail-item-h,36px);
+  gap: 6px;
+}
+#rail .plugin-nav-actions .is-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+#rail .plugin-nav-check {
+  width: 10px;
+  height: 6px;
+  border-inline-start: 1.5px solid;
+  border-bottom: 1.5px solid;
+  transform: translateY(-1px) rotate(-45deg);
+}
+#rail .plugin-nav-actions button[hidden], #rail :is(.is-sorting,.plugin-nav-ghost) .plugin-nav-grip[hidden] {
+  display: none;
+}
+#rail .plugin-nav-action:not(.is-primary) {
+  color: var(--workspace-nav-text);
+  @supports (color: color-mix(in lab, red, red)) {
+    color: color-mix(in srgb,var(--workspace-nav-text) 73%,var(--workspace-nav));
+  }
 }
 #rail .plugin-nav-action {
   font-size: 12px;
@@ -8743,6 +8836,29 @@ body.rail-searching #rail > :not(.rail-search-panel) {
   clip-path: inset(50%);
 }
 @media (min-width:721px) {
+  body.rail-compact #rail .plugin-nav-tree {
+    margin: 0;
+  }
+  body.rail-compact #rail .plugin-nav-toolbar:not(.is-editing) {
+    display: flex;
+  }
+  body.rail-compact #rail .plugin-nav-toolbar > .rail-item, body.rail-compact #rail .plugin-nav-tree > .plugin-nav-unit > .plugin-nav-row > .rail-child {
+    padding-inline: 0;
+  }
+  body.rail-compact #rail .plugin-nav-toolbar > .plugin-nav-edit {
+    margin: 0;
+  }
+  body.rail-compact #rail .plugin-nav-actions {
+    padding: 0;
+    flex-direction: column;
+    gap: 0;
+  }
+  body.rail-compact #rail .plugin-nav-actions button {
+    padding-inline: 3px;
+  }
+  body.rail-compact #rail .plugin-nav-children > .plugin-nav-unit > .plugin-nav-row > .rail-child {
+    padding: 0;
+  }
   body.rail-compact #rail .plugin-nav-children {
     margin: 0;
     padding: 0;

@@ -177,11 +177,11 @@ class PackageUpdates:
             status["installTarget"] = self.install_target
         return status
 
-    def prepare_install(self):
+    def prepare_install(self, *, before_pending=None):
         from .online_install import stage
         self.install_target = None
         self.install_progress = "正在向 GitHub 官方确认最新版"
-        return stage(self)
+        return stage(self, before_pending=before_pending)
 
     def restart_for_update(self, port):
         from .online_install import start_restart

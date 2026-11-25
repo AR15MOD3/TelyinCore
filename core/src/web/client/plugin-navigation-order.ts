@@ -42,6 +42,7 @@ export function pluginNavigationOrder(rail: HTMLElement, refresh: () => void) {
     const tree = overview?.parentElement?.querySelector<HTMLElement>('.rail-sublist');
     const changed = () => rail.dispatchEvent(new Event('plugin-navigation-order'));
     if (!overview || !tree) { changed(); return; }
+    tree.classList.add('plugin-nav-tree');
     const order = readOrder();
     const rank = new Map(order.map((id, i) => [id, i]));
     const parents = new Map(entries.map((item) => [item.id, item.navigationParent]));
@@ -93,7 +94,12 @@ export function pluginNavigationOrder(rail: HTMLElement, refresh: () => void) {
     if (rememberNew && ids.some(id => !rank.has(id))) {
       writeDisplayLocal(orderKey, JSON.stringify([...order, ...ids.filter(id => !rank.has(id))]));
     }
-    if (nodes.size < 2) { changed(); return; }
+    const handles = [...nodes.values()].map(unit => {
+      const handle = unit.querySelector<HTMLButtonElement>(':scope > .plugin-nav-row > .plugin-nav-grip')!;
+      handle.hidden = unit.parentElement!.children.length < 2;
+      return handle;
+    });
+    if (handles.every(handle => handle.hidden)) { changed(); return; }
     const toolbar = document.createElement('div');
     toolbar.className = 'plugin-nav-toolbar';
     overview.before(toolbar);
@@ -105,10 +111,20 @@ export function pluginNavigationOrder(rail: HTMLElement, refresh: () => void) {
     const controls = document.createElement('div');
     controls.className = 'plugin-nav-actions';
     controls.hidden = true;
-    const cancel = button('取消排序', 'plugin-nav-action', '取消');
+    const cancel = button('取消排序', 'plugin-nav-action', '放弃更改');
     const done = button('保存插件顺序', 'plugin-nav-action is-primary', '完成');
-    controls.append(cancel, done);
-    toolbar.after(controls);
+    const sortedIds = () => Array.from(tree.querySelectorAll<HTMLElement>('[data-nav-id]'), el => el.dataset.navId);
+    const initial = sortedIds();
+    function reflectDraft() {
+      cancel.hidden = sortedIds().every((id, index) => id === initial[index]);
+    }
+    const check = document.createElement('span');
+    check.className = 'plugin-nav-check';
+    check.setAttribute('aria-hidden', 'true');
+    done.prepend(check);
+    cancel.title = '放弃本次调整，恢复进入排序前的顺序';
+    controls.append(done, cancel);
+    toolbar.append(controls);
     const live = document.createElement('span');
     live.className = 'plugin-nav-live';
     live.setAttribute('role', 'status');
@@ -130,12 +146,17 @@ export function pluginNavigationOrder(rail: HTMLElement, refresh: () => void) {
       rail.querySelector<HTMLButtonElement>('.plugin-nav-edit')?.focus();
     }
     edit.onclick = () => {
+      toolbar.classList.add('is-editing');
+      reflectDraft();
       editing = true;
       tree.classList.add('is-sorting');
       controls.hidden = false;
       edit.hidden = true;
       changed();
-      tree.querySelector<HTMLButtonElement>('.plugin-nav-grip')?.focus({ preventScroll: true });
+      tree.querySelector<HTMLButtonElement>('.plugin-nav-grip:not([hidden])')?.focus({ preventScroll: true });
+    };
+    controls.onkeydown = e => {
+      if (e.key === 'Escape') { e.preventDefault(); close(false); }
     };
     cancel.onclick = () => close(false);
     done.onclick = () => close(true);
@@ -173,6 +194,7 @@ export function pluginNavigationOrder(rail: HTMLElement, refresh: () => void) {
         );
       if (tree!.hasPointerCapture(d.pointer)) tree!.releasePointerCapture(d.pointer);
       d.handle.focus({ preventScroll: true });
+      reflectDraft();
       changed();
     }
     function withinList(d: Drag) {
@@ -218,6 +240,7 @@ export function pluginNavigationOrder(rail: HTMLElement, refresh: () => void) {
               ),
             d.unit
           );
+          reflectDraft();
           changed();
         }
       }
@@ -311,6 +334,7 @@ export function pluginNavigationOrder(rail: HTMLElement, refresh: () => void) {
       if (sibling) {
         glide(list, () => list.insertBefore(unit, up ? sibling : sibling.nextSibling));
         handle.focus();
+        reflectDraft();
         changed();
         live.textContent =
           '当前位置 ' + (units(list).indexOf(unit) + 1) + ' / ' + list.children.length;

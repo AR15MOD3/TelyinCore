@@ -23,12 +23,17 @@ def boot_filetime():
     return value
 
 
+def belongs_to_current_boot(owner, boot):
+    # Keep the same conservative margin in live and offline checks.
+    return owner['created_filetime'] + 100_000_000 >= boot
+
+
 def previous_boot_owners(rows):
     boot = boot_filetime()
     for row in rows:
         owner = row['owner']
         # Conservative margin against timing precision differences.
-        if owner['created_filetime'] + 100_000_000 >= boot:
+        if belongs_to_current_boot(owner, boot):
             raise ValueError(
                 f'本次开机内仍有启动记录缺少完整的进程组退出凭据（原启动进程 PID {owner["pid"]}），暂不能操作档案。\n'
                 '这是启动责任记录尚未核实，不表示档案损坏；仅看到原 PID 消失不足以确认全部子进程退出。\n'

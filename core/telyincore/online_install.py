@@ -255,7 +255,7 @@ def verified_pending(root, platform, version):
     return row
 
 
-def stage(checker):
+def stage(checker, *, before_pending=None):
     root = checker.root.resolve()
     previous = None
     failure = None
@@ -277,7 +277,7 @@ def stage(checker):
             fingerprint = (version, package[1])
             if failure is not None and fingerprint == previous:
                 raise ValueError(f'{failure}；已复查官方最新版，版本和附件摘要均未变化。')
-            return stage_package(checker, root, state, package)
+            return stage_package(checker, root, state, package, before_pending=before_pending)
         except (PackageMismatch, zipfile.BadZipFile) as exc:
             if attempt:
                 raise
@@ -309,7 +309,7 @@ def package_metadata(checker, state):
     return size, expected, name, headers, url, proxy
 
 
-def stage_package(checker, root, state, package):
+def stage_package(checker, root, state, package, *, before_pending=None):
     from .download_sources import github_routes, github_route_text, TRANSFER_ERRORS
     size, expected, name, headers, url, proxy = package
     platform, base, version = state['platform'], state['current'], state['latest']
@@ -360,6 +360,8 @@ def stage_package(checker, root, state, package):
         if not reusable:
             temp.replace(cached)
         receipt=dict(platform=platform,base=base,version=version,sha256=expected,source=source,route=route)
+        if before_pending is not None:
+            before_pending()
         atomic(cache/'pending.json',json.dumps(receipt).encode(),0o600)
         return receipt
     finally:

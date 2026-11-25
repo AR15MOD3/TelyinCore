@@ -231,3 +231,20 @@ def test_official_unavailable_offers_only_explicit_verified_cached_version(tmp_p
     archive.write_bytes(b'broken')
     with pytest.raises(ValueError, match='暂存包校验失败'):
         install.verified_pending(tmp_path,'linux',latest)
+
+
+def test_blocker_appearing_during_transfer_keeps_only_verified_zip(tmp_path):
+    from telyincore.update_preflight import UpdateBlocked
+    from types import SimpleNamespace
+    base, latest, payload = pack(tmp_path)
+    digest = install.sha(payload)
+    preview = SimpleNamespace(read=lambda *_: payload)
+    checker = SimpleNamespace(preview=preview)
+    def blocked():
+        raise UpdateBlocked('另一项服务正在启动')
+    with pytest.raises(UpdateBlocked):
+        install.stage_package(checker, tmp_path, dict(platform='linux', current=base, latest=latest),
+                              (len(payload),digest,'package',{},'unused',None),before_pending=blocked)
+    assert (install.folder(tmp_path)/(digest+'.zip')).read_bytes() == payload
+    assert install.pending(tmp_path) is None
+    assert (tmp_path/'core/main.py').read_bytes() == b'old'

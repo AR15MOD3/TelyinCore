@@ -92,7 +92,7 @@ class PluginUpdates:
     def __init__(self,root,fetch=None,clock=time.time):
         self.root=Path(root).resolve();self.fetch=fetch or (lambda repo:remote_manifest(repo,self.root));self.clock=clock
         self._guard=threading.Lock();self._requested=threading.Event();self._force=False;self._thread=None;self._running=False
-        self._error='';self._refresh_since=0
+        self._error='';self._refresh_since=0;self._servicing=False
     def path(self):
         from runtime_identity import safe_path
         return safe_path(self.root,self.root/'data/plugin-updates/state.json')
@@ -146,9 +146,12 @@ class PluginUpdates:
                 rows.append({'name':folder.name,'displayName':folder.name,'current':'','repository':'','status':'unsupported','message':'本机清单或版本无法识别'})
         return rows
     def read(self,refresh=False):
-        if refresh:
-            with self._guard: self._force=True;self._refresh_since=self.clock()
-            self._requested.set()
+        with self._guard:
+            if refresh:
+                self._force=True
+                self._refresh_since=self.clock()
+                self._requested.set()
+            checking=self._force or self._servicing or self._running
         state=self._state();now=self.clock();rows=self.inventory()
         for row in rows:
             if row['status']!='pending': continue
@@ -166,12 +169,13 @@ class PluginUpdates:
                     continue
                 local=Version(row['current']);remote=Version(cached['version'])
                 row['latest']=cached['version']
+                if cached.get('tag'): row['tag']=cached['tag']
                 status='available' if local<remote else 'ahead' if remote<local else 'current'
                 if remote.pre and not local.pre: status='prerelease'
                 row.update(status=status,message='')
                 if row['error']: row['stale']=True
             except (ValueError,TypeError,KeyError): row.update(status='unavailable',message='缓存不可用，等待重新检查')
-        return {'rows':rows,'checking':self._running,'message':self._error,
+        return {'rows':rows,'checking':checking,'message':self._error,
             'available':sum(r['status']=='available' for r in rows),'intervalHours':6,
             'policy':'只检查并提示；不会自动安装、停用插件或重启 Bot。'}
     def check_batch(self,force=False,stopped=None):
@@ -218,10 +222,15 @@ class PluginUpdates:
         if self._thread is not None: return
         def monitor():
             while not stopped.is_set():
-                with self._guard: force=self._force;self._force=False
+                with self._guard:
+                    force=self._force
+                    self._force=False
+                    self._servicing=force
                 try:
                     if force or idle(): self.check_batch(force,stopped)
                 except (OSError,ValueError): self._error='另一实例正在检查，或本机检查记录暂不可用'
+                finally:
+                    with self._guard: self._servicing=False
                 for _ in range(60):
                     if stopped.wait(1): return
                     if self._requested.is_set():

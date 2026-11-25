@@ -5,8 +5,15 @@ export type PlatformInfo = {
   supported: Platform[]; conditional: Platform[]; note: string; source?: string;
 };
 export function pluginPlatforms(one:{repository:string;version?:string;keywords?:readonly string[]}):PlatformInfo {
-  const supported=(Object.keys(platformNames) as Platform[]).filter(id=>one.keywords?.includes(`platform-${id}`));
-  if(supported.length)return {supported,conditional:[],note:'来自作者的平台标签；未声明的平台不代表可用。'};
+  const platforms = Object.keys(platformNames) as Platform[];
+  const tags = new Set(one.keywords);
+  const conditional = platforms.filter(id => tags.has(`platform-${id}-conditional`));
+  const supported = platforms.filter(id => tags.has(`platform-${id}`) && !conditional.includes(id));
+  if (supported.length || conditional.length) {
+    const source = /^https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/?$/.test(one.repository) ? one.repository : undefined;
+    return {supported, conditional, source,
+      note:conditional.length ? '有条件支持的平台需满足作者列出的运行环境。请查看项目说明。' : '运行平台由插件作者声明。'};
+  }
   // Reviewed README for this exact release, not a general rule for all versions.
   if(one.repository.toLowerCase()==='https://github.com/ar15mod3/infinity-comfyui' && one.version?.replace(/^v/,'')==='0.2.4')return {
     supported:['windows'],conditional:['linux'],
